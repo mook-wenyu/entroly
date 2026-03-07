@@ -28,6 +28,8 @@ RUN pip install --no-cache-dir /tmp/wheels/*.whl "mcp>=1.0.0" \
 
 # Copy entroly Python package directly — no hatchling build needed
 COPY entroly/entroly/ /app/entroly/
+COPY entroly/pyproject.toml /app/
+COPY README.md /app/
 
 # Make the entroly package importable
 ENV PYTHONPATH=/app
