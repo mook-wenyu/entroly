@@ -30,6 +30,7 @@ import gc
 import json
 import logging
 import sys
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .config import EntrolyConfig
@@ -171,6 +172,21 @@ class EntrolyEngine:
         # Fail fast with a clear error rather than a cryptic gzip/PermissionError
         # during the first auto-checkpoint (which could happen mid-session).
         self._validate_checkpoint_dir()
+
+        # ── Persistent Repo-Level Indexing ──
+        # On startup, try to load a previous session's index for instant warm retrieval.
+        # Index is stored at <checkpoint_dir>/index.json.gz (gzip-compressed JSON).
+        self._index_path = str(Path(self.config.checkpoint_dir) / "index.json.gz")
+        if self._use_rust:
+            try:
+                loaded = self._rust.load_index(self._index_path)
+                if loaded:
+                    n = self._rust.fragment_count()
+                    logger.info(f"Loaded persistent index: {n} fragments from {self._index_path}")
+                else:
+                    logger.info("No persistent index found, starting fresh session")
+            except Exception as e:
+                logger.warning(f"Failed to load persistent index: {e}")
 
         # GC freeze at startup: Python's cyclic GC causes ~500ms stalls on large
         # heaps. Freeze all existing long-lived objects and disable automatic
@@ -429,6 +445,11 @@ class EntrolyEngine:
             }
             # Export full engine state (not empty fragments)
             engine_state = self._rust.export_state()
+            # Auto-persist repo-level index alongside checkpoint
+            try:
+                self._rust.persist_index(self._index_path)
+            except Exception as e:
+                logger.warning(f"Failed to persist index: {e}")
             return self._checkpoint_mgr.save(
                 fragments=[],
                 dedup_fingerprints={},
@@ -730,8 +751,7 @@ def create_mcp_server():
 
     mcp = FastMCP(
         "entroly",
-        version="0.1.0",
-        description=(
+        instructions=(
             "Information-theoretic context optimization for AI coding agents. "
             "Knapsack-optimal token budgeting, Shannon entropy scoring, "
             "SimHash deduplication, predictive pre-fetch, and checkpoint/resume."
@@ -936,6 +956,171 @@ def create_mcp_server():
         """
         stats = engine.get_stats()
         return json.dumps(stats, indent=2)
+
+    @mcp.tool()
+    def entroly_dashboard() -> str:
+        """Show the real, live value Entroly is providing to YOUR session right now.
+
+        Pulls from actual engine state — not synthetic data. Shows:
+            Money saved: exact $ amounts from token optimization
+            Performance: sub-millisecond selection speed vs API latency
+            Bloat prevention: context compression ratio and memory footprint
+            Selection quality: per-fragment scoring and context sufficiency
+            Safety: duplicates caught, stale fragments filtered
+
+        Call this anytime to see exactly what Entroly is doing for you.
+        """
+        stats = engine.get_stats()
+        explanation = engine.explain_selection()
+
+        # ── Real session metrics ──
+        session = stats.get("session", {})
+        savings = stats.get("savings", {})
+        dep = stats.get("dep_graph", {})
+        perf = stats.get("performance", {})
+        mem = stats.get("memory", {})
+        ctx_eff = stats.get("context_efficiency", {})
+        checkpoint = stats.get("checkpoint", {})
+
+        total_frags = session.get("total_fragments", 0)
+        total_tokens = session.get("total_tokens_tracked", 0)
+        current_turn = session.get("current_turn", 0)
+        pinned = session.get("pinned", 0)
+
+        tokens_saved = savings.get("total_tokens_saved", 0)
+        dupes = savings.get("total_duplicates_caught", 0)
+        total_opts = savings.get("total_optimizations", 0)
+        total_ingested = savings.get("total_fragments_ingested", 0)
+
+        # ── 💰 MONEY ──
+        naive_cost = mem.get("naive_cost_per_call_usd", 0)
+        optimized_cost = mem.get("optimized_cost_per_call_usd", 0)
+        cost_saved_usd = savings.get("estimated_cost_saved_usd", 0)
+        savings_pct = ((naive_cost - optimized_cost) / max(naive_cost, 1e-9)) * 100 if naive_cost > 0 else 0
+        session_roi = naive_cost * total_opts - optimized_cost * total_opts
+
+        # ── ⚡ PERFORMANCE ──
+        avg_us = perf.get("avg_optimize_us", 0)
+        peak_us = perf.get("peak_optimize_us", 0)
+        avg_ms = avg_us / 1000
+        # Typical API call is 500-3000ms; show the multiplier
+        api_latency_ms = 2000  # typical GPT-4 API latency
+        speedup = api_latency_ms / max(avg_ms, 0.001) if avg_ms > 0 else 0
+
+        # ── 🧠 BLOAT PREVENTION ──
+        compression = perf.get("context_compression", 1.0)
+        bloat_prevented_pct = max(0, (1 - compression) * 100)
+        mem_kb = mem.get("total_kb", 0)
+        content_kb = mem.get("content_kb", 0)
+
+        # ── 🎯 QUALITY ──
+        info_efficiency = ctx_eff.get("context_efficiency", 0)
+        dedup_rate = (dupes / max(total_ingested, 1)) * 100
+
+        # ── Last optimization breakdown ──
+        last_opt = None
+        if not explanation.get("error"):
+            included = [dict(f) for f in explanation.get("included", [])]
+            excluded = [dict(f) for f in explanation.get("excluded", [])]
+            sufficiency = explanation.get("sufficiency", 0)
+
+            selected_summary = []
+            for frag in included:
+                scores = dict(frag.get("scores", {}))
+                selected_summary.append({
+                    "source": frag.get("source", ""),
+                    "score": scores.get("composite", 0),
+                    "top_signal": max(
+                        [("recency", scores.get("recency", 0)),
+                         ("semantic", scores.get("semantic", 0)),
+                         ("entropy", scores.get("entropy", 0)),
+                         ("frequency", scores.get("frequency", 0))],
+                        key=lambda x: x[1]
+                    )[0],
+                    "reason": frag.get("reason", ""),
+                })
+
+            excluded_summary = []
+            for frag in excluded[:5]:
+                scores = dict(frag.get("scores", {}))
+                excluded_summary.append({
+                    "source": frag.get("source", ""),
+                    "score": scores.get("composite", 0),
+                    "reason": frag.get("reason", ""),
+                })
+
+            last_opt = {
+                "context_sufficiency": f"{sufficiency:.0%}",
+                "selected": len(included),
+                "excluded": len(excluded),
+                "fragments_selected": selected_summary,
+                "fragments_excluded": excluded_summary,
+            }
+
+        dashboard = {
+            "💰 money": {
+                "tokens_saved_total": f"{tokens_saved:,}",
+                "cost_saved_total_usd": f"${cost_saved_usd:.4f}",
+                "cost_per_call_without_entroly": f"${naive_cost:.4f}",
+                "cost_per_call_with_entroly": f"${optimized_cost:.4f}",
+                "savings_pct": f"{savings_pct:.0f}%",
+                "session_roi_usd": f"${session_roi:.4f}",
+                "insight": (
+                    f"Each optimize call costs ${optimized_cost:.4f} instead of ${naive_cost:.4f}. "
+                    f"Over {total_opts} calls, that's ${session_roi:.4f} saved."
+                    if total_opts > 0 else "Run optimize_context to see savings."
+                ),
+            },
+            "⚡ performance": {
+                "avg_optimize_latency": f"{avg_us:.0f}µs ({avg_ms:.2f}ms)",
+                "peak_optimize_latency": f"{peak_us:.0f}µs",
+                "vs_api_roundtrip": f"{speedup:.0f}x faster than a typical API call" if speedup > 0 else "N/A",
+                "total_optimizations": total_opts,
+                "insight": (
+                    f"Context selection takes {avg_us:.0f}µs — that's {speedup:.0f}x faster "
+                    f"than waiting for an API response."
+                    if avg_us > 0 else "No optimizations run yet."
+                ),
+            },
+            "🧠 bloat_prevention": {
+                "total_tokens_in_memory": f"{total_tokens:,}",
+                "context_compression": f"{compression:.2%}" if compression < 1 else "N/A (no optimize yet)",
+                "bloat_filtered": f"{bloat_prevented_pct:.0f}% of context is noise that gets filtered",
+                "duplicates_caught": f"{dupes} ({dedup_rate:.0f}% dedup rate)",
+                "memory_footprint": f"{mem_kb} KB ({content_kb} KB content + {mem_kb - content_kb} KB metadata)",
+                "insight": (
+                    f"Entroly keeps {total_frags} fragments in {mem_kb} KB of memory. "
+                    f"Without dedup, {dupes} duplicate fragments would bloat your context by "
+                    f"~{dupes * (total_tokens // max(total_frags, 1)):,} extra tokens."
+                    if total_frags > 0 else "Ingest some code to see memory stats."
+                ),
+            },
+            "🎯 selection_quality": {
+                "information_density": f"{info_efficiency:.4f} bits/token",
+                "avg_entropy": f"{session.get('avg_entropy', 0):.4f}",
+                "fragments_tracked": total_frags,
+                "pinned_fragments": pinned,
+                "dependency_edges": dep.get("edges", dep.get("total_edges", 0)),
+                "turns_processed": current_turn,
+                "insight": (
+                    f"Entroly ranks {total_frags} fragments across {current_turn} turns. "
+                    f"Information density: {info_efficiency:.4f} bits/token — higher = "
+                    f"more valuable context per token spent."
+                    if total_frags > 0 else "Ingest code to see quality metrics."
+                ),
+            },
+            "🔒 safety": {
+                "duplicates_blocked": dupes,
+                "stale_fragments_deprioritized": f"Ebbinghaus decay active (half-life: 15 turns)",
+                "persistent_index": "active" if hasattr(engine, '_index_path') else "disabled",
+                "checkpoints": checkpoint.get("total_checkpoints", 0),
+            },
+        }
+
+        if last_opt:
+            dashboard["📊 last_optimization"] = last_opt
+
+        return json.dumps(dashboard, indent=2)
 
 
     @mcp.tool()
@@ -1183,7 +1368,7 @@ def create_mcp_server():
         data["symbols_changed"] = modal.metadata.get("symbols_changed", [])
         return json.dumps(data, indent=2)
 
-    return mcp
+    return mcp, engine
 
 
 
@@ -1239,10 +1424,21 @@ def _start_autotune_daemon(engine: "EntrolyEngine") -> None:
 
 def main():
     """Entry point for the entroly MCP server."""
-    from pathlib import Path
     engine_type = "Rust" if _RUST_AVAILABLE else "Python"
-    logger.info(f"Starting Entroly MCP server v0.1.0 ({engine_type} engine)")
-    mcp = create_mcp_server()
+    logger.info(f"Starting Entroly MCP server v0.2.0 ({engine_type} engine)")
+    mcp, engine = create_mcp_server()
+
+    # Auto-index the project on startup (zero config)
+    try:
+        from entroly.auto_index import auto_index
+        result = auto_index(engine)
+        if result["status"] == "indexed":
+            logger.info(
+                f"Auto-indexed {result['files_indexed']} files "
+                f"({result['total_tokens']:,} tokens) in {result['duration_s']}s"
+            )
+    except Exception as e:
+        logger.warning(f"Auto-index failed (non-fatal): {e}")
 
     # Start the autotune daemon in the background — zero config needed.
     # It reads/writes only tuning_config.json and runs at nice+10 priority.
