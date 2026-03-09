@@ -7,6 +7,8 @@
 
 **Information-theoretic context optimization for AI coding agents.**
 
+https://github.com/juyterman1000/entroly/raw/main/entroly_demo.mp4
+
 Every AI coding tool manages context with dumb FIFO truncation — stuffing tokens until the window is full, then cutting from the top. Entroly applies mathematics to select the **optimal** context subset.
 
 ```bash

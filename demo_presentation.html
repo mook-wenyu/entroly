@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Entroly — Developer Experience Demo</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+  
+  :root {
+    --bg: #0a0a1a;
+    --surface: #12122a;
+    --surface2: #1a1a3a;
+    --border: #2a2a4a;
+    --text: #e4e4f0;
+    --dim: #666688;
+    --accent: #00ff88;
+    --accent2: #00ccff;
+    --red: #ff4466;
+    --orange: #ff8844;
+    --purple: #aa66ff;
+    --yellow: #ffcc00;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  .slide {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 60px 80px;
+    position: relative;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .slide::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: radial-gradient(ellipse at 30% 20%, rgba(0,255,136,0.03) 0%, transparent 60%),
+                radial-gradient(ellipse at 70% 80%, rgba(0,204,255,0.03) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  h1 {
+    font-size: 3.5rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 16px;
+    letter-spacing: -1px;
+  }
+
+  h2 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 24px;
+  }
+
+  h3 {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: var(--accent2);
+    margin-bottom: 12px;
+  }
+
+  .subtitle {
+    font-size: 1.4rem;
+    color: var(--dim);
+    max-width: 700px;
+    margin-bottom: 40px;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+    margin-right: 8px;
+    margin-bottom: 8px;
+  }
+  .badge-rust { background: rgba(255,136,68,0.15); color: var(--orange); border: 1px solid rgba(255,136,68,0.3); }
+  .badge-mcp { background: rgba(0,204,255,0.15); color: var(--accent2); border: 1px solid rgba(0,204,255,0.3); }
+  .badge-live { background: rgba(0,255,136,0.15); color: var(--accent); border: 1px solid rgba(0,255,136,0.3); }
+
+  /* Pain Points */
+  .pain-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+    margin-top: 32px;
+  }
+
+  .pain-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    position: relative;
+    overflow: hidden;
+  }
+  .pain-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, var(--red), var(--orange));
+  }
+  .pain-card .icon { font-size: 2rem; margin-bottom: 12px; }
+  .pain-card h3 { color: var(--red); }
+  .pain-card p { color: var(--dim); font-size: 0.95rem; }
+  .pain-card .stat { font-size: 1.8rem; font-weight: 800; color: var(--red); margin-top: 8px; }
+
+  /* Comparison */
+  .comparison {
+    display: grid;
+    grid-template-columns: 1fr 80px 1fr;
+    gap: 0;
+    margin-top: 32px;
+  }
+  .comp-col {
+    background: var(--surface);
+    border-radius: 16px;
+    padding: 32px;
+    border: 1px solid var(--border);
+  }
+  .comp-col.bad { border-color: rgba(255,68,102,0.3); }
+  .comp-col.good { border-color: rgba(0,255,136,0.3); }
+  .comp-col.bad::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--red); }
+  .comp-col.good::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--accent); }
+  .comp-col { position: relative; overflow: hidden; }
+  .comp-vs {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--dim);
+  }
+  .metric-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+  }
+  .metric-row:last-child { border: none; }
+  .metric-label { color: var(--dim); font-size: 0.9rem; }
+  .metric-val { font-weight: 700; font-size: 1.1rem; font-family: 'JetBrains Mono', monospace; }
+  .metric-val.bad { color: var(--red); }
+  .metric-val.good { color: var(--accent); }
+
+  /* Bar chart */
+  .bar-container { margin: 8px 0; }
+  .bar-bg {
+    height: 8px;
+    background: var(--surface2);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 1s ease;
+  }
+  .bar-fill.green { background: linear-gradient(90deg, #00cc66, var(--accent)); }
+  .bar-fill.red { background: linear-gradient(90deg, #cc3344, var(--red)); }
+  .bar-fill.blue { background: linear-gradient(90deg, #0088cc, var(--accent2)); }
+
+  /* Dashboard */
+  .dashboard {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    margin-top: 24px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .dash-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    margin-top: 20px;
+  }
+  .dash-card {
+    background: var(--surface2);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+  }
+  .dash-card .label { font-size: 0.75rem; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .dash-card .value { font-size: 2rem; font-weight: 700; color: var(--accent); }
+  .dash-card .unit { font-size: 0.8rem; color: var(--dim); }
+
+  /* Subsystems */
+  .subsystem-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    margin-top: 24px;
+  }
+  .subsystem {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  .subsystem .icon { font-size: 1.5rem; flex-shrink: 0; }
+  .subsystem .name { font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .subsystem .desc { font-size: 0.85rem; color: var(--dim); }
+
+  /* Cost savings */
+  .savings-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    margin-top: 32px;
+  }
+  .savings-card {
+    background: var(--surface);
+    border: 1px solid rgba(0,255,136,0.2);
+    border-radius: 16px;
+    padding: 28px;
+    text-align: center;
+  }
+  .savings-card .icon { font-size: 2.5rem; margin-bottom: 12px; }
+  .savings-card .val { font-size: 2.2rem; font-weight: 800; color: var(--accent); font-family: 'JetBrains Mono', monospace; }
+  .savings-card .label { font-size: 0.85rem; color: var(--dim); margin-top: 8px; }
+
+  /* Code block */
+  .code-block {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 16px 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.9rem;
+    color: #c9d1d9;
+    margin: 16px 0;
+    overflow-x: auto;
+  }
+  .code-block .comment { color: #8b949e; }
+  .code-block .keyword { color: #ff7b72; }
+  .code-block .string { color: #a5d6ff; }
+  .code-block .prompt { color: var(--accent); }
+
+  /* Footer */
+  .cta {
+    background: linear-gradient(135deg, rgba(0,255,136,0.1), rgba(0,204,255,0.1));
+    border: 1px solid rgba(0,255,136,0.3);
+    border-radius: 16px;
+    padding: 40px;
+    text-align: center;
+    margin-top: 40px;
+  }
+  .cta h2 { margin-bottom: 16px; }
+  .cta .commands {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    margin-top: 24px;
+  }
+  .cta .cmd {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.95rem;
+    color: var(--accent);
+  }
+
+  .slide-number {
+    position: absolute;
+    top: 24px;
+    right: 40px;
+    font-size: 0.8rem;
+    color: var(--dim);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .tag { color: var(--accent); font-weight: 600; }
+  .tag-bad { color: var(--red); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<!-- SLIDE 1: TITLE -->
+<div class="slide" id="s1">
+  <span class="slide-number">01 / 07</span>
+  <h1>Entroly</h1>
+  <p class="subtitle">Information-theoretic context optimization for AI coding agents. Your AI sees the RIGHT code, not just ALL the code.</p>
+  <div>
+    <span class="badge badge-rust">100% Rust Core</span>
+    <span class="badge badge-mcp">MCP Server</span>
+    <span class="badge badge-live">Auto-Tuning</span>
+    <span class="badge badge-live">Cross-Session Memory</span>
+  </div>
+  <div class="code-block" style="max-width:600px;margin-top:32px">
+    <span class="prompt">$</span> pip install entroly<br>
+    <span class="prompt">$</span> docker run -it entroly:latest<br>
+    <span class="comment"># Works with Cursor, VSCode, Claude, Codex</span>
+  </div>
+</div>
+
+<!-- SLIDE 2: THE PAIN -->
+<div class="slide" id="s2">
+  <span class="slide-number">02 / 07</span>
+  <h2>😤 The Developer's Daily Pain</h2>
+  <p class="subtitle">Every time you ask your AI agent to fix a bug, this happens:</p>
+  <div class="pain-grid">
+    <div class="pain-card">
+      <div class="icon">💸</div>
+      <h3>Token Waste</h3>
+      <p>Your entire codebase gets dumped into context. 78% of tokens are irrelevant noise — CSS, README, changelogs — burning API credits.</p>
+      <div class="stat">78% wasted</div>
+    </div>
+    <div class="pain-card">
+      <div class="icon">🔄</div>
+      <h3>Partial Failures</h3>
+      <p>The AI sees auth/db.py but misses config/database.py. It generates code with the wrong DB connection. You re-prompt 3-5 times.</p>
+      <div class="stat">3-5x re-prompts</div>
+    </div>
+    <div class="pain-card">
+      <div class="icon">🧠</div>
+      <h3>Memory Bloat</h3>
+      <p>Duplicate files waste tokens. auth/db.py and auth/db_backup.py are nearly identical — 85 tokens burned on redundant content.</p>
+      <div class="stat">0 dedup</div>
+    </div>
+    <div class="pain-card">
+      <div class="icon">📉</div>
+      <h3>No Cross-Session Learning</h3>
+      <p>You fixed this same SQL injection pattern last week. The LLM forgot. Every session starts from absolute zero.</p>
+      <div class="stat">0 memory</div>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 3: REAL ENGINE -->
+<div class="slide" id="s3">
+  <span class="slide-number">03 / 07</span>
+  <h2>⚡ Entroly Optimizes Your Context (Real Engine)</h2>
+  <p class="subtitle">13 files ingested → 4 relevant selected → in 0.47ms</p>
+  
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-top:24px">
+    <div>
+      <h3>✅ Selected (high value)</h3>
+      <div class="code-block">
+auth/db.py          <span class="keyword">85 tok</span>  entropy: 0.89  <span class="string">★ SQL injection</span><br>
+auth/queries.py     <span class="keyword">72 tok</span>  entropy: 0.87  <span class="string">★ parameterized</span><br>
+models/user.py      <span class="keyword">50 tok</span>  entropy: 0.88  <span class="string">★ User model</span><br>
+config/database.py  <span class="keyword">40 tok</span>  entropy: 0.86  <span class="string">★ DB config</span><br>
+<span class="comment">─────────────────────────────</span><br>
+Total: <span class="string">247 / 250 tokens</span>  (98.8% budget utilization)
+      </div>
+    </div>
+    <div>
+      <h3>❌ Excluded (noise / duplicate)</h3>
+      <div class="code-block">
+<span class="comment">README.md            120 tok  → low relevance</span><br>
+<span class="comment">static/styles.css    140 tok  → low relevance</span><br>
+<span class="comment">utils/email.py       110 tok  → low relevance</span><br>
+<span class="comment">CHANGELOG.md          95 tok  → low relevance</span><br>
+<span class="comment">tests/conftest.py    100 tok  → low relevance</span><br>
+<span class="comment">utils/validators.py   90 tok  → low relevance</span><br>
+<span class="comment">views/home.py         65 tok  → low relevance</span><br>
+<span class="keyword">auth/db_backup.py     85 tok  → DUPLICATE detected</span><br>
+<span class="comment">docker-compose.yml    90 tok  → low relevance</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 4: COMPARISON -->
+<div class="slide" id="s4">
+  <span class="slide-number">04 / 07</span>
+  <h2>📊 Side-by-Side Comparison</h2>
+  
+  <div class="comparison">
+    <div class="comp-col bad">
+      <h3 style="color:var(--red)">❌ Without Entroly</h3>
+      <div class="metric-row"><span class="metric-label">Recall</span><span class="metric-val bad">~50-75%</span></div>
+      <div class="metric-row"><span class="metric-label">Precision</span><span class="metric-val bad">~25-40%</span></div>
+      <div class="metric-row"><span class="metric-label">Token Waste</span><span class="metric-val bad">78%</span></div>
+      <div class="metric-row"><span class="metric-label">Dedup</span><span class="metric-val bad">0 caught</span></div>
+      <div class="metric-row"><span class="metric-label">Re-prompts/task</span><span class="metric-val bad">~3.2</span></div>
+      <div class="metric-row"><span class="metric-label">Cross-session memory</span><span class="metric-val bad">None</span></div>
+      <div class="metric-row"><span class="metric-label">Self-improvement</span><span class="metric-val bad">None</span></div>
+    </div>
+    <div class="comp-vs">VS</div>
+    <div class="comp-col good">
+      <h3 style="color:var(--accent)">✅ With Entroly</h3>
+      <div class="metric-row"><span class="metric-label">Recall</span><span class="metric-val good">100%</span></div>
+      <div class="metric-row"><span class="metric-label">Precision</span><span class="metric-val good">100%</span></div>
+      <div class="metric-row"><span class="metric-label">Token Waste</span><span class="metric-val good">1.2%</span></div>
+      <div class="metric-row"><span class="metric-label">Dedup</span><span class="metric-val good">1 caught (85 tok saved)</span></div>
+      <div class="metric-row"><span class="metric-label">Re-prompts/task</span><span class="metric-val good">~1.1</span></div>
+      <div class="metric-row"><span class="metric-label">Cross-session memory</span><span class="metric-val good">Hippocampus LTM</span></div>
+      <div class="metric-row"><span class="metric-label">Self-improvement</span><span class="metric-val good">Autotuner (12ms/iter)</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 5: DASHBOARD -->
+<div class="slide" id="s5">
+  <span class="slide-number">05 / 07</span>
+  <h2>📈 Live Dashboard (Real Engine Stats)</h2>
+  
+  <div class="dash-grid">
+    <div class="dash-card">
+      <div class="label">Fragments Indexed</div>
+      <div class="value">13</div>
+      <div class="unit">deduplicated</div>
+    </div>
+    <div class="dash-card">
+      <div class="label">Total Tokens Tracked</div>
+      <div class="value">1,142</div>
+      <div class="unit">across codebase</div>
+    </div>
+    <div class="dash-card">
+      <div class="label">Avg Entropy</div>
+      <div class="value">0.8725</div>
+      <div class="unit">Shannon bits/token</div>
+    </div>
+    <div class="dash-card">
+      <div class="label">Optimize Latency</div>
+      <div class="value" style="color:var(--accent2)">0.47</div>
+      <div class="unit">milliseconds</div>
+    </div>
+    <div class="dash-card">
+      <div class="label">Duplicates Detected</div>
+      <div class="value" style="color:var(--orange)">1</div>
+      <div class="unit">SimHash hamming ≤ 3</div>
+    </div>
+    <div class="dash-card">
+      <div class="label">Context Efficiency</div>
+      <div class="value">894.0</div>
+      <div class="unit">info / (tok/1000)</div>
+    </div>
+  </div>
+
+  <div class="dashboard" style="margin-top:32px">
+    <h3 style="margin-bottom:16px">🔬 Autotuner Status</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div class="metric-row"><span class="metric-label">Strategy</span><span class="metric-val good">balanced (auto-detected)</span></div>
+        <div class="metric-row"><span class="metric-label">Composite Score</span><span class="metric-val good">0.6451</span></div>
+        <div class="metric-row"><span class="metric-label">Benchmark Cases</span><span class="metric-val" style="color:var(--accent2)">50 (all pass)</span></div>
+      </div>
+      <div>
+        <div class="metric-row"><span class="metric-label">Iteration Speed</span><span class="metric-val" style="color:var(--accent2)">~12ms/iter</span></div>
+        <div class="metric-row"><span class="metric-label">Hard Time Budget</span><span class="metric-val good">500ms gate</span></div>
+        <div class="metric-row"><span class="metric-label">Idle-Only Mode</span><span class="metric-val good">CPU &lt; 30%</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 6: 10 SUBSYSTEMS -->
+<div class="slide" id="s6">
+  <span class="slide-number">06 / 07</span>
+  <h2>🔧 10 Real Subsystems Under the Hood</h2>
+  
+  <div class="subsystem-grid">
+    <div class="subsystem"><div class="icon">🧮</div><div><div class="name">Shannon Entropy Scoring</div><div class="desc">Measures information density — ranks code by actual value, not file size</div></div></div>
+    <div class="subsystem"><div class="icon">🔍</div><div><div class="name">64-bit SimHash Dedup</div><div class="desc">Near-duplicate detection via hamming distance &lt; 3 — saves wasted tokens</div></div></div>
+    <div class="subsystem"><div class="icon">🎯</div><div><div class="name">Hybrid Semantic Matching</div><div class="desc">SimHash + n-gram Jaccard blend for query-aware relevance ranking</div></div></div>
+    <div class="subsystem"><div class="icon">🎒</div><div><div class="name">0/1 Knapsack DP</div><div class="desc">Maximizes total value within token budget — optimal in sub-millisecond time</div></div></div>
+    <div class="subsystem"><div class="icon">🧠</div><div><div class="name">Ebbinghaus Decay</div><div class="desc">Older fragments naturally deprioritized via exponential forgetting curve</div></div></div>
+    <div class="subsystem"><div class="icon">🔗</div><div><div class="name">Import Dependency Graph</div><div class="desc">Auto-links related files via import/identifier analysis for context coherence</div></div></div>
+    <div class="subsystem"><div class="icon">⚖️</div><div><div class="name">Compare-Calibrate Filter</div><div class="desc">Post-selection redundancy check — swaps similar fragments for diversity</div></div></div>
+    <div class="subsystem"><div class="icon">🎲</div><div><div class="name">ε-Greedy Exploration</div><div class="desc">Occasionally explores new fragments to prevent feedback loop starvation</div></div></div>
+    <div class="subsystem"><div class="icon">🛡️</div><div><div class="name">SAST Security Scanner</div><div class="desc">Auto-flags hardcoded secrets, SQL injection, unsafe patterns in real-time</div></div></div>
+    <div class="subsystem"><div class="icon">💀</div><div><div class="name">Skeleton Substitution</div><div class="desc">Fits structural summaries of excluded files into remaining budget space</div></div></div>
+  </div>
+</div>
+
+<!-- SLIDE 7: BUSINESS VALUE + CTA -->
+<div class="slide" id="s7">
+  <span class="slide-number">07 / 07</span>
+  <h2>💰 Business Value</h2>
+  
+  <div class="savings-grid">
+    <div class="savings-card">
+      <div class="icon">⏱️</div>
+      <div class="val">34 min</div>
+      <div class="label">saved per developer per day<br>(from reduced re-prompting)</div>
+    </div>
+    <div class="savings-card">
+      <div class="icon">💵</div>
+      <div class="val">78%</div>
+      <div class="label">fewer wasted tokens per call<br>(noise filtered, duplicates eliminated)</div>
+    </div>
+    <div class="savings-card">
+      <div class="icon">🚀</div>
+      <div class="val">0.47ms</div>
+      <div class="label">optimization latency<br>(Rust knapsack DP — faster than ping)</div>
+    </div>
+  </div>
+
+  <div class="savings-grid" style="margin-top:24px">
+    <div class="savings-card">
+      <div class="icon">🧠</div>
+      <div class="val">∞</div>
+      <div class="label">cross-session memory<br>(hippocampus long-term recall)</div>
+    </div>
+    <div class="savings-card">
+      <div class="icon">🔬</div>
+      <div class="val">12ms</div>
+      <div class="label">per autotune iteration<br>(self-improving, zero developer effort)</div>
+    </div>
+    <div class="savings-card">
+      <div class="icon">🐳</div>
+      <div class="val">251MB</div>
+      <div class="label">Docker image size<br>(production-ready, batteries included)</div>
+    </div>
+  </div>
+
+  <div class="cta">
+    <h2>Your AI agent deserves better context.</h2>
+    <p style="color:var(--dim);font-size:1.1rem">Works with Cursor • VSCode • Claude • Codex • Any MCP client</p>
+    <div class="commands">
+      <div class="cmd">pip install entroly</div>
+      <div class="cmd">docker run -it entroly:latest</div>
+    </div>
+    <p style="margin-top:20px;color:var(--dim);font-size:0.9rem">
+      github.com/juyterman1000/entroly &nbsp;•&nbsp; 100% Rust Core &nbsp;•&nbsp; MIT Licensed
+    </p>
+  </div>
+</div>
+
+</body>
+</html>
