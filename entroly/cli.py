@@ -211,6 +211,27 @@ def cmd_serve(args):
     main()
 
 
+def cmd_demo(args):
+    """entroly demo — show the value of Entroly in 5 seconds."""
+    import importlib.util
+    demo_path = Path(__file__).parent.parent / "demo_value.py"
+    if demo_path.exists():
+        spec = importlib.util.spec_from_file_location("demo_value", demo_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        mod.run_demo()
+    else:
+        # Fallback: try importing directly
+        try:
+            from entroly_core import EntrolyEngine
+            print(f"{C.GREEN}✅ entroly-core Rust engine ready{C.RESET}")
+            print(f"{C.GRAY}Run 'python demo_value.py' from the repo root for the full demo.{C.RESET}")
+        except ImportError:
+            print(f"{C.RED}❌ entroly-core not installed.{C.RESET}")
+            print(f"  Install with: pip install entroly[native]")
+            print(f"  Or build:     cd entroly-core && maturin develop --release")
+
+
 def cmd_dashboard(args):
     """entroly dashboard — show value metrics from current session."""
     from entroly.server import EntrolyEngine
@@ -290,6 +311,12 @@ def main():
         help="Force re-index even if persistent index exists",
     )
 
+    # entroly demo
+    demo_parser = subparsers.add_parser(
+        "demo",
+        help="See Entroly's value in 5 seconds — before/after comparison",
+    )
+
     args = parser.parse_args()
 
     if args.command == "init":
@@ -298,6 +325,8 @@ def main():
         cmd_serve(args)
     elif args.command == "dashboard":
         cmd_dashboard(args)
+    elif args.command == "demo":
+        cmd_demo(args)
     else:
         # Default: if no subcommand, run serve (backward compat)
         cmd_serve(args)
