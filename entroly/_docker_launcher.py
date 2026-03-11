@@ -104,17 +104,19 @@ def launch() -> None:
 
   {B}Choose one:{R}
 
-  {YLW}1.{R} Install the prebuilt Rust engine {GRY}(fastest){R}
+  {YLW}1.{R} Install Docker Desktop {GRY}(recommended for Mac/Windows){R}
+     {GRY}Download from{R} {CYN}https://docker.com/products/docker-desktop{R}
+     {GRY}Then just run:{R} {CYN}entroly serve{R}
+     {GRY}(Entroly auto-detects Docker — zero build required){R}
+
+  {YLW}2.{R} Install the prebuilt Rust engine
      {CYN}pip install entroly-core{R}
 
-  {YLW}2.{R} Build from source
+  {YLW}3.{R} Build from source
      {CYN}git clone https://github.com/juyterman1000/entroly{R}
      {CYN}cd entroly/entroly-core{R}
      {CYN}pip install maturin && maturin develop --release{R}
      {CYN}cd .. && pip install -e .{R}
-
-  {YLW}3.{R} Use Docker {GRY}(zero build required){R}
-     {GRY}Install Docker Desktop, then run:{R} {CYN}entroly serve{R}
 """, file=sys.stderr)
         sys.exit(1)
 
