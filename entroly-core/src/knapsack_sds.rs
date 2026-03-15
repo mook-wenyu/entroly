@@ -1,33 +1,33 @@
-/// IOS — Information-Optimal Selection (v2: full-dominance fix)
-///
-/// Two novel algorithms that compose into a single selection pass:
-///
-/// 1. **Submodular Diversity Selection (SDS)**
-///    Standard knapsack treats value(A ∪ B) = value(A) + value(B).
-///    Reality: value(A ∪ B) ≤ value(A) + value(B) — information has
-///    diminishing returns. SDS penalizes redundancy using SimHash
-///    Hamming distance as a proxy for content overlap.
-///
-///    Algorithm: Lazy greedy (Minoux 1978) with diversity penalty.
-///    Guarantee: (1 - 1/e) ≈ 63% of optimal for monotone submodular
-///    functions under cardinality/knapsack constraint.
-///
-/// 2. **Multi-Resolution Knapsack (MRK)**
-///    Each fragment has up to 3 representations:
-///      Full:      ~100% information, ~100% tokens
-///      Skeleton:  ~70% information,  ~20% tokens
-///      Reference: ~15% information,  ~2% tokens
-///
-///    This is the Multiple Choice Knapsack Problem (MCKP).
-///    Combined with SDS, each candidate is a (fragment, resolution)
-///    pair with resolution-adjusted value and diversity penalty.
-///
-/// References:
-///   - Nemhauser, Wolsey, Fisher (1978) — Submodular maximization
-///   - Sviridenko (2004) — Submodular knapsack approximation
-///   - Minoux (1978) — Lazy greedy acceleration
-///   - Kellerer, Pferschy, Pisinger (2004) — MCKP
-///   - Charikar (2002) — SimHash for similarity estimation
+//! IOS — Information-Optimal Selection (v2: full-dominance fix)
+//!
+//! Two novel algorithms that compose into a single selection pass:
+//!
+//! 1. **Submodular Diversity Selection (SDS)**
+//!    Standard knapsack treats value(A ∪ B) = value(A) + value(B).
+//!    Reality: value(A ∪ B) ≤ value(A) + value(B) — information has
+//!    diminishing returns. SDS penalizes redundancy using SimHash
+//!    Hamming distance as a proxy for content overlap.
+//!
+//!    Algorithm: Lazy greedy (Minoux 1978) with diversity penalty.
+//!    Guarantee: (1 - 1/e) ≈ 63% of optimal for monotone submodular
+//!    functions under cardinality/knapsack constraint.
+//!
+//! 2. **Multi-Resolution Knapsack (MRK)**
+//!    Each fragment has up to 3 representations:
+//!   - Full: ~100% information, ~100% tokens
+//!   - Skeleton: ~70% information, ~20% tokens
+//!   - Reference: ~15% information, ~2% tokens
+//!
+//!    This is the Multiple Choice Knapsack Problem (MCKP).
+//!    Combined with SDS, each candidate is a (fragment, resolution)
+//!    pair with resolution-adjusted value and diversity penalty.
+//!
+//! References:
+//!   - Nemhauser, Wolsey, Fisher (1978) — Submodular maximization
+//!   - Sviridenko (2004) — Submodular knapsack approximation
+//!   - Minoux (1978) — Lazy greedy acceleration
+//!   - Kellerer, Pferschy, Pisinger (2004) — MCKP
+//!   - Charikar (2002) — SimHash for similarity estimation
 
 use std::collections::HashMap;
 use crate::dedup::hamming_distance;
@@ -88,11 +88,12 @@ struct Candidate {
 }
 
 /// Result of the IOS selection.
+#[allow(dead_code)]
 pub struct SdsResult {
     /// (fragment_index, chosen_resolution) pairs
     pub selections: Vec<(usize, Resolution)>,
     pub total_tokens: u32,
-    pub total_value: f64,
+    pub(crate) total_value: f64,
     pub diversity_score: f64,  // Average pairwise diversity of selected set
 }
 
@@ -160,17 +161,15 @@ fn compute_pairwise_diversity(hashes: &[u64]) -> f64 {
 /// Algorithm:
 ///   1. Generate candidates: each fragment × {full, skeleton, reference}
 ///   2. Separate pinned fragments (always full resolution, always included)
-///   3. Greedy loop:
-///      a. For each candidate not yet selected:
-///         marginal_value = base_value × diversity_factor(hash, selected_hashes)
-///         density = marginal_value / token_cost
-///      b. Select candidate with highest density
-///      c. Remove all other resolutions of the same fragment
-///      d. Update selected_hashes for diversity computation
-///      e. Repeat until budget exhausted or no candidates remain
+///   3. Greedy loop (greedy-by-density with diversity penalty):
+///      - compute marginal_value = base_value × diversity_factor(hash)
+///      - select candidate with highest marginal_value / token_cost
+///      - remove all other resolutions of the same fragment
+///      - update selected_hashes; repeat until budget exhausted
 ///
 /// Complexity: O(N × K) where N = candidates, K = selected count
 /// Typically K << N, so this is effectively O(N log N) after initial sort.
+#[allow(clippy::too_many_arguments)]
 pub fn ios_select(
     fragments: &[ContextFragment],
     token_budget: u32,
@@ -248,7 +247,7 @@ pub fn ios_select(
 
             // Reference resolution — always available, very cheap
             // Cost: ~5 tokens for "file:source.py" reference line
-            let ref_tokens = (frag.source.len() as u32 / 4).max(3).min(10);
+            let ref_tokens = (frag.source.len() as u32 / 4).clamp(3, 10);
             candidates.push(Candidate {
                 frag_idx: i,
                 resolution: Resolution::Reference,
@@ -483,7 +482,7 @@ mod tests {
 
         // With diversity: should prefer a + c (diverse) over a + b (redundant)
         let result_div = ios_select(&frags, 200, 0.3, 0.25, 0.25, 0.2, &empty_feedback(), true, false, &default_factors(), DEFAULT_DIV_FLOOR);
-        let div_indices: Vec<usize> = result_div.selections.iter().map(|s| s.0).collect();
+        let _div_indices: Vec<usize> = result_div.selections.iter().map(|s| s.0).collect();
 
         // Without diversity: might select a + b (both have high relevance)
         let result_no_div = ios_select(&frags, 200, 0.3, 0.25, 0.25, 0.2, &empty_feedback(), false, false, &default_factors(), DEFAULT_DIV_FLOOR);

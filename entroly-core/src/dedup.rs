@@ -1,18 +1,18 @@
-/// SimHash Deduplication — Rust implementation.
-///
-/// O(1) near-duplicate detection using:
-///   1. 64-bit SimHash fingerprinting (word trigram features)
-///   2. LSH banding (4 bands × 16 bits) for candidate retrieval
-///   3. Hamming distance verification
-///
-/// Architecture mirrors ebbiforge-core/src/memory/lsh.rs but
-/// optimized for context fragments instead of memory episodes.
-/// Uses the same multi-table bucketing approach.
-///
-/// References:
-///   - Charikar (2002) — SimHash
-///   - Proximity (arXiv 2026) — LSH-bucketed semantic caching
-///   - ebbiforge-core LSHIndex — 16-table multi-probe design
+//! SimHash Deduplication — Rust implementation.
+//!
+//! O(1) near-duplicate detection using:
+//!   1. 64-bit SimHash fingerprinting (word trigram features)
+//!   2. LSH banding (4 bands × 16 bits) for candidate retrieval
+//!   3. Hamming distance verification
+//!
+//! Architecture mirrors ebbiforge-core/src/memory/lsh.rs but
+//! optimized for context fragments instead of memory episodes.
+//! Uses the same multi-table bucketing approach.
+//!
+//! References:
+//!   - Charikar (2002) — SimHash
+//!   - Proximity (arXiv 2026) — LSH-bucketed semantic caching
+//!   - ebbiforge-core LSHIndex — 16-table multi-probe design
 
 use std::collections::{HashMap, HashSet};
 use md5::{Md5, Digest};
@@ -55,30 +55,22 @@ pub fn simhash(text: &str) -> u64 {
         for window in words.windows(3) {
             let feature = format!("{} {} {}", window[0], window[1], window[2]);
             let h = hash_token(&feature.to_lowercase());
-            for i in 0..64 {
-                if h & (1u64 << i) != 0 {
-                    bit_sums[i] += 1;
-                } else {
-                    bit_sums[i] -= 1;
-                }
+            for (i, slot) in bit_sums.iter_mut().enumerate() {
+                if h & (1u64 << i) != 0 { *slot += 1; } else { *slot -= 1; }
             }
         }
     } else {
         for word in &words {
             let h = hash_token(&word.to_lowercase());
-            for i in 0..64 {
-                if h & (1u64 << i) != 0 {
-                    bit_sums[i] += 1;
-                } else {
-                    bit_sums[i] -= 1;
-                }
+            for (i, slot) in bit_sums.iter_mut().enumerate() {
+                if h & (1u64 << i) != 0 { *slot += 1; } else { *slot -= 1; }
             }
         }
     }
 
     let mut fingerprint: u64 = 0;
-    for i in 0..64 {
-        if bit_sums[i] > 0 {
+    for (i, &sum) in bit_sums.iter().enumerate() {
+        if sum > 0 {
             fingerprint |= 1u64 << i;
         }
     }
@@ -172,7 +164,7 @@ impl DedupIndex {
         for (b, &band_hash) in bands.iter().enumerate() {
             self.buckets[b]
                 .entry(band_hash)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(fragment_id.to_string());
         }
 
@@ -199,11 +191,13 @@ impl DedupIndex {
     }
 
     /// Get the stored fingerprint for a fragment.
+#[allow(dead_code)]
     pub fn get_fingerprint(&self, fragment_id: &str) -> Option<u64> {
         self.fingerprints.get(fragment_id).copied()
     }
 
     /// Export all fingerprints for checkpointing.
+#[allow(dead_code)]
     pub fn export_fingerprints(&self) -> Vec<(String, u64)> {
         self.fingerprints.iter()
             .map(|(k, v)| (k.clone(), *v))

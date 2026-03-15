@@ -1,28 +1,28 @@
-/// Dependency Graph Engine
-///
-/// Addresses the core weakness: context is NOT additive.
-///
-///   value(A + B) ≠ value(A) + value(B)
-///
-/// Code has dependencies. A function call without its definition
-/// is useless. A type reference without its schema is confusing.
-/// Removing one fragment can destroy the value of others.
-///
-/// This module implements:
-///   1. **Dependency extraction** — parse imports, calls, types from source
-///   2. **Graph construction** — directed graph of fragment → fragment deps
-///   3. **Graph-aware selection** — if A is selected and A depends on B,
-///      B's value is boosted (or B is force-included)
-///   4. **Connected component analysis** — fragments in the same component
-///      should be selected or dropped together
-///
-/// This transforms the problem from flat knapsack to:
-///   Graph-constrained knapsack (NP-hard in general, but tractable
-///   for typical code dependency graphs with ~500 nodes)
-///
-/// References:
-///   - Sourcegraph's Code Intelligence — graph-based code navigation
-///   - Code Property Graphs (Yamaguchi et al., 2014)
+//! Dependency Graph Engine
+//!
+//! Addresses the core weakness: context is NOT additive.
+//!
+//!   value(A + B) ≠ value(A) + value(B)
+//!
+//! Code has dependencies. A function call without its definition
+//! is useless. A type reference without its schema is confusing.
+//! Removing one fragment can destroy the value of others.
+//!
+//! This module implements:
+//!   1. **Dependency extraction** — parse imports, calls, types from source
+//!   2. **Graph construction** — directed graph of fragment → fragment deps
+//!   3. **Graph-aware selection** — if A is selected and A depends on B,
+//!      B's value is boosted (or B is force-included)
+//!   4. **Connected component analysis** — fragments in the same component
+//!      should be selected or dropped together
+//!
+//! This transforms the problem from flat knapsack to:
+//!   Graph-constrained knapsack (NP-hard in general, but tractable
+//!   for typical code dependency graphs with ~500 nodes)
+//!
+//! References:
+//!   - Sourcegraph's Code Intelligence — graph-based code navigation
+//!   - Code Property Graphs (Yamaguchi et al., 2014)
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use serde::{Deserialize, Serialize};
@@ -84,8 +84,8 @@ impl DepGraph {
         let source = dep.source_id.clone();
         let target = dep.target_id.clone();
 
-        self.outgoing.entry(source).or_insert_with(Vec::new).push(dep.clone());
-        self.incoming.entry(target).or_insert_with(Vec::new).push(dep);
+        self.outgoing.entry(source).or_default().push(dep.clone());
+        self.incoming.entry(target).or_default().push(dep);
     }
 
     /// Auto-link: given a fragment's content, extract symbols it references
@@ -291,6 +291,7 @@ impl DepGraph {
 
     /// Find connected components — fragments that should be
     /// selected or dropped together.
+#[allow(dead_code)]
     pub fn connected_components(&self, fragment_ids: &[String]) -> Vec<Vec<String>> {
         let id_set: HashSet<&str> = fragment_ids.iter().map(|s| s.as_str()).collect();
         let mut visited: HashSet<String> = HashSet::new();
@@ -372,7 +373,7 @@ pub fn extract_identifiers(content: &str) -> Vec<String> {
     let mut current = String::new();
 
     while let Some(&ch) = chars.peek() {
-        if ch.is_alphanumeric() || ch == '_' {
+        if ch.is_alphanumeric() || ch == '_' { 
             current.push(ch);
             chars.next();
         } else {
@@ -424,10 +425,10 @@ fn extract_definitions(content: &str) -> Vec<String> {
         {
             let words: Vec<&str> = trimmed.split_whitespace().collect();
             // Skip visibility modifier
-            let name_idx = if words.first() == Some(&"pub") { 2 } else { 1 };
+        let name_idx = if words.first() == Some(&"pub") { 2 } else { 1 };
             if let Some(name) = words.get(name_idx) {
                 let clean = name.split('(').next().unwrap_or(name);
-                let clean = clean.trim_end_matches(|c: char| c == '{' || c == '<' || c == ':');
+                let clean = clean.trim_end_matches(['{', '<', ':']);
                 if !clean.is_empty() {
                     defs.push(clean.to_string());
                 }
@@ -464,7 +465,7 @@ fn is_keyword(word: &str) -> bool {
         | "enum" | "trait" | "where" | "match" | "loop" | "move" | "ref"
         | "static" | "const" | "type" | "unsafe" | "extern" | "crate" | "super"
         // JS/TS
-        | "function" | "var" | "const" | "this" | "new" | "typeof" | "instanceof"
+        | "function" | "var" | "this" | "new" | "typeof" | "instanceof"
         | "void" | "delete" | "throw" | "catch" | "switch" | "case" | "default"
         | "export" | "require" | "module" | "extends" | "constructor"
         // Common

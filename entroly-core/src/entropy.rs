@@ -1,19 +1,19 @@
-/// Shannon Entropy Scorer — Rust implementation.
-///
-/// Measures information density of context fragments using:
-///   1. Character-level Shannon entropy: H(X) = -Σ p(xᵢ) · log₂(p(xᵢ))
-///   2. Boilerplate ratio: fraction of lines matching common patterns
-///   3. Cross-fragment n-gram redundancy (TF-IDF inspired)
-///
-/// Runs ~50× faster than Python due to:
-///   - SIMD-friendly byte counting (no Python dict overhead)
-///   - Stack-allocated 256-element histogram (vs heap-allocated Counter)
-///   - Zero-copy string slicing for n-gram extraction
-///
-/// References:
-///   - Shannon (1948) — Information Theory
-///   - ICPC (arXiv 2025) — per-token information scoring
-///   - LLMLingua (EMNLP 2023) — prompt compression
+//! Shannon Entropy Scorer — Rust implementation.
+//!
+//! Measures information density of context fragments using:
+//!   1. Character-level Shannon entropy: H(X) = -Σ p(xᵢ) · log₂(p(xᵢ))
+//!   2. Boilerplate ratio: fraction of lines matching common patterns
+//!   3. Cross-fragment n-gram redundancy (TF-IDF inspired)
+//!
+//! Runs ~50× faster than Python due to:
+//!   - SIMD-friendly byte counting (no Python dict overhead)
+//!   - Stack-allocated 256-element histogram (vs heap-allocated Counter)
+//!   - Zero-copy string slicing for n-gram extraction
+//!
+//! References:
+//!   - Shannon (1948) — Information Theory
+//!   - ICPC (arXiv 2025) — per-token information scoring
+//!   - LLMLingua (EMNLP 2023) — prompt compression
 
 use std::collections::HashSet;
 use rayon::prelude::*;
@@ -78,10 +78,10 @@ pub fn normalized_entropy(text: &str) -> f64 {
 /// Used in the autotune composite score to reward configs that
 /// select high-information fragments.
 /// ═══════════════════════════════════════════════════════════════════
-
 /// Compute bits-per-byte (BPB) — byte-level information density [0, 1].
 #[inline]
-pub fn bits_per_byte(text: &str) -> f64 {
+#[allow(dead_code)]
+pub(crate) fn bits_per_byte(text: &str) -> f64 {
     if text.is_empty() {
         return 0.0;
     }
@@ -104,7 +104,8 @@ pub fn bits_per_byte(text: &str) -> f64 {
 
 /// BPB-weighted quality score: 60% density + 40% uniqueness.
 #[inline]
-pub fn bpb_quality(text: &str, redundancy: f64) -> f64 {
+#[allow(dead_code)]
+pub(crate) fn bpb_quality(text: &str, redundancy: f64) -> f64 {
     let bpb = bits_per_byte(text);
     let uniqueness = 1.0 - redundancy.clamp(0.0, 1.0);
     (0.6 * bpb + 0.4 * uniqueness).clamp(0.0, 1.0)

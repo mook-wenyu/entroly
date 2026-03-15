@@ -1,16 +1,15 @@
-/// Entroly Core — Rust Engine + PyO3 Bindings
-///
-/// This is the main entry point that:
-///   1. Declares all Rust modules
-///   2. Provides the EntrolyEngine (orchestrator)
-///   3. Exposes everything to Python via PyO3
-///
-/// Architecture:
-///   Python (MCP server) → PyO3 → Rust Engine → Results → Python → JSON-RPC
-///
-/// Python only handles the MCP protocol (no AI libraries in Rust).
-/// All computation happens here in Rust.
-
+//! Entroly Core — Rust Engine + PyO3 Bindings
+//!
+//! This is the main entry point that:
+//!   1. Declares all Rust modules
+//!   2. Provides the EntrolyEngine (orchestrator)
+//!   3. Exposes everything to Python via PyO3
+//!
+//! Architecture:
+//!   Python (MCP server) → PyO3 → Rust Engine → Results → Python → JSON-RPC
+//!
+//! Python only handles the MCP protocol (no AI libraries in Rust).
+//! All computation happens here in Rust.
 mod fragment;
 mod knapsack;
 mod knapsack_sds;
@@ -38,10 +37,9 @@ use knapsack_sds::{ios_select, Resolution, InfoFactors};
 use entropy::{information_score, shannon_entropy, normalized_entropy, boilerplate_ratio};
 use dedup::{simhash, hamming_distance, DedupIndex};
 use depgraph::{DepGraph, extract_identifiers};
-use guardrails::{file_criticality, has_safety_signal, TaskType, FeedbackTracker, Criticality, compute_ordering_priority, criticality_boost};
-use lsh::{LshIndex, ContextScorer};
+use guardrails::{file_criticality, has_safety_signal, TaskType, FeedbackTracker, Criticality, compute_ordering_priority};
 use prism::PrismOptimizer;
-use query::{analyze_query as query_analyze, refine_heuristic as query_refine};
+
 
 /// Process-wide monotonic counter — used only to seed each engine's instance_id.
 /// Guarantees every EntrolyEngine instance gets a unique prefix, making
@@ -147,6 +145,7 @@ impl EntrolyEngine {
         enable_ios=true, enable_ios_diversity=true, enable_ios_multi_resolution=true,
         ios_skeleton_info_factor=0.70, ios_reference_info_factor=0.15, ios_diversity_floor=0.10
     ))]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         w_recency: f64,
         w_frequency: f64,
@@ -717,7 +716,7 @@ impl EntrolyEngine {
                     let d = PyDict::new(py);
                     d.set_item("id", &f.fragment_id)?;
                     d.set_item("source", &f.source)?;
-                    let ref_tokens = (f.source.len() as u32 / 4).max(3).min(10);
+                    let ref_tokens = (f.source.len() as u32 / 4).clamp(3, 10);
                     d.set_item("token_count", ref_tokens)?;
                     d.set_item("variant", variant_str)?;
                     let fm = feedback_mults.get(&f.fragment_id).copied().unwrap_or(1.0);
@@ -1310,8 +1309,8 @@ impl EntrolyEngine {
         if count == 0.0 { return; }
         
         // Average the gradients and multiply by the RL feedback signal
-        for i in 0..4 {
-            g[i] = (g[i] / count) * feedback_val;
+        for gi in g.iter_mut() {
+            *gi = (*gi / count) * feedback_val;
         }
         
         // Let the PRISM optimizer compute the anisotropically-damped update step
@@ -1790,7 +1789,7 @@ mod tests {
         let query_fp = simhash(query);
 
         // Varying content: exact match, near match, unrelated
-        let contents = vec![
+        let contents = [
             query.to_string(),   // identical → highest score
             "async fn process_payment(amount: f64) -> Result<()> {}".to_string(), // very similar
             "fn validate_user_token(token: &str) -> bool { false }".to_string(), // unrelated

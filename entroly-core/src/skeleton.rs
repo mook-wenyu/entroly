@@ -1,18 +1,18 @@
-/// Skeleton Extraction — structural outline of code fragments.
-///
-/// Extracts function signatures, class/struct definitions, imports, and
-/// top-level declarations while stripping function bodies.  This produces
-/// a "skeleton" that carries ~90% of the structural information at ~10-30%
-/// of the token cost.
-///
-/// Used by hierarchical fragmentation: the knapsack optimizer can choose
-/// the full fragment when budget allows, or fall back to the skeleton
-/// when the budget is tight.
-///
-/// Design choices:
-///   - Pattern-based (no regex, no tree-sitter) — matches depgraph.rs style
-///   - Language detected from source file extension
-///   - Returns None for unknown languages or when skeleton is >70% of original
+//! Skeleton Extraction — structural outline of code fragments.
+//!
+//! Extracts function signatures, class/struct definitions, imports, and
+//! top-level declarations while stripping function bodies.  This produces
+//! a "skeleton" that carries ~90% of the structural information at ~10-30%
+//! of the token cost.
+//!
+//! Used by hierarchical fragmentation: the knapsack optimizer can choose
+//! the full fragment when budget allows, or fall back to the skeleton
+//! when the budget is tight.
+//!
+//! Design choices:
+//!   - Pattern-based (no regex, no tree-sitter) — matches depgraph.rs style
+//!   - Language detected from source file extension
+//!   - Returns None for unknown languages or when skeleton is >70% of original
 
 /// Detect language from source file extension.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -236,7 +236,7 @@ fn extract_python_skeleton(content: &str) -> String {
     }
 
     // Remove trailing blank lines
-    while out.last().map_or(false, |l| l.trim().is_empty()) {
+    while out.last().is_some_and(|l: &String| l.trim().is_empty()) {
         out.pop();
     }
 
@@ -348,7 +348,7 @@ fn extract_rust_skeleton(content: &str) -> String {
 
                 if brace_depth <= 0 && t.contains('{') {
                     brace_depth += count_char(t, '{') as i32 - count_char(t, '}') as i32;
-                    if !out.last().map_or(false, |last| last.contains('{')) {
+                    if !out.last().is_some_and(|last: &String| last.contains('{')) {
                         out.push(l.to_string());
                     }
                     i += 1;
@@ -358,9 +358,9 @@ fn extract_rust_skeleton(content: &str) -> String {
                 brace_depth += count_char(t, '{') as i32 - count_char(t, '}') as i32;
 
                 // fn signature inside impl
-                if (t.starts_with("pub fn ") || t.starts_with("fn ")
+                if t.starts_with("pub fn ") || t.starts_with("fn ")
                     || t.starts_with("pub async fn ") || t.starts_with("async fn ")
-                    || t.starts_with("pub(crate) fn "))
+                    || t.starts_with("pub(crate) fn ")
                 {
                     // Output the signature
                     out.push(l.to_string());
@@ -394,9 +394,9 @@ fn extract_rust_skeleton(content: &str) -> String {
         }
 
         // Free-standing fn definitions
-        if (trimmed.starts_with("pub fn ") || trimmed.starts_with("fn ")
+        if trimmed.starts_with("pub fn ") || trimmed.starts_with("fn ")
             || trimmed.starts_with("pub async fn ") || trimmed.starts_with("async fn ")
-            || trimmed.starts_with("pub(crate) fn "))
+            || trimmed.starts_with("pub(crate) fn ")
         {
             out.push(line.to_string());
             if trimmed.contains('{') {
@@ -421,7 +421,7 @@ fn extract_rust_skeleton(content: &str) -> String {
         i += 1;
     }
 
-    while out.last().map_or(false, |l| l.trim().is_empty()) {
+    while out.last().is_some_and(|l: &String| l.trim().is_empty()) {
         out.pop();
     }
 
@@ -607,7 +607,7 @@ fn extract_js_skeleton(content: &str) -> String {
         i += 1;
     }
 
-    while out.last().map_or(false, |l| l.trim().is_empty()) {
+    while out.last().is_some_and(|l: &String| l.trim().is_empty()) {
         out.pop();
     }
 
@@ -642,7 +642,7 @@ fn is_js_method_sig(trimmed: &str) -> bool {
     let t = if trimmed.starts_with("static ") || trimmed.starts_with("get ")
         || trimmed.starts_with("set ")
     {
-        trimmed.splitn(2, ' ').nth(1).unwrap_or("")
+        trimmed.split_once(' ').map_or("", |(_, rest)| rest)
     } else {
         trimmed
     };

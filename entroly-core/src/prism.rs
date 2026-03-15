@@ -150,27 +150,22 @@ impl PrismOptimizer {
             lambda_inv_sqrt[i] = 1.0 / (eigenvalues[i].abs() + self.epsilon).sqrt();
         }
 
-        // 4. Compute Q \Lambda^{-1/2} Q^T g
+        // 4. Compute Q Λ^{-1/2} Q^T g
         // First, project gradient into eigenspace: v = Q^T g
-        let mut v = [0.0; 4];
-        for i in 0..4 {
-            for j in 0..4 {
-                v[i] += q.data[j][i] * g[j];
-            }
+        let mut v = [0.0_f64; 4];
+        for (i, vi) in v.iter_mut().enumerate() {
+            *vi = g.iter().zip(q.data.iter()).map(|(&gj, row)| row[i] * gj).sum();
         }
 
-        // Apply spectral shaping: v' = \Lambda^{-1/2} v
-        for i in 0..4 {
-            v[i] *= lambda_inv_sqrt[i];
+        // Apply spectral shaping: v' = Λ^{-1/2} v
+        for (vi, &scale) in v.iter_mut().zip(lambda_inv_sqrt.iter()) {
+            *vi *= scale;
         }
 
-        // Project back to feature space: update = \alpha Q v'
-        let mut step = [0.0; 4];
-        for i in 0..4 {
-            for j in 0..4 {
-                step[i] += q.data[i][j] * v[j];
-            }
-            step[i] *= self.learning_rate;
+        // Project back to feature space: step = α Q v'
+        let mut step = [0.0_f64; 4];
+        for (si, row) in step.iter_mut().zip(q.data.iter()) {
+            *si = row.iter().zip(v.iter()).map(|(&qij, &vj)| qij * vj).sum::<f64>() * self.learning_rate;
         }
 
         step

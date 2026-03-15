@@ -1,11 +1,11 @@
-/// Context Fragment — the atomic unit of managed context.
-///
-/// Mirrors Ebbiforge's Episode struct but optimized for context window
-/// management rather than memory storage.
-///
-/// Scoring follows the ContextScorer pattern from ebbiforge-core/src/memory/lsh.rs:
-///   composite = w_recency * recency + w_frequency * frequency
-///             + w_semantic * semantic + w_entropy * entropy
+//! Context Fragment — the atomic unit of managed context.
+//!
+//! Mirrors Ebbiforge's Episode struct but optimized for context window
+//! management rather than memory storage.
+//!
+//! Scoring follows the ContextScorer pattern from ebbiforge-core/src/memory/lsh.rs:
+//!   composite = w_recency * recency + w_frequency * frequency
+//!             + w_semantic * semantic + w_entropy * entropy
 
 use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -90,9 +90,9 @@ impl ContextFragment {
 /// with entropy replacing emotion as the fourth dimension.
 ///
 /// `feedback_multiplier` comes from FeedbackTracker::learned_value():
-///   > 1.0 = historically useful fragment (boosted)
-///   < 1.0 = historically unhelpful fragment (suppressed)
-///   = 1.0 = no feedback data (neutral)
+/// - > 1.0 = historically useful fragment (boosted)
+/// - < 1.0 = historically unhelpful fragment (suppressed)
+/// - = 1.0 = no feedback data (neutral)
 #[inline]
 pub fn compute_relevance(
     frag: &ContextFragment,

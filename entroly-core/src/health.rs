@@ -1,23 +1,23 @@
-/// Codebase Health Analysis Engine
-///
-/// Research grounding:
-///   - 2025 arXiv (Jan): LLM+AST graph modeling for Type-4 semantic clone detection.
-///     Key insight: SimHash handles Type-1/2/3 (structural similarity); for Type-3/4
-///     (semantic), we use dep-graph co-occurrence as an AST proxy.
-///   - 2026 arXiv: "AI-friendly code" — CodeHealth score correlates with LLM
-///     processing ease. We compute 5 dimensions: coupling, naming, complexity,
-///     duplication ratio, dead-symbol ratio.
-///   - DebtGuardian (arXiv Nov 2025): technical debt via source code changes.
-///     We adapt the batch-level detection approach applied to our fragment store.
-///
-/// The engine computes:
-///   1. **Clone Detection**: SimHash Hamming distance for Type-1/2/3 clones.
-///      Threshold: Hamming ≤ 8 = near-duplicate (≤ 87.5% SimHash distance).
-///   2. **Dead Symbols**: Defined but never referenced across all fragments.
-///   3. **God Files**: Fragments with reverse-dep count > μ + 2σ (statistical outlier).
-///   4. **Architecture Violations**: Cross-layer imports detected by naming convention.
-///   5. **CodeHealth Score** [0–100]: weighted composite of the above signals.
-///      Higher = healthier. Used to prioritize refactoring effort.
+//! Codebase Health Analysis Engine
+//!
+//! Research grounding:
+//!   - 2025 arXiv (Jan): LLM+AST graph modeling for Type-4 semantic clone detection.
+//!     Key insight: SimHash handles Type-1/2/3 (structural similarity); for Type-3/4
+//!     (semantic), we use dep-graph co-occurrence as an AST proxy.
+//!   - 2026 arXiv: "AI-friendly code" — CodeHealth score correlates with LLM
+//!     processing ease. We compute 5 dimensions: coupling, naming, complexity,
+//!     duplication ratio, dead-symbol ratio.
+//!   - DebtGuardian (arXiv Nov 2025): technical debt via source code changes.
+//!     We adapt the batch-level detection approach applied to our fragment store.
+//!
+//! The engine computes:
+//!   1. **Clone Detection**: SimHash Hamming distance for Type-1/2/3 clones.
+//!      Threshold: Hamming ≤ 8 = near-duplicate (≤ 87.5% SimHash distance).
+//!   2. **Dead Symbols**: Defined but never referenced across all fragments.
+//!   3. **God Files**: Fragments with reverse-dep count > μ + 2σ (statistical outlier).
+//!   4. **Architecture Violations**: Cross-layer imports detected by naming convention.
+//!   5. **CodeHealth Score** [0–100]: weighted composite of the above signals.
+//!      Higher = healthier. Used to prioritize refactoring effort.
 use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use crate::dedup::hamming_distance;
@@ -31,7 +31,8 @@ use crate::depgraph::DepGraph;
 /// Severity of a health issue (distinct from SAST severity — this is about
 /// maintenance burden, not security risk).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub enum HealthSeverity {
+#[allow(dead_code)]
+pub(crate) enum HealthSeverity {
     Low,
     Medium,
     High,
@@ -39,7 +40,8 @@ pub enum HealthSeverity {
 }
 
 impl HealthSeverity {
-    pub fn label(self) -> &'static str {
+    #[allow(dead_code)]
+    pub(crate) fn label(self) -> &'static str {
         match self {
             HealthSeverity::Low      => "LOW",
             HealthSeverity::Medium   => "MEDIUM",
@@ -81,7 +83,8 @@ impl CloneType {
         else { None }
     }
 
-    pub fn label(self) -> &'static str {
+    #[allow(dead_code)]
+    pub(crate) fn label(self) -> &'static str {
         match self {
             CloneType::NearIdentical => "Type-1 (near-identical)",
             CloneType::Renamed       => "Type-2 (renamed)",
@@ -163,7 +166,6 @@ pub struct HealthReport {
 ///
 /// Optimization: skip pairs from the same source file.
 // ═══════════════════════════════════════════════════════════════════
-
 fn detect_clones(fragments: &[&ContextFragment]) -> Vec<ClonePair> {
     let mut pairs = Vec::new();
 
@@ -231,7 +233,6 @@ fn detect_clones(fragments: &[&ContextFragment]) -> Vec<ClonePair> {
 ///   - Symbol appears in a public API file → lower confidence (may be used externally)
 ///   - Internal helper naming (_, __, _private) → higher confidence
 // ═══════════════════════════════════════════════════════════════════
-
 fn find_dead_symbols(
     fragments: &[&ContextFragment],
     dep_graph: &DepGraph,
@@ -301,7 +302,7 @@ fn find_dead_symbols(
             name: sym.clone(),
             defined_in: source.to_string(),
             fragment_id: fid.clone(),
-            confidence: ((confidence as f64) * 100.0_f64).round() / 100.0_f64,
+            confidence: (confidence * 100.0_f64).round() / 100.0_f64,
             recommendation: format!(
                 "Symbol '{}' defined in '{}' appears to have no references in the ingested context. \
                 Verify it is not used by external consumers before removing.",
@@ -336,7 +337,6 @@ fn is_generic_symbol(sym: &str) -> bool {
 /// Algorithm: Compute the population mean and standard deviation of reverse-dep counts.
 /// Flag any fragment > μ + 2σ (approximately the top 2.3% by coupling).
 // ═══════════════════════════════════════════════════════════════════
-
 fn find_god_files(
     fragments: &[&ContextFragment],
     dep_graph: &DepGraph,
@@ -403,7 +403,6 @@ fn find_god_files(
 /// A violation is when layer[i] imports from layer[j > i+1],
 /// OR when a foundational layer imports from a presentation layer.
 // ═══════════════════════════════════════════════════════════════════
-
 static ARCH_LAYERS: &[(&str, &[&str])] = &[
     ("domain",         &["model", "entity", "domain", "schema", "types"]),
     ("data",           &["repository", "repo", "store", "dao", "db", "database", "migration"]),
@@ -494,7 +493,6 @@ fn find_layer_in_import(import_line: &str) -> Option<(usize, &'static str)> {
 ///   - JS/TS files: expected camelCase or kebab-case
 ///   - Rust modules: expected snake_case
 // ═══════════════════════════════════════════════════════════════════
-
 fn find_naming_issues(fragments: &[&ContextFragment]) -> Vec<NamingIssue> {
     let mut issues = Vec::new();
 
@@ -514,7 +512,7 @@ fn find_naming_issues(fragments: &[&ContextFragment]) -> Vec<NamingIssue> {
         if is_py || is_rs {
             // Expect snake_case: no uppercase, no hyphens
             if stem.chars().any(|c| c.is_uppercase()) {
-                let style = if stem.chars().next().map_or(false, |c| c.is_uppercase()) {
+                let style = if stem.chars().next().is_some_and(|c| c.is_uppercase()) {
                     "PascalCase"
                 } else {
                     "camelCase"
@@ -535,7 +533,7 @@ fn find_naming_issues(fragments: &[&ContextFragment]) -> Vec<NamingIssue> {
             // JS/TS: React components → PascalCase, utils/hooks → camelCase or kebab-case
             // Flag files that are inconsistent with their directory convention
             // Simple heuristic: components/ folder → PascalCase expected
-            if source.contains("/components/") && !stem.chars().next().map_or(false, |c| c.is_uppercase()) {
+            if source.contains("/components/") && !stem.chars().next().is_some_and(|c| c.is_uppercase()) {
                 issues.push(NamingIssue {
                     source: source.clone(),
                     expected_style: "PascalCase (React component)".to_string(),
@@ -571,7 +569,6 @@ fn find_naming_issues(fragments: &[&ContextFragment]) -> Vec<NamingIssue> {
 ///
 /// Weights: coupling (0.30), duplication (0.30), dead code (0.20), arch (0.15), naming (0.05)
 // ═══════════════════════════════════════════════════════════════════
-
 fn compute_code_health(
     n: usize,
     total_symbols: usize,
@@ -588,7 +585,7 @@ fn compute_code_health(
         (clone_pairs.len() as f64 / (max_pairs as f64 * 0.05)).min(1.0)
     };
 
-    let p_dead = (dead_symbols.len() as f64 / (total_symbols.max(1) as f64 * 2.0)).min(1.0).max(0.0);
+    let p_dead = (dead_symbols.len() as f64 / (total_symbols.max(1) as f64 * 2.0)).clamp(0.0, 1.0);
 
     let p_coupling = (god_files.len() as f64 / (n_f * 0.05).max(1.0)).min(1.0);
 
@@ -597,7 +594,7 @@ fn compute_code_health(
     let p_naming = (naming_issues.len() as f64 / (n_f * 0.20).max(1.0)).min(1.0);
 
     let weighted = 0.30 * p_coupling + 0.30 * p_dup + 0.20 * p_dead + 0.15 * p_arch + 0.05 * p_naming;
-    let score = (100.0 * (1.0 - weighted)).max(0.0).min(100.0);
+    let score = (100.0 * (1.0 - weighted)).clamp(0.0, 100.0);
 
     (
         (score * 10.0).round() / 10.0,
@@ -714,7 +711,7 @@ fn to_snake_case(s: &str) -> String {
 }
 
 fn to_pascal_case(s: &str) -> String {
-    s.split(|c: char| c == '_' || c == '-')
+    s.split(['_', '-'])
         .filter(|p| !p.is_empty())
         .map(|part| {
             let mut chars = part.chars();
@@ -775,6 +772,7 @@ mod tests {
 
     #[test]
     fn test_god_file_detection() {
+        #[allow(unused_variables)]
         let dep = DepGraph::new();
         // Build 10 fragments all depending on "core.py"
         // We can't easily wire reverse deps without dep graph edges

@@ -82,9 +82,10 @@ impl LshTable {
 
     fn insert(&mut self, fp: u64, idx: usize) {
         let key = self.hash_key(fp);
-        self.buckets.entry(key).or_insert_with(Vec::new).push(idx);
+        self.buckets.entry(key).or_default().push(idx);
     }
 
+    #[allow(dead_code)]
     fn remove(&mut self, fp: u64, idx: usize) {
         let key = self.hash_key(fp);
         if let Some(bucket) = self.buckets.get_mut(&key) {
@@ -139,7 +140,8 @@ impl LshIndex {
     }
 
     /// Remove a fragment entry (called on eviction).
-    pub fn remove(&mut self, fp: u64, idx: usize) {
+    #[allow(dead_code)]
+    pub(crate) fn remove(&mut self, fp: u64, idx: usize) {
         for table in &mut self.tables {
             table.remove(fp, idx);
         }
@@ -165,7 +167,8 @@ impl LshIndex {
     }
 
     /// Number of unique entries in the first table (approximate size).
-    pub fn approx_size(&self) -> usize {
+    #[allow(dead_code)]
+    pub(crate) fn approx_size(&self) -> usize {
         self.tables[0].buckets.values().map(|b| b.len()).sum()
     }
 }

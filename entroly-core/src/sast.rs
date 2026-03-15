@@ -1,23 +1,23 @@
-/// SAST — Static Application Security Testing Engine
-///
-/// Research grounding:
-///   - IRIS (ICLR 2025): Neuro-symbolic approach combining pattern matching with
-///     whole-repository taint-flow reasoning. Key insight: single-line pattern matching
-///     produces ~60% false positive rate; taint-flow context reduces it to ~15%.
-///   - MoCQ (arXiv 2025): LLM + classic vulnerability checker pattern generation.
-///   - FDSP (2024): Iterative refinement via static analysis feedback.
-///
-/// This engine implements:
-///   1. **55 rules** across 8 CWE categories (language-aware)
-///   2. **Taint-flow simulation**: tracks user-controlled sources across lines
-///      to reduce false positives (inspired by IRIS whole-repo reasoning)
-///   3. **CVSS v3.1-inspired scoring**: impact * exploitability * scope
-///   4. **Fix recommendations**: every rule carries a concrete fix string
-///   5. **False-positive suppression**: test files, comment blocks, constant strings
-///   6. **Confidence scoring** [0.0, 1.0]: accounts for context quality
-///
-/// Performance: O(N × R) where N = line count, R = rule count (~55).
-/// For typical file sizes (<500 lines) this is ~27,500 operations, microseconds.
+//! SAST — Static Application Security Testing Engine
+//!
+//! Research grounding:
+//!   - IRIS (ICLR 2025): Neuro-symbolic approach combining pattern matching with
+//!     whole-repository taint-flow reasoning. Key insight: single-line pattern matching
+//!     produces ~60% false positive rate; taint-flow context reduces it to ~15%.
+//!   - MoCQ (arXiv 2025): LLM + classic vulnerability checker pattern generation.
+//!   - FDSP (2024): Iterative refinement via static analysis feedback.
+//!
+//! This engine implements:
+//!   1. **55 rules** across 8 CWE categories (language-aware)
+//!   2. **Taint-flow simulation**: tracks user-controlled sources across lines
+//!      to reduce false positives (inspired by IRIS whole-repo reasoning)
+//!   3. **CVSS v3.1-inspired scoring**: impact * exploitability * scope
+//!   4. **Fix recommendations**: every rule carries a concrete fix string
+//!   5. **False-positive suppression**: test files, comment blocks, constant strings
+//!   6. **Confidence scoring** [0.0, 1.0]: accounts for context quality
+//!
+//! Performance: O(N × R) where N = line count, R = rule count (~55).
+//! For typical file sizes (<500 lines) this is ~27,500 operations, microseconds.
 
 use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
@@ -47,7 +47,8 @@ impl Severity {
         }
     }
 
-    pub fn label(self) -> &'static str {
+    #[allow(dead_code)]
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Severity::Info     => "INFO",
             Severity::Low      => "LOW",
@@ -81,6 +82,7 @@ pub struct SastRule {
 
 /// A taint source — a variable or expression that receives user-controlled data.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct TaintSource {
     var_name: String,
     line:     usize,
@@ -88,7 +90,8 @@ struct TaintSource {
 
 /// A taint-flow finding: user input reached a sink.
 #[derive(Debug, Clone)]
-pub struct TaintFinding {
+#[allow(dead_code)]
+pub(crate) struct TaintFinding {
     pub source_line: usize,
     pub source_var:  String,
     pub sink_line:   usize,
@@ -759,7 +762,7 @@ fn rule_applies(rule: &SastRule, lang: Option<&str>) -> bool {
         return true;
     }
     match lang {
-        Some(l) => rule.languages.iter().any(|&rl| rl == l),
+        Some(l) => rule.languages.contains(&l),
         None => false,
     }
 }
@@ -773,7 +776,6 @@ fn rule_applies(rule: &SastRule, lang: Option<&str>) -> bool {
 /// Sinks: the taint-aware rules above that fire only when a tainted variable
 ///        appears on the same line as the dangerous pattern.
 // ═══════════════════════════════════════════════════════════════════
-
 static TAINT_SOURCES: &[&str] = &[
     "request.", "req.", "form.", "args.", "kwargs.",
     "query.", "params.", "body.", "data[",
@@ -978,7 +980,6 @@ fn confidence_for_context(source: &str, line: &str, rule: &SastRule) -> f64 {
 ///   - Confidence-weighted so low-confidence findings don't dominate
 ///   - Capped at 10.0 (CVSS maximum)
 // ═══════════════════════════════════════════════════════════════════
-
 fn compute_risk_score(findings: &[SastFinding]) -> f64 {
     if findings.is_empty() {
         return 0.0;

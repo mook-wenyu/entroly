@@ -1,25 +1,25 @@
-/// Hierarchical Context Compression (HCC) — Entrolic Context Engine
-///
-/// The core insight: Cody does search ("find relevant files").
-/// Entroly does compression ("show the ENTIRE codebase at variable resolution").
-///
-/// Three levels:
-///   Level 1: Skeleton Map — one-line per file, LLM sees ALL code structure
-///   Level 2: Dep-Graph Cluster — expanded skeletons for query-connected files
-///   Level 3: Full Content — knapsack-optimal fragments at full resolution
-///
-/// Novel contributions (verified against literature):
-///   1. Symbol-reachability slicing via dep graph (cf. NeurIPS 2025 backward slicing)
-///   2. Submodular diversity selection (extends Nemhauser 1978 to code context)
-///   3. Entropy-gated per-fragment resolution (novel combination)
-///   4. PageRank centrality for budget allocation (novel application to code)
-///
-/// References:
-///   - Weiser (1981) "Program Slicing" — backward/forward slice theory
-///   - Nemhauser et al. (1978) — submodular maximization (1-1/e) guarantee
-///   - Shannon (1959) — Rate-Distortion theorem
-///   - RepoFormer (ICML 2024 Oral) — selective retrieval improves over always-retrieve
-///   - FILM-7B (NeurIPS 2024) — structure-first layout avoids lost-in-the-middle
+//! Hierarchical Context Compression (HCC) — Entrolic Context Engine
+//!
+//! The core insight: Cody does search ("find relevant files").
+//! Entroly does compression ("show the ENTIRE codebase at variable resolution").
+//!
+//! Three levels:
+//!   Level 1: Skeleton Map — one-line per file, LLM sees ALL code structure
+//!   Level 2: Dep-Graph Cluster — expanded skeletons for query-connected files
+//!   Level 3: Full Content — knapsack-optimal fragments at full resolution
+//!
+//! Novel contributions (verified against literature):
+//!   1. Symbol-reachability slicing via dep graph (cf. NeurIPS 2025 backward slicing)
+//!   2. Submodular diversity selection (extends Nemhauser 1978 to code context)
+//!   3. Entropy-gated per-fragment resolution (novel combination)
+//!   4. PageRank centrality for budget allocation (novel application to code)
+//!
+//! References:
+//!   - Weiser (1981) "Program Slicing" — backward/forward slice theory
+//!   - Nemhauser et al. (1978) — submodular maximization (1-1/e) guarantee
+//!   - Shannon (1959) — Rate-Distortion theorem
+//!   - RepoFormer (ICML 2024 Oral) — selective retrieval improves over always-retrieve
+//!   - FILM-7B (NeurIPS 2024) — structure-first layout avoids lost-in-the-middle
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use crate::fragment::ContextFragment;
@@ -129,7 +129,7 @@ fn extract_oneliner_from_skeleton(skeleton: &str) -> String {
             let parts: Vec<&str> = trimmed.split_whitespace().collect();
             let idx = if parts.first() == Some(&"pub") { 2 } else { 1 };
             if let Some(name) = parts.get(idx) {
-                let clean = name.trim_end_matches(|c: char| c == '{' || c == '<' || c == ':');
+                let clean = name.trim_end_matches(['{', '<', ':']);
                 if !clean.is_empty() {
                     symbols.push(clean);
                 }
@@ -259,7 +259,8 @@ pub fn compress_level2(
 ///
 /// Classic power iteration with damping factor d=0.85.
 /// Converges in ~15-20 iterations for typical code graphs.
-pub fn compute_pagerank(
+#[allow(dead_code)]
+pub(crate) fn compute_pagerank(
     dep_graph: &DepGraph,
     fragment_ids: &[String],
     iterations: usize,
@@ -332,7 +333,7 @@ pub fn allocate_budget(
     }
 
     // L1: skeleton map — small fixed allocation
-    let l1 = (total_budget as f64 * 0.05).min(500.0).max(50.0) as u32;
+    let l1 = (total_budget as f64 * 0.05).clamp(50.0, 500.0) as u32;
     let remaining = total_budget.saturating_sub(l1);
 
     // Entropy adjusts L2/L3 split:

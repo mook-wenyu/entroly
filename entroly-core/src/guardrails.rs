@@ -1,20 +1,20 @@
-/// Safety & Critical File Guardrails
-///
-/// Addresses three weaknesses:
-///   1. Entropy scorer drops critical low-entropy files (config, schema, .env)
-///   2. Context optimizer can accidentally strip safety signals
-///   3. No awareness of file criticality independent of content
-///
-/// This module implements:
-///   - **Critical file patterns**: files that must NEVER be dropped
-///   - **Safety signals**: content patterns that force inclusion
-///   - **Adaptive budgeting**: task-type-aware token budgets
-///   - **Context ordering**: LLM-sensitive fragment ordering
-///
-/// Critical insight from user feedback:
-///   requirements.txt, Dockerfile, .env.example have LOW entropy
-///   but HIGH importance. Pure entropy scoring deletes them.
-///   We need a separate importance dimension.
+//! Safety & Critical File Guardrails
+//!
+//! Addresses three weaknesses:
+//!   1. Entropy scorer drops critical low-entropy files (config, schema, .env)
+//!   2. Context optimizer can accidentally strip safety signals
+//!   3. No awareness of file criticality independent of content
+//!
+//! This module implements:
+//!   - **Critical file patterns**: files that must NEVER be dropped
+//!   - **Safety signals**: content patterns that force inclusion
+//!   - **Adaptive budgeting**: task-type-aware token budgets
+//!   - **Context ordering**: LLM-sensitive fragment ordering
+//!
+//! Critical insight from user feedback:
+//!   requirements.txt, Dockerfile, .env.example have LOW entropy
+//!   but HIGH importance. Pure entropy scoring deletes them.
+//!   We need a separate importance dimension.
 
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
@@ -137,7 +137,8 @@ pub fn has_safety_signal(content: &str) -> bool {
 
 /// Compute the criticality boost for a fragment.
 /// Returns a multiplier [1.0, 10.0] for the relevance score.
-pub fn criticality_boost(criticality: Criticality) -> f64 {
+#[allow(dead_code)]
+pub(crate) fn criticality_boost(criticality: Criticality) -> f64 {
     match criticality {
         Criticality::Normal => 1.0,
         Criticality::Important => 2.0,
@@ -283,9 +284,9 @@ impl FeedbackTracker {
     /// Compute a learned value adjustment for a fragment.
     ///
     /// Returns a multiplier:
-    ///   > 1.0 = fragment has been historically useful
-    ///   < 1.0 = fragment has been historically unhelpful
-    ///   = 1.0 = no data
+    /// - > 1.0 = fragment has been historically useful
+    /// - < 1.0 = fragment has been historically unhelpful
+    /// - = 1.0 = no data
     pub fn learned_value(&self, fragment_id: &str) -> f64 {
         let successes = *self.success_counts.get(fragment_id).unwrap_or(&0) as f64;
         let failures = *self.failure_counts.get(fragment_id).unwrap_or(&0) as f64;

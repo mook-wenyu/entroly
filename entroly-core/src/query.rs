@@ -20,15 +20,16 @@ use serde::Serialize;
 // ═══════════════════════════════════════════════════════════════════
 
 /// Common English stop words — filtered out before TF-IDF scoring.
+/// IMPORTANT: must be sorted alphabetically for binary_search to work!
 static STOP_WORDS: &[&str] = &[
-    "a", "an", "the", "is", "it", "in", "on", "at", "to", "for", "of", "and", "or",
-    "but", "not", "with", "this", "that", "from", "by", "as", "be", "are", "was",
-    "were", "have", "has", "had", "do", "does", "did", "will", "would", "could",
-    "should", "may", "might", "can", "i", "you", "we", "they", "he", "she",
-    "my", "your", "our", "their", "its", "me", "us", "him", "her", "them",
-    "what", "how", "why", "when", "where", "which", "who", "just", "also",
-    "more", "some", "any", "all", "no", "if", "then", "so", "up", "out",
-    "about", "into", "after", "before", "there", "he", "she",
+    "a", "about", "after", "all", "also", "an", "and", "any", "are", "as",
+    "at", "be", "before", "but", "by", "can", "could", "did", "do", "does",
+    "for", "from", "had", "has", "have", "he", "her", "him", "how", "i",
+    "if", "in", "into", "is", "it", "its", "just", "may", "me", "might",
+    "more", "my", "no", "not", "of", "on", "or", "our", "out", "she",
+    "should", "so", "some", "that", "the", "them", "then", "there", "they",
+    "this", "to", "up", "us", "was", "we", "were", "what", "when", "where",
+    "which", "who", "why", "will", "with", "would", "you", "your",
 ];
 
 /// Generic programming verbs that indicate a vague query.
@@ -79,7 +80,6 @@ fn tokenize(text: &str) -> Vec<String> {
 
 fn is_stop_word(word: &str) -> bool {
     STOP_WORDS.binary_search(&word).is_ok()
-        || STOP_WORDS.iter().any(|&s| s == word)
 }
 
 /// Compute TF (term frequency) for a token list.
@@ -181,8 +181,8 @@ pub fn compute_vagueness(query: &str) -> (f64, String) {
         .count();
     let generic_ratio = generic_count as f64 / n as f64;
 
-    // Short query penalty
-    let short_penalty = if n < 4 { 0.4 } else if n < 7 { 0.15 } else { 0.0 };
+    // Short query penalty (stronger — short vague queries need refinement)
+    let short_penalty = if n < 3 { 0.7 } else if n < 5 { 0.4 } else if n < 7 { 0.15 } else { 0.0 };
 
     // Specificity signals
     let specific_count = tokens.iter()
@@ -279,7 +279,7 @@ pub fn refine_heuristic(query: &str, fragment_summaries: &[String]) -> String {
                 && enrichment_terms.len() < 5
             {
                 // Prefer tokens that look like code identifiers
-                if token.contains('_') || token.chars().next().map_or(false, |c| c.is_alphabetic()) {
+                if token.contains('_') || token.chars().next().is_some_and(|c| c.is_alphabetic()) {
                     enrichment_terms.push(token);
                 }
             }

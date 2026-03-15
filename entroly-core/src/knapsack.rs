@@ -1,17 +1,17 @@
-/// 0/1 Knapsack Context Optimizer — Rust implementation.
-///
-/// Solves the constrained optimization problem:
-///   Maximize:   Σ r(fᵢ) · x(fᵢ)
-///   Subject to: Σ c(fᵢ) · x(fᵢ) ≤ B  (token budget)
-///
-/// Two strategies:
-///   N ≤ 2000 → Exact DP with budget quantization (O(N × Q))
-///   N > 2000 → Greedy density sort (O(N log N)), 0.5 optimality
-///
-/// Runs ~100× faster than the Python version on typical workloads
-/// (500 fragments, 128K budget → <50μs in Rust vs ~5ms in Python).
-///
-/// Reference: Kellerer, Pferschy, Pisinger. "Knapsack Problems" (Springer, 2004)
+//! 0/1 Knapsack Context Optimizer — Rust implementation.
+//!
+//! Solves the constrained optimization problem:
+//!   Maximize:   Σ r(fᵢ) · x(fᵢ)
+//!   Subject to: Σ c(fᵢ) · x(fᵢ) ≤ B  (token budget)
+//!
+//! Two strategies:
+//!   N ≤ 2000 → Exact DP with budget quantization (O(N × Q))
+//!   N > 2000 → Greedy density sort (O(N log N)), 0.5 optimality
+//!
+//! Runs ~100× faster than the Python version on typical workloads
+//! (500 fragments, 128K budget → <50μs in Rust vs ~5ms in Python).
+//!
+//! Reference: Kellerer, Pferschy, Pisinger. "Knapsack Problems" (Springer, 2004)
 
 use std::collections::HashMap;
 use crate::fragment::{compute_relevance, ContextFragment};
@@ -36,11 +36,12 @@ impl Default for ScoringWeights {
 }
 
 /// Result of a knapsack optimization run.
+#[allow(dead_code)]
 pub struct KnapsackResult {
     pub selected_indices: Vec<usize>,
     pub total_tokens: u32,
     pub total_relevance: f64,
-    pub method: &'static str,
+    pub(crate) method: &'static str,
 }
 
 /// Select the optimal subset of fragments within the token budget.
