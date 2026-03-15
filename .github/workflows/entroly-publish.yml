@@ -54,7 +54,6 @@ jobs:
   publish-pypi:
     needs: build-and-push
     runs-on: ubuntu-latest
-    environment: pypi
     permissions:
       id-token: write
       contents: read
