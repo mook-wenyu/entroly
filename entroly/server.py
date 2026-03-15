@@ -1508,7 +1508,7 @@ def main():
     # Start the autotune daemon in the background — zero config needed.
     # It reads/writes only tuning_config.json and runs at nice+10 priority.
     try:
-        _start_autotune_daemon(None)
+        _start_autotune_daemon(engine)
     except Exception as e:
         logger.warning("Autotune: failed to start daemon: %s", e)
 
