@@ -1,8 +1,7 @@
 name: Publish entroly-core wheels to PyPI
 
 # Builds native Python wheels and publishes to PyPI on release tags.
-# Covers the most common platforms: Linux x86_64, macOS, Windows x86_64.
-# aarch64 omitted for now (requires QEMU cross-compilation complexity).
+# Covers Linux x86_64 (manylinux), macOS native, and Windows x86_64.
 
 on:
   push:
@@ -16,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build wheels
+      - name: Build manylinux wheels
         uses: PyO3/maturin-action@v1
         with:
           target: x86_64
@@ -32,15 +31,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build wheels (x86_64)
+      # Let maturin auto-detect the native macOS target (no explicit target arg)
+      - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
-          target: x86_64
-          args: --release --out dist --manifest-path entroly-core/Cargo.toml
-      - name: Build wheels (arm64)
-        uses: PyO3/maturin-action@v1
-        with:
-          target: aarch64
           args: --release --out dist --manifest-path entroly-core/Cargo.toml
       - uses: actions/upload-artifact@v4
         with:
