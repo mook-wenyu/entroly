@@ -1,9 +1,8 @@
 name: Publish entroly-core wheels to PyPI
 
-# Builds multi-platform Rust wheels using maturin and publishes to PyPI.
-# This ensures `pip install "entroly[native]"` always gets the latest Rust engine.
-#
-# Triggers on version tags (entroly-v*) — same as the Docker/PyPI workflow.
+# Builds native Python wheels and publishes to PyPI on release tags.
+# Covers the most common platforms: Linux x86_64, macOS, Windows x86_64.
+# aarch64 omitted for now (requires QEMU cross-compilation complexity).
 
 on:
   push:
@@ -12,41 +11,60 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-wheels:
-    name: Build wheels (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64
-          - os: ubuntu-latest
-            target: aarch64
-          - os: macos-latest
-            target: universal2-apple-darwin
-          - os: windows-latest
-            target: x86_64
-
+  build-linux:
+    name: Build wheels (Linux x86_64)
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
-          target: ${{ matrix.target }}
+          target: x86_64
           args: --release --out dist --manifest-path entroly-core/Cargo.toml
           manylinux: auto
-
-      - name: Upload wheels
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: wheels-${{ matrix.os }}-${{ matrix.target }}
+          name: wheels-linux-x86_64
+          path: dist
+
+  build-macos:
+    name: Build wheels (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build wheels (x86_64)
+        uses: PyO3/maturin-action@v1
+        with:
+          target: x86_64
+          args: --release --out dist --manifest-path entroly-core/Cargo.toml
+      - name: Build wheels (arm64)
+        uses: PyO3/maturin-action@v1
+        with:
+          target: aarch64
+          args: --release --out dist --manifest-path entroly-core/Cargo.toml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-macos
+          path: dist
+
+  build-windows:
+    name: Build wheels (Windows x86_64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: x86_64
+          args: --release --out dist --manifest-path entroly-core/Cargo.toml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-windows-x86_64
           path: dist
 
   publish-to-pypi:
     name: Publish entroly-core to PyPI
-    needs: build-wheels
+    needs: [build-linux, build-macos, build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/entroly-v')
     permissions:
@@ -60,7 +78,7 @@ jobs:
           merge-multiple: true
           path: dist
 
-      - name: List wheels built
+      - name: List wheels
         run: ls -la dist/
 
       - name: Publish to PyPI
