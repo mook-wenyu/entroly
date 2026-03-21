@@ -8,7 +8,23 @@ All tunable parameters live here — no magic numbers buried in code.
 
 from dataclasses import dataclass, field
 from pathlib import Path
+import hashlib
 import os
+
+
+def _project_checkpoint_dir() -> Path:
+    """Return a project-isolated checkpoint directory.
+
+    Uses ENTROLY_DIR if set, otherwise hashes the cwd to create
+    ~/.entroly/checkpoints/{project_hash}/ so multiple projects
+    don't bleed fragments into each other.
+    """
+    explicit = os.environ.get("ENTROLY_DIR")
+    if explicit:
+        return Path(explicit)
+    cwd = os.getcwd()
+    project_hash = hashlib.sha256(cwd.encode()).hexdigest()[:12]
+    return Path(os.path.expanduser(f"~/.entroly/checkpoints/{project_hash}"))
 
 
 @dataclass
@@ -55,14 +71,9 @@ class EntrolyConfig:
 
     # ── Checkpoint ──────────────────────────────────────────────────────
     checkpoint_dir: Path = field(
-        default_factory=lambda: Path(
-            os.environ.get(
-                "ENTROLY_DIR",
-                os.path.expanduser("~/.entroly/checkpoints"),
-            )
-        )
+        default_factory=lambda: _project_checkpoint_dir()
     )
-    """Directory for persisting checkpoint state."""
+    """Directory for persisting checkpoint state (project-isolated)."""
 
     auto_checkpoint_interval: int = 5
     """Auto-checkpoint every N tool calls."""

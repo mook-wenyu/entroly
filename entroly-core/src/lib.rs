@@ -24,6 +24,7 @@ mod sast;
 mod health;
 mod query;
 mod hierarchical;
+pub mod query_persona;
 
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -39,6 +40,7 @@ use dedup::{simhash, hamming_distance, DedupIndex};
 use depgraph::{DepGraph, extract_identifiers};
 use guardrails::{file_criticality, has_safety_signal, TaskType, FeedbackTracker, Criticality, compute_ordering_priority};
 use prism::PrismOptimizer;
+use query_persona::QueryPersonaManifold;
 
 
 /// Process-wide monotonic counter — used only to seed each engine's instance_id.
@@ -125,6 +127,13 @@ pub struct EntrolyEngine {
     /// small gap → lower τ (converged). Replaces the ad-hoc 0.995 annealing schedule.
     last_dual_gap: f64,
     gradient_norm_ema: f64,
+
+    // Query Persona Manifold — discovers query archetypes and learns per-archetype weights
+    query_manifold: QueryPersonaManifold,
+    /// ID of the archetype assigned to the most recent query (for feedback routing).
+    last_archetype_id: Option<String>,
+    /// Whether to use per-archetype weights (vs global weights).
+    enable_query_personas: bool,
 }
 
 /// Snapshot of the last optimization for explainability.
@@ -220,10 +229,17 @@ impl EntrolyEngine {
             ios_skeleton_info_factor: ios_skeleton_info_factor.clamp(0.01, 0.99),
             ios_reference_info_factor: ios_reference_info_factor.clamp(0.01, 0.99),
             ios_diversity_floor: ios_diversity_floor.clamp(0.0, 1.0),
-            gradient_temperature: 2.0, // Start soft — ADGT adapts this principally each turn
-            last_lambda_star: 0.0,     // λ* from last forward pass — shared with REINFORCE
-            last_dual_gap: 0.0,        // D(λ*) − primal — ADGT temperature signal
+            gradient_temperature: 2.0,
+            last_lambda_star: 0.0,
+            last_dual_gap: 0.0,
             gradient_norm_ema: 0.0,
+            query_manifold: QueryPersonaManifold::new(
+                [w_recency, w_frequency, w_semantic, w_entropy],
+                1.0,   // Pitman-Yor alpha
+                0.25,  // Pitman-Yor discount
+            ),
+            last_archetype_id: None,
+            enable_query_personas: true,
         }
     }
 
@@ -252,6 +268,11 @@ impl EntrolyEngine {
         // Rebuild LSH slot index after eviction (slots may have shifted).
         // This is O(N) but eviction is infrequent (happens once per turn).
         self.rebuild_lsh_index();
+
+        // Query persona manifold lifecycle: Ebbinghaus decay + death + fusion
+        if self.enable_query_personas {
+            self.query_manifold.lifecycle_tick();
+        }
     }
 
     /// Ingest a new context fragment.
@@ -433,12 +454,53 @@ impl EntrolyEngine {
                 .map(|fid| (fid.clone(), self.feedback.learned_value(fid)))
                 .collect();
 
+            // ── Query Persona Manifold: assign query to archetype ──
+            // Build feature vector from TF-IDF analysis, route to archetype,
+            // and use per-archetype learned weights if available.
+            let (archetype_weights, archetype_id) = if self.enable_query_personas && !query.is_empty() {
+                let fragment_summaries: Vec<String> = self.fragments.values()
+                    .take(50)
+                    .map(|f| f.source.clone())
+                    .collect();
+                let analysis = query::analyze_query(&query, &fragment_summaries);
+
+                // Build TF-IDF score vector for PSM embedding
+                let tfidf_scores: Vec<f64> = analysis.key_terms.iter()
+                    .enumerate()
+                    .map(|(i, _)| 1.0 / (i as f64 + 1.0)) // rank-weighted scores
+                    .collect();
+
+                let features = query_persona::build_query_features(
+                    &tfidf_scores,
+                    analysis.vagueness_score,
+                    query.len(),
+                    analysis.key_terms.len(),
+                    analysis.needs_refinement,
+                );
+
+                let (aid, weights, _is_new) = self.query_manifold.assign(&features);
+                (Some(weights), Some(aid))
+            } else {
+                (None, None)
+            };
+            self.last_archetype_id = archetype_id;
+
             let frags: Vec<ContextFragment> = self.fragments.values().cloned().collect();
-            let weights = ScoringWeights {
-                recency: self.w_recency,
-                frequency: self.w_frequency,
-                semantic: self.w_semantic,
-                entropy: self.w_entropy,
+            // Use per-archetype weights if PSM assigned, otherwise global weights
+            let weights = if let Some(aw) = archetype_weights {
+                ScoringWeights {
+                    recency: aw[0],
+                    frequency: aw[1],
+                    semantic: aw[2],
+                    entropy: aw[3],
+                }
+            } else {
+                ScoringWeights {
+                    recency: self.w_recency,
+                    frequency: self.w_frequency,
+                    semantic: self.w_semantic,
+                    entropy: self.w_entropy,
+                }
             };
 
             // ── Dependency-aware score boosting ──
@@ -932,6 +994,19 @@ impl EntrolyEngine {
             dedup.set_item("duplicates_detected", self.dedup_index.duplicates_detected)?;
             result.set_item("dedup", dedup)?;
 
+            // Query Persona Manifold stats
+            if self.enable_query_personas {
+                let ms = self.query_manifold.stats();
+                let manifold = PyDict::new(py);
+                manifold.set_item("population", ms.population)?;
+                manifold.set_item("total_births", ms.total_births)?;
+                manifold.set_item("total_deaths", ms.total_deaths)?;
+                manifold.set_item("total_fusions", ms.total_fusions)?;
+                manifold.set_item("tick", ms.tick)?;
+                manifold.set_item("total_particles", ms.total_particles)?;
+                result.set_item("query_manifold", manifold)?;
+            }
+
             Ok(result.into())
         })
     }
@@ -944,6 +1019,49 @@ impl EntrolyEngine {
     /// Get fragment count.
     pub fn fragment_count(&self) -> usize {
         self.fragments.len()
+    }
+
+    /// Get detailed query manifold stats (per-archetype weights, health, particles).
+    pub fn query_manifold_stats(&self) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let ms = self.query_manifold.stats();
+            let result = PyDict::new(py);
+            result.set_item("enabled", self.enable_query_personas)?;
+            result.set_item("population", ms.population)?;
+            result.set_item("total_births", ms.total_births)?;
+            result.set_item("total_deaths", ms.total_deaths)?;
+            result.set_item("total_fusions", ms.total_fusions)?;
+            result.set_item("tick", ms.tick)?;
+            result.set_item("total_particles", ms.total_particles)?;
+
+            let archetypes_list = pyo3::types::PyList::empty(py);
+            for a in &ms.archetypes {
+                let ad = PyDict::new(py);
+                ad.set_item("id", &a.id)?;
+                ad.set_item("health", a.health)?;
+                ad.set_item("particles", a.particles)?;
+                ad.set_item("observations", a.observations)?;
+                ad.set_item("stick_weight", a.stick_weight)?;
+                ad.set_item("effective_support", a.effective_support)?;
+                ad.set_item("weights", (a.weights[0], a.weights[1], a.weights[2], a.weights[3]))?;
+                ad.set_item("successes", a.successes)?;
+                ad.set_item("total_uses", a.total_uses)?;
+                ad.set_item("success_rate", (a.success_rate * 10000.0).round() / 10000.0)?;
+                archetypes_list.append(ad)?;
+            }
+            result.set_item("archetypes", archetypes_list)?;
+
+            if let Some(ref aid) = self.last_archetype_id {
+                result.set_item("last_archetype_id", aid)?;
+            }
+
+            Ok(result.into())
+        })
+    }
+
+    /// Enable or disable query persona manifold.
+    pub fn set_query_personas_enabled(&mut self, enabled: bool) {
+        self.enable_query_personas = enabled;
     }
 
     /// Hot-reload scoring weights mid-session (autotune live update).
@@ -1616,6 +1734,14 @@ impl EntrolyEngine {
         self.context_scorer.w_recency    = self.w_recency;
         self.context_scorer.w_entropy    = self.w_entropy;
         self.context_scorer.w_frequency  = self.w_frequency;
+
+        // Route gradient to per-archetype PRISM (if query persona is active)
+        if self.enable_query_personas {
+            if let Some(ref aid) = self.last_archetype_id {
+                let success = reward > 0.0;
+                self.query_manifold.record_result(aid, &g, success);
+            }
+        }
     }
 
     /// Compute context sufficiency: fraction of referenced symbols
@@ -1931,11 +2057,11 @@ mod tests {
             total_explorations: 0,
         };
 
-        let json = serde_json::to_string(&state).unwrap();
+        let json = serde_json::to_string(&state).expect("failed to serialize OwnedEngineState to JSON");
         assert!(!json.is_empty());
 
         // Deserialize
-        let restored: OwnedEngineState = serde_json::from_str(&json).unwrap();
+        let restored: OwnedEngineState = serde_json::from_str(&json).expect("failed to deserialize OwnedEngineState from JSON");
         assert_eq!(restored.fragments.len(), 2);
         assert_eq!(restored.current_turn, 5);
         assert_eq!(restored.id_counter, 2);
@@ -2046,7 +2172,7 @@ mod tests {
         let candidates = engine.lsh_index.query(query_fp);
 
         // The target slot must be in LSH candidates
-        let target_slot = engine.fragment_slot_ids.iter().position(|id| id == "target").unwrap();
+        let target_slot = engine.fragment_slot_ids.iter().position(|id| id == "target").expect("target fragment not found in slot IDs — test setup error");
         assert!(
             candidates.contains(&target_slot),
             "LSH must return the exact-match fragment. Candidates: {:?}, target slot: {}",

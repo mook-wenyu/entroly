@@ -14,9 +14,34 @@
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/PRs-Welcome-brightgreen" alt="PRs Welcome">
   <img src="https://img.shields.io/pypi/v/entroly?color=blue&label=PyPI" alt="PyPI">
-  <img src="https://img.shields.io/badge/Tests-113%20Passing-success" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-375%20Passing-success" alt="Tests">
   <img src="https://img.shields.io/badge/Docker-ghcr.io-blue?logo=docker" alt="Docker">
 </p>
+
+---
+
+## Quick Start (60 seconds)
+
+```bash
+# Install
+pip install entroly
+
+# Option A: Add to your AI tool (auto-detects Cursor, VS Code, Claude Desktop)
+entroly init
+
+# Option B: Invisible proxy mode (works with ANY AI tool)
+entroly proxy --quality balanced
+
+# Check it's working
+entroly status
+
+# See live metrics dashboard
+entroly dashboard
+```
+
+**Quality presets:** `--quality speed` | `fast` | `balanced` | `quality` | `max` (or any float 0.0-1.0)
+
+**Troubleshooting:** See the [Troubleshooting](#troubleshooting) section below.
 
 ---
 
@@ -439,10 +464,58 @@ EntrolyConfig(
 | `entroly health` | Run code health analysis (clones, dead symbols, god files) |
 | `entroly autotune` | Run autonomous hyperparameter optimization |
 | `entroly benchmark` | Run competitive benchmark (Entroly vs Raw vs Top-K) |
+| `entroly status` | Check if proxy/dashboard is running |
+| `entroly config` | Show current configuration |
+| `entroly completions` | Generate shell completion scripts (bash/zsh/fish) |
 
 ## Part of the Ebbiforge Ecosystem
 
 Entroly integrates with [hippocampus-sharp-memory](https://pypi.org/project/hippocampus-sharp-memory/) for persistent cross-session memory and [Ebbiforge](https://pypi.org/project/ebbiforge/) for TF embeddings and RL weight learning. Both are optional.
+
+## Troubleshooting
+
+**Docker not running:**
+```
+entroly proxy  # No Docker needed — runs natively
+# Or install the native Rust engine:
+pip install entroly[native]
+```
+
+**Port 9377 already in use:**
+```bash
+entroly proxy --port 9378
+# or set ENTROLY_PROXY_PORT=9378
+```
+
+**Rust wheel not available for your platform:**
+```bash
+ENTROLY_NO_DOCKER=1 entroly serve  # Falls back to Python engine (slower but functional)
+```
+
+**Proxy seems slow on first request:**
+This is normal — the first request warms up HTTP connections and the Rust pipeline. Subsequent requests add <10ms.
+
+**Shell completions:**
+```bash
+# Bash
+eval "$(entroly completions bash)"
+# Zsh
+eval "$(entroly completions zsh)"
+# Fish
+entroly completions fish > ~/.config/fish/completions/entroly.fish
+```
+
+**Environment variables:**
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENTROLY_QUALITY` | `0.5` | Quality dial (0.0-1.0 or preset name) |
+| `ENTROLY_PROXY_PORT` | `9377` | Proxy port |
+| `ENTROLY_PULL_TTL` | `3600` | Docker pull cache TTL (seconds, 0=always) |
+| `ENTROLY_MAX_FILES` | `5000` | Max files to auto-index |
+| `ENTROLY_RATE_LIMIT` | `0` | Max requests/min (0=unlimited) |
+| `ENTROLY_NO_DOCKER` | - | Skip Docker, run natively |
+| `ENTROLY_MCP_TRANSPORT` | `stdio` | MCP transport (`stdio` or `sse`) |
+| `ENTROLY_TEMPERATURE_CALIBRATION` | `1` | Set to `0` to disable EGTC |
 
 ## License
 

@@ -423,3 +423,36 @@ iteration	param	old_val	new_val	old_score	new_score	kept	duration_ms	drift	strat
 8	2.1073	0.9792	0.037995	0.0	keep	weight_semantic_sim: None -> 0.3056
 9	2.1073	0.9792	0.037995	0.0	keep	min_relevance_threshold: None -> 0.1112
 10	2.1073	0.9792	0.037995	0.0	keep	weight_recency: None -> 0.3477
+0	2.1073	0.9792	0.037995	0.1	keep	baseline
+1	2.1073	0.9792	0.037995	0.1	keep	weight_semantic_sim: None -> 0.3603
+2	2.1073	0.9792	0.037995	0.1	keep	decay_half_life_turns: None -> 24
+3	2.1073	0.9792	0.037995	0.1	keep	min_relevance_threshold: None -> 0.1248
+4	2.1073	0.9792	0.037995	0.1	keep	min_relevance_threshold: None -> 0.1125
+5	2.1073	0.9792	0.037995	0.1	keep	exploration_rate: None -> 0.1711
+6	2.1073	0.9792	0.037995	0.1	keep	weight_entropy: None -> 0.3823
+0	2.1073	0.9792	0.037995	0.1	keep	baseline
+1	2.1073	0.9792	0.037995	0.1	discard	min_relevance_threshold: None -> 0.0984
+7	2.1073	0.9792	0.037995	0.2	discard	exploration_rate: None -> 0.1322
+8	2.1073	0.9792	0.037995	0.2	discard	weight_entropy: None -> 0.3872
+2	2.1073	0.9792	0.037995	0.1	discard	weight_semantic_sim: None -> 0.3521
+9	2.1073	0.9792	0.037995	0.1	discard	weight_frequency: None -> 0.3826
+3	2.1073	0.9792	0.037995	0.1	keep	exploration_rate: None -> 0.1384
+10	2.1073	0.9792	0.037995	0.2	discard	weight_entropy: None -> 0.3986
+4	2.1073	0.9792	0.037995	0.1	keep	exploration_rate: None -> 0.1152
+5	2.1073	0.9792	0.037995	0.1	keep	weight_frequency: None -> 0.2205
+6	2.1073	0.9792	0.037995	0.2	discard	weight_entropy: None -> 0.3612
+7	2.1073	0.9792	0.037995	0.2	discard	weight_frequency: None -> 0.3495
+8	2.1073	0.9792	0.037995	0.4	discard	weight_semantic_sim: None -> 0.3143
+9	2.1073	0.9792	0.037995	0.1	discard	weight_semantic_sim: None -> 0.385
+10	2.1073	0.9792	0.037995	0.1	discard	weight_frequency: None -> 0.3953
+0	2.1073	0.9792	0.037995	0.1	keep	baseline
+1	2.1073	0.9792	0.037995	0.1	keep	exploration_rate: None -> 0.1464
+2	2.1073	0.9792	0.037995	0.1	keep	weight_recency: None -> 0.4248
+3	2.1073	0.9792	0.037995	0.1	keep	exploration_rate: None -> 0.1891
+4	2.1073	0.9792	0.037995	0.1	keep	weight_recency: None -> 0.4035
+5	2.1073	0.9792	0.037995	0.1	keep	weight_entropy: None -> 0.3484
+6	2.1073	0.9792	0.037995	0.1	discard	weight_entropy: None -> 0.3356
+7	2.1073	0.9792	0.037995	0.1	keep	min_relevance_threshold: None -> 0.1065
+8	2.1073	0.9792	0.037995	0.1	keep	weight_frequency: None -> 0.3564
+9	2.1073	0.9792	0.037995	0.1	keep	min_relevance_threshold: None -> 0.0986
+10	2.1073	0.9792	0.037995	0.1	keep	weight_frequency: None -> 0.3088

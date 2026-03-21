@@ -125,6 +125,34 @@ _PROFILE_QUALITY = {
 }
 
 
+# Named quality presets for human-friendly --quality flag
+QUALITY_PRESETS = {
+    "speed": 0.0,
+    "fast": 0.25,
+    "balanced": 0.5,
+    "quality": 0.8,
+    "max": 1.0,
+}
+
+
+def resolve_quality(value: str) -> float:
+    """Accept either a named preset or a float 0.0-1.0."""
+    if value in QUALITY_PRESETS:
+        return QUALITY_PRESETS[value]
+    try:
+        q = float(value)
+        if 0.0 <= q <= 1.0:
+            return q
+        raise ValueError(f"quality must be 0.0-1.0, got {q}")
+    except ValueError as e:
+        if "could not convert" in str(e) or "quality must be" in str(e):
+            valid = ", ".join(QUALITY_PRESETS.keys())
+            raise ValueError(
+                f"Unknown quality preset '{value}'. Valid: {valid} or 0.0-1.0"
+            ) from None
+        raise
+
+
 def _interpolate_profiles(quality: float) -> dict:
     """Linearly interpolate between speed and quality profiles."""
     q = max(0.0, min(1.0, quality))

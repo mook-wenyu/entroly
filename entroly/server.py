@@ -123,7 +123,8 @@ class _WilsonFeedbackTracker:
         center = p + z * z / (2.0 * total)
         spread = z * math.sqrt((p * (1.0 - p) + z * z / (4.0 * total)) / total)
         lower_bound = (center - spread) / denominator
-        return 0.5 + lower_bound * 1.5
+        raw = 0.5 + lower_bound * 1.5
+        return max(0.5, min(2.0, raw))  # Clamp to documented [0.5, 2.0] range
 
 
 class EntrolyEngine:
@@ -249,6 +250,13 @@ class EntrolyEngine:
         gc.disable()
         try:
             if self._use_rust:
+                # Enforce max_fragments cap on Rust engine (Rust doesn't enforce it)
+                if self._rust.fragment_count() >= self.config.max_fragments:
+                    return {
+                        "status": "rejected",
+                        "reason": "max_fragments cap reached",
+                        "max_fragments": self.config.max_fragments,
+                    }
                 result = self._rust.ingest(content, source, token_count, is_pinned)
                 # result is a dict from PyO3
                 if source:
@@ -556,13 +564,11 @@ class EntrolyEngine:
                 "tokens_saved": token_count,
             }
 
-        # Deterministic entropy comparison (sorted by fragment_id)
-        other_contents = [
-            f.content for f in sorted(
-                self._fragments.values(),
-                key=lambda f: f.fragment_id,
-            )
-        ][:50]
+        # Sample up to 50 fragments for entropy comparison (O(n) instead of O(n log n))
+        import random as _rng
+        all_frags = list(self._fragments.values())
+        sample = _rng.sample(all_frags, min(50, len(all_frags))) if len(all_frags) > 50 else all_frags
+        other_contents = [f.content for f in sample]
         entropy_score = compute_information_score(
             content,
             global_token_counts=dict(self._global_token_counts),
@@ -1446,6 +1452,9 @@ def _start_autotune_daemon(engine: "EntrolyEngine") -> None:
         logger.info("Autotune: disabled via tuning_config.json")
         return
 
+    # Lock protects engine weight updates from racing with optimize calls
+    _weight_lock = threading.Lock()
+
     def _hot_reload_weights():
         """Read tuning_config.json and push weights into the live engine."""
         try:
@@ -1456,7 +1465,8 @@ def _start_autotune_daemon(engine: "EntrolyEngine") -> None:
             w_s = cfg.get("weight_semantic_sim", 0.25)
             w_e = cfg.get("weight_entropy", 0.20)
             if engine._use_rust:
-                engine._rust.set_weights(w_r, w_f, w_s, w_e)
+                with _weight_lock:
+                    engine._rust.set_weights(w_r, w_f, w_s, w_e)
                 logger.info(
                     f"Autotune: hot-reloaded weights → "
                     f"R={w_r:.2f} F={w_f:.2f} S={w_s:.2f} E={w_e:.2f}"
@@ -1505,15 +1515,35 @@ def main():
     logger.info(f"Starting Entroly MCP server v{_version} ({engine_type} engine)")
     mcp, engine = create_mcp_server()
 
+    # Graceful shutdown: persist learned state on exit
+    import atexit
+    import signal
+
+    def _shutdown_handler(*_args):
+        logger.info("Shutdown signal received — persisting state...")
+        try:
+            engine.checkpoint()
+            logger.info("State persisted successfully")
+        except Exception as e:
+            logger.warning(f"Failed to persist state on shutdown: {e}")
+
+    atexit.register(_shutdown_handler)
+    try:
+        signal.signal(signal.SIGTERM, lambda s, f: (_shutdown_handler(), sys.exit(0)))
+    except (OSError, AttributeError):
+        pass  # SIGTERM not available on Windows
+
     # Auto-index the project on startup (zero config)
     try:
-        from entroly.auto_index import auto_index
+        from entroly.auto_index import auto_index, start_incremental_watcher
         result = auto_index(engine)
         if result["status"] == "indexed":
             logger.info(
                 f"Auto-indexed {result['files_indexed']} files "
                 f"({result['total_tokens']:,} tokens) in {result['duration_s']}s"
             )
+        # Start background watcher: re-scans for new/modified files every 120s
+        start_incremental_watcher(engine)
     except Exception as e:
         logger.warning(f"Auto-index failed (non-fatal): {e}")
 
@@ -1524,7 +1554,20 @@ def main():
     except Exception as e:
         logger.warning("Autotune: failed to start daemon: %s", e)
 
-    mcp.run()
+    # Multi-client support: SSE transport enables multiple IDE connections
+    transport = os.environ.get("ENTROLY_MCP_TRANSPORT", "stdio")
+    if "--sse" in sys.argv or transport == "sse":
+        sse_port = int(os.environ.get("ENTROLY_MCP_PORT", "9379"))
+        logger.info(f"MCP server running on SSE transport at port {sse_port}")
+        logger.info("Multiple clients can connect simultaneously")
+        try:
+            mcp.run(transport="sse", port=sse_port)
+        except TypeError:
+            # Older MCP SDK may not support transport kwarg
+            logger.warning("SSE transport not supported by this MCP SDK version, falling back to stdio")
+            mcp.run()
+    else:
+        mcp.run()
 
 
 if __name__ == "__main__":

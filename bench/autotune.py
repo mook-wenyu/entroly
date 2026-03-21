@@ -143,9 +143,73 @@ def mutate_random(config: dict, rng: random.Random) -> tuple[dict, str, float, f
 
 
 def save_config(config: dict, path: Path) -> None:
-    with open(path, "w") as f:
-        json.dump(config, f, indent=2)
-        f.write("\n")
+    """Atomically write config: tmpfile + fsync + rename. Crash-safe."""
+    import os as _os
+    import tempfile as _tmp
+    data = json.dumps(config, indent=2) + "\n"
+    fd, tmp_path = _tmp.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        _os.write(fd, data.encode())
+        _os.fsync(fd)
+        _os.close(fd)
+        _os.replace(tmp_path, str(path))
+    except BaseException:
+        try:
+            _os.close(fd)
+        except OSError:
+            pass
+        try:
+            _os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def snapshot_config(config_path: Path) -> Path | None:
+    """Save a timestamped snapshot of the current config before tuning.
+
+    Stored at <config_dir>/tuning_config.<timestamp>.bak.json.
+    Enables `autotune --rollback` to restore the last known-good config.
+    """
+    if not config_path.exists():
+        return None
+    ts = int(time.time())
+    backup = config_path.with_suffix(f".{ts}.bak.json")
+    import shutil
+    shutil.copy2(config_path, backup)
+    return backup
+
+
+def rollback_config(config_path: Path) -> dict[str, Any]:
+    """Restore the most recent backup of tuning_config.json.
+
+    Returns dict with status, restored_from path, and the restored config.
+    """
+    if config_path is None:
+        config_path = Path(__file__).parent.parent / "tuning_config.json"
+
+    # Find all backups: tuning_config.*.bak.json
+    parent = config_path.parent
+    stem = config_path.stem  # "tuning_config"
+    backups = sorted(
+        parent.glob(f"{stem}.*.bak.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+
+    if not backups:
+        return {"status": "no_backup_found"}
+
+    latest = backups[0]
+    import shutil
+    shutil.copy2(latest, config_path)
+    restored = json.loads(config_path.read_text())
+
+    return {
+        "status": "rolled_back",
+        "restored_from": str(latest),
+        "config": restored,
+    }
 
 
 def autotune(
@@ -160,6 +224,12 @@ def autotune(
         config_path = Path(__file__).parent.parent / "tuning_config.json"
 
     rng = random.Random(seed)
+
+    # Snapshot current config before mutating (enables --rollback)
+    backup = snapshot_config(config_path)
+    if backup and verbose:
+        print(f"  Config snapshot saved: {backup}")
+
     best_config = load_tuning_config(config_path)
     best_result = evaluate(best_config, cases_path)
     best_score = best_result["composite_score"]
@@ -277,7 +347,20 @@ def main():
         "--json", action="store_true",
         help="Output results as JSON"
     )
+    parser.add_argument(
+        "--rollback", action="store_true",
+        help="Restore the previous tuning_config.json (undo last autotune)"
+    )
     args = parser.parse_args()
+
+    if args.rollback:
+        cfg_path = args.config or (Path(__file__).parent.parent / "tuning_config.json")
+        result = rollback_config(cfg_path)
+        if result["status"] == "no_backup_found":
+            print("No backup found — nothing to roll back.")
+            sys.exit(1)
+        print(f"Rolled back to: {result['restored_from']}")
+        sys.exit(0)
 
     result = autotune(
         iterations=args.iterations,

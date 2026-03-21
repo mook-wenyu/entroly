@@ -39,11 +39,79 @@ def load_cases(path: Path | None = None) -> list[dict]:
         return json.load(f)
 
 
+def validate_tuning_config(config: dict) -> list[str]:
+    """Validate tuning_config.json schema and value ranges.
+
+    Returns a list of error strings. Empty list means valid.
+    """
+    errors: list[str] = []
+
+    # Required top-level sections
+    required_sections = ["weights", "decay", "knapsack"]
+    for sec in required_sections:
+        if sec not in config:
+            errors.append(f"missing required section: '{sec}'")
+
+    # Weights: must be numeric, positive, sum to ~1.0
+    w = config.get("weights", {})
+    weight_keys = ["recency", "frequency", "semantic_sim", "entropy"]
+    for k in weight_keys:
+        if k not in w:
+            errors.append(f"weights.{k} missing")
+        elif not isinstance(w[k], (int, float)):
+            errors.append(f"weights.{k} must be numeric, got {type(w[k]).__name__}")
+        elif w[k] < 0:
+            errors.append(f"weights.{k} must be >= 0, got {w[k]}")
+
+    if all(k in w and isinstance(w[k], (int, float)) for k in weight_keys):
+        total = sum(w[k] for k in weight_keys)
+        if abs(total - 1.0) > 0.01:
+            errors.append(f"weights must sum to ~1.0, got {total:.4f}")
+
+    # Range-checked numeric fields: (section, key, min, max)
+    range_checks: list[tuple[str, str, float, float]] = [
+        ("decay", "half_life_turns", 1, 1000),
+        ("decay", "min_relevance_threshold", 0.0, 1.0),
+        ("knapsack", "exploration_rate", 0.0, 1.0),
+        ("sliding_window", "long_window_fraction", 0.0, 1.0),
+        ("prism", "learning_rate", 0.0, 1.0),
+        ("prism", "beta", 0.0, 1.0),
+        ("egtc", "alpha", 0.0, 10.0),
+        ("egtc", "gamma", 0.0, 10.0),
+        ("egtc", "epsilon", 0.0, 10.0),
+        ("egtc", "fisher_scale", 0.0, 5.0),
+        ("ecdb", "min_budget", 1, 100000),
+        ("ecdb", "max_fraction", 0.0, 1.0),
+        ("ios", "skeleton_info_factor", 0.0, 1.0),
+        ("ios", "reference_info_factor", 0.0, 1.0),
+        ("ios", "diversity_floor", 0.0, 1.0),
+    ]
+    for section, key, lo, hi in range_checks:
+        sec = config.get(section, {})
+        if key in sec:
+            val = sec[key]
+            if not isinstance(val, (int, float)):
+                errors.append(f"{section}.{key} must be numeric, got {type(val).__name__}")
+            elif val < lo or val > hi:
+                errors.append(f"{section}.{key}={val} out of range [{lo}, {hi}]")
+
+    return errors
+
+
 def load_tuning_config(path: Path | None = None) -> dict:
     if path is None:
         path = Path(__file__).parent.parent / "tuning_config.json"
     with open(path) as f:
-        return json.load(f)
+        config = json.load(f)
+
+    errors = validate_tuning_config(config)
+    if errors:
+        import logging
+        log = logging.getLogger("entroly")
+        for err in errors:
+            log.warning(f"tuning_config validation: {err}")
+
+    return config
 
 
 def create_engine_from_config(config: dict):
