@@ -6,6 +6,8 @@
 
 <p align="center">
   <b>Information-theoretic context compression for AI coding agents.</b>
+  <br/>
+  <i>40% fewer tokens. 100% codebase coverage. < 10ms overhead. Zero config changes.</i>
 </p>
 
 <p align="center">
@@ -14,61 +16,52 @@
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/PRs-Welcome-brightgreen" alt="PRs Welcome">
   <img src="https://img.shields.io/pypi/v/entroly?color=blue&label=PyPI" alt="PyPI">
-  <img src="https://img.shields.io/badge/Tests-375%20Passing-success" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-436%20Passing-success" alt="Tests">
   <img src="https://img.shields.io/badge/Docker-ghcr.io-blue?logo=docker" alt="Docker">
 </p>
 
 ---
 
-## Quick Start (60 seconds)
+## What You Get
 
-<details open>
-<summary><b>🐧 Linux / 🍎 macOS (Terminal)</b></summary>
+- **40% token reduction** on average — your AI sees the same codebase, but pays for less
+- **100% codebase coverage** — every file is visible at variable resolution, not just the top 5 matches
+- **< 10ms overhead** per request — invisible to the developer
+- **Zero code changes** — drop-in MCP server or transparent HTTP proxy
+- **Self-improving** — RL learns better context selection from every session outcome
+- **Cross-platform** — native on Linux, macOS, and Windows (no WSL required)
+
+---
+
+## Quick Start
 
 ```bash
-# Install
 pip install entroly
-
-# Option A: Add to your AI tool (auto-detects Cursor, VS Code, Claude Desktop)
-entroly init
-
-# Option B: Invisible proxy mode (works with ANY AI tool)
-entroly proxy --quality balanced
-
-# Check it's working
-entroly status
-
-# See live metrics dashboard
-entroly dashboard
+entroly init        # auto-detects Cursor, VS Code, Claude Desktop, Windsurf
+entroly status      # verify it's running
 ```
+
+That's it. Entroly runs as an MCP server and auto-indexes your codebase on the first request.
+
+For proxy mode (works with any AI tool, no IDE plugin needed):
+
+```bash
+pip install entroly[proxy]
+entroly proxy --quality balanced
+# Point your AI tool's API base URL to http://localhost:9377/v1
+```
+
+<details>
+<summary><b>Windows-specific notes</b></summary>
+
+- If `pip` is not on your PATH, use `python -m pip install entroly`
+- Entroly runs natively — no WSL required
+- Docker Desktop is optional
+- `entroly init` auto-detects Claude Desktop config at `%APPDATA%\Claude\`
 </details>
 
 <details>
-<summary><b>🪟 Windows (PowerShell / CMD)</b></summary>
-
-```powershell
-# Install
-pip install entroly
-
-# Option A: Add to your AI tool (auto-detects Cursor, VS Code, Claude Desktop)
-entroly init
-
-# Option B: Invisible proxy mode (works with ANY AI tool)
-entroly proxy --quality balanced
-
-# Check it's working
-entroly status
-
-# See live metrics dashboard
-entroly dashboard
-```
-
-> **Note:** On Windows, Entroly runs natively — no WSL required. Docker Desktop is optional.
-> If you see `pip not found`, use `python -m pip install entroly` instead.
-</details>
-
-<details>
-<summary><b>🐳 Docker (any platform)</b></summary>
+<summary><b>Docker (any platform)</b></summary>
 
 ```bash
 docker pull ghcr.io/juyterman1000/entroly:latest
@@ -80,20 +73,20 @@ Multi-arch: `linux/amd64` and `linux/arm64` (Apple Silicon, AWS Graviton).
 
 **Quality presets:** `--quality speed` | `fast` | `balanced` | `quality` | `max` (or any float 0.0-1.0)
 
-**Troubleshooting:** Run `entroly doctor` or see the [Troubleshooting](#troubleshooting) section below.
+**Something not working?** Run `entroly doctor` — it checks everything automatically.
 
 ---
 
 Every AI coding tool — Cursor, Copilot, Claude Code, Cody — manages context with dumb heuristics: stuff tokens until the window fills, then cut. Entroly uses mathematics to compress an **entire codebase** into the optimal context window, and then **learns** which types of context produce better outcomes.
 
-##  The Problem
+## The Problem
 
 Current AI tools use **Cosine Similarity** (Vector Search). It's great for finding "things that look like my query," but terrible for coding because:
 1. **Context Blindness**: Finds "the top 5 files" but misses the 6th file with the critical interface definition.
 2. **Boilerplate Waste**: 40% of retrieved code is often imports or repetitive boilerplate.
 3. **Static Heuristics**: Selection weights never improve — every session starts from zero.
 
-##  The Solution: Entroly
+## The Solution: Entroly
 
 Entroly replaces "dumb search" with **Information-Theoretic Compression + Online RL**. It treats the context window as a finite resource, uses principled combinatorial optimization to fill it, and learns better selection strategies from every session outcome.
 
@@ -376,26 +369,13 @@ Run `entroly init` — it auto-detects your IDE and generates the correct MCP co
 
 The proxy is an invisible HTTP layer that intercepts every LLM request, optimizes context with the full pipeline (ECC + IOS + EGTC + APA + SAST), and forwards it transparently. < 10ms overhead.
 
-<details open>
-<summary><b>🐧 Linux / 🍎 macOS</b></summary>
-
 ```bash
 pip install entroly[proxy]
 entroly proxy --quality balanced
 ```
-</details>
 
-<details>
-<summary><b>🪟 Windows (PowerShell)</b></summary>
-
-```powershell
-pip install entroly[proxy]
-entroly proxy --quality balanced
-```
-
-> On Windows, the proxy binds to `127.0.0.1:9377` by default.
-> No admin rights required. Firewall prompt may appear for network access.
-</details>
+> **Windows:** The proxy binds to `127.0.0.1:9377`. No admin rights required.
+> Firewall may prompt for network access — allow it.
 
 Optional flags:
 ```bash
@@ -569,11 +549,11 @@ EntrolyConfig(
 | `entroly serve` | Start MCP server (default — used by Cursor, Claude Code) |
 | `entroly proxy` | Start invisible prompt compiler proxy on :9377 |
 | `entroly dashboard` | Launch value dashboard on :9378 |
-| `entroly demo` | 🆕 Run before/after comparison showing token savings |
-| `entroly doctor` | 🆕 7-point diagnostic check (Python, Rust engine, config, proxy, index, weights, Docker) |
-| `entroly digest` | 🆕 Weekly summary of optimization value delivered |
-| `entroly role` | 🆕 Apply role-based weight presets (`frontend` / `backend` / `sre` / `data` / `fullstack`) |
-| `entroly migrate` | 🆕 Auto-migrate config/index/checkpoints to current version |
+| `entroly demo` | Run before/after comparison showing token savings |
+| `entroly doctor` | 7-point diagnostic check (Python, Rust engine, config, proxy, index, weights, Docker) |
+| `entroly digest` | Weekly summary of optimization value delivered |
+| `entroly role` | Apply role-based weight presets (`frontend` / `backend` / `sre` / `data` / `fullstack`) |
+| `entroly migrate` | Auto-migrate config/index/checkpoints to current version |
 | `entroly health` | Run code health analysis — A-F grade (clones, dead symbols, god files, arch violations) |
 | `entroly autotune` | Run autonomous hyperparameter optimization (mutate → evaluate → keep) |
 | `entroly benchmark` | Run competitive benchmark (Entroly vs Raw vs Top-K) |
@@ -617,7 +597,7 @@ Entroly integrates with [hippocampus-sharp-memory](https://pypi.org/project/hipp
 > **First step:** Run `entroly doctor` — it checks everything automatically.
 
 <details>
-<summary><b>🐧 Linux</b></summary>
+<summary><b>Linux</b></summary>
 
 **Docker not needed:**
 ```bash
@@ -633,7 +613,7 @@ entroly proxy --port 9378
 </details>
 
 <details>
-<summary><b>🍎 macOS</b></summary>
+<summary><b>macOS</b></summary>
 
 **Apple Silicon (M1/M2/M3/M4):**
 ```bash
@@ -656,7 +636,7 @@ pip install entroly[full]
 </details>
 
 <details>
-<summary><b>🪟 Windows</b></summary>
+<summary><b>Windows</b></summary>
 
 **pip not found:**
 ```powershell
