@@ -23,6 +23,7 @@ import hashlib
 import json
 import logging
 import math
+import os
 import re
 import sys
 import threading
@@ -219,6 +220,88 @@ def _dp_round(value: int, granularity: int = 100) -> int:
     return (value // granularity) * granularity
 
 
+# ── Progressive Conversation Compression ──────────────────────────────────
+
+
+def compress_conversation_messages(
+    messages: list[dict],
+    context_window: int = 128_000,
+) -> list[dict]:
+    """Apply progressive multi-resolution compression to conversation messages.
+
+    Uses the Rust Causal Information DAG Pruner to surgically compress
+    tool calls, tool results, and thinking blocks while preserving user
+    and assistant messages.  Triggered when context utilization > 70%.
+
+    Returns a new messages list with compressed content where appropriate.
+    """
+    if not messages:
+        return messages
+
+    # Estimate utilization (rough: 4 chars ≈ 1 token)
+    total_chars = sum(len(m.get("content", "")) for m in messages)
+    total_tokens_est = total_chars // 4
+    utilization = total_tokens_est / max(context_window, 1)
+
+    if utilization < 0.70:
+        return messages  # no compression needed
+
+    try:
+        from entroly_core import py_progressive_thresholds, py_compress_block
+        import json as _json
+
+        # Build block descriptors for Rust
+        blocks = []
+        for i, msg in enumerate(messages):
+            content = msg.get("content", "")
+            role = msg.get("role", "user")
+            tool_name = msg.get("name") or msg.get("tool_name")
+            token_count = len(content) // 4  # rough estimate
+            blocks.append({
+                "index": i,
+                "role": role,
+                "content": content,
+                "token_count": token_count,
+                "tool_name": tool_name,
+                "timestamp": float(i),
+            })
+
+        recency_cutoff = max(0, len(blocks) - 6)
+        result_json = py_progressive_thresholds(blocks, utilization, recency_cutoff)
+        assignments = _json.loads(result_json)
+
+        # Apply compression
+        compressed = []
+        for i, msg in enumerate(messages):
+            resolution = "verbatim"
+            for a in assignments:
+                if int(a["index"]) == i:
+                    resolution = a["resolution"]
+                    break
+
+            if resolution == "verbatim":
+                compressed.append(msg)
+            else:
+                content = msg.get("content", "")
+                role = msg.get("role", "user")
+                tool_name = msg.get("name") or msg.get("tool_name")
+                token_count = len(content) // 4
+
+                new_content = py_compress_block(
+                    role, content, token_count, resolution, tool_name
+                )
+                new_msg = dict(msg)
+                new_msg["content"] = new_content
+                compressed.append(new_msg)
+
+        return compressed
+    except ImportError:
+        return messages  # Rust not available, pass through
+    except Exception as e:
+        logger.debug("Conversation compression skipped: %s", e)
+        return messages
+
+
 # ── Proxy ────────────────────────────────────────────────────────────────
 
 
@@ -350,6 +433,15 @@ class PromptCompilerProxy:
         headers = {k: v for k, v in request.headers.items()}
         provider = detect_provider(path, headers)
 
+        # ── Progressive conversation compression ──
+        # Surgically compress tool calls/results and thinking blocks when
+        # context utilization is high, before the optimization pipeline runs.
+        if "messages" in body and self.config.enable_conversation_compression:
+            body["messages"] = compress_conversation_messages(
+                body["messages"],
+                context_window=getattr(self.config, "context_window", 128_000),
+            )
+
         # Gap #28: Bypass mode — forward unmodified, no optimization
         if self._bypass:
             with self._stats_lock:
@@ -369,7 +461,6 @@ class PromptCompilerProxy:
         warmup_task = asyncio.create_task(self._warmup_connection(target_url))
 
         # Per-client key for trajectory isolation (hash of auth header)
-        import hashlib
         auth_raw = headers.get("authorization", "") or headers.get("x-api-key", "")
         client_key = hashlib.sha256(auth_raw.encode()).hexdigest()[:12] if auth_raw else "_default"
 
@@ -670,7 +761,11 @@ class PromptCompilerProxy:
         """Forward a streaming request and proxy the SSE response."""
         # Check circuit breaker
         if not self._breaker.allow_request():
-            logger.warning("Circuit breaker open — forwarding unmodified")
+            return JSONResponse(
+                {"error": "circuit_breaker_open", "message": "Upstream API experiencing failures, retrying after cooldown"},
+                status_code=503,
+                headers={"Retry-After": str(int(self._breaker.cooldown_s))},
+            )
 
         async def event_generator():
             try:
