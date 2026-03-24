@@ -38,6 +38,7 @@ pub struct AgentBudgetState {
 
 /// Fragment descriptor for NKBE allocation.
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct NkbeFragment {
     pub id: String,
     pub relevance: f64,
@@ -234,8 +235,8 @@ impl NkbeAllocator {
         let total: u64 = budgets.iter().map(|&b| b as u64).sum();
         if total > 0 {
             let scale = self.global_budget as f64 / total as f64;
-            for i in 0..n {
-                budgets[i] = ((budgets[i] as f64 * scale) as u32).max(self.agents[i].min_budget);
+            for (i, budget) in budgets.iter_mut().enumerate().take(n) {
+                *budget = ((*budget as f64 * scale) as u32).max(self.agents[i].min_budget);
             }
         }
 
@@ -357,6 +358,7 @@ impl NkbeAllocator {
 /// ∂E[R]/∂wₖ = Σᵢ (aᵢ − p*ᵢ) · R · σ'(zᵢ/τ) · featureᵢₖ
 ///
 /// Returns gradient vector [Δw_recency, Δw_frequency, Δw_semantic, Δw_entropy].
+#[allow(dead_code)]
 pub fn reinforce_gradient(
     features: &[[f64; 4]],    // Per-fragment feature vectors
     selections: &[bool],       // Whether each fragment was selected
@@ -420,7 +422,7 @@ mod tests {
 
     #[test]
     fn test_softplus() {
-        assert!((softplus(0.0) - 0.6931).abs() < 0.001);
+        assert!((softplus(0.0) - std::f64::consts::LN_2).abs() < 0.001);
         assert!((softplus(100.0) - 100.0).abs() < 0.001);
         assert!(softplus(-100.0).abs() < 0.001);
     }

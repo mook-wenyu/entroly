@@ -259,6 +259,7 @@ impl PoissonRate {
 
 /// A subscriber (agent) on the cognitive bus.
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 struct Subscriber {
     agent_id: String,
     subscribed_types: Vec<EventType>,
