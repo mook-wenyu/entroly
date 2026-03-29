@@ -94,4 +94,4 @@ jobs:
         with:
           packages-dir: dist/
           skip-existing: true
-          password: ${{ secrets.PYPI_TOKEN }}
+          password: ${{ secrets.PYPI_CORE_TOKEN }}
