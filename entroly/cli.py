@@ -39,7 +39,7 @@ from pathlib import Path
 try:
     from entroly import __version__
 except ImportError:
-    __version__ = "0.5.0"
+    __version__ = "0.6.0"
 
 
 # ── ANSI colors ──
