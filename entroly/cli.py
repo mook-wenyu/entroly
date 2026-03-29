@@ -86,7 +86,7 @@ def _check_first_run() -> None:
 
   {C.GRAY}Documentation: https://github.com/juyterman1000/entroly{C.RESET}
   {C.GRAY}This message appears once. Run entroly --help anytime.{C.RESET}
-""")
+""", file=sys.stderr)
     try:
         _FIRST_RUN_MARKER.write_text("1")
     except OSError:
@@ -111,7 +111,8 @@ def _check_for_update() -> None:
                     print(
                         f"  {C.YELLOW}Update available:{C.RESET} "
                         f"{__version__} -> {data['newer']}  "
-                        f"{C.GRAY}(pip install --upgrade entroly){C.RESET}"
+                        f"{C.GRAY}(pip install --upgrade entroly){C.RESET}",
+                        file=sys.stderr,
                     )
                 return
     except (OSError, json.JSONDecodeError, KeyError):
@@ -148,7 +149,8 @@ def _check_for_update() -> None:
                 print(
                     f"  {C.YELLOW}Update available:{C.RESET} "
                     f"{__version__} -> {newer}  "
-                    f"{C.GRAY}(pip install --upgrade entroly){C.RESET}"
+                    f"{C.GRAY}(pip install --upgrade entroly){C.RESET}",
+                    file=sys.stderr,
                 )
         except Exception:
             pass  # Never block or error on update checks
@@ -1657,6 +1659,16 @@ def cmd_optimize(args):
             source = frag.get("source", "unknown")
             tc = frag.get("token_count", 0)
             content = frag.get("content", "") or frag.get("preview", "")
+            # If content is truncated (ends with ...), read full file from disk
+            if content.endswith("...") and source:
+                file_path = source.replace("file:", "") if source.startswith("file:") else source
+                resolved = Path(file_path)
+                if not resolved.is_absolute():
+                    resolved = Path.cwd() / resolved
+                try:
+                    content = resolved.read_text(encoding="utf-8", errors="replace")
+                except Exception:
+                    pass  # keep truncated preview as fallback
             # Detect language from file extension
             ext = source.rsplit(".", 1)[-1] if "." in source else ""
             lang_map = {
