@@ -7,7 +7,7 @@
     "entroly-mcp": "./index.js"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"No JS tests yet\""
   },
   "repository": {
     "type": "git",
