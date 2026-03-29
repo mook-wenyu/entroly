@@ -39,7 +39,20 @@ from pathlib import Path
 try:
     from entroly import __version__
 except ImportError:
-    __version__ = "0.6.1"
+    __version__ = "0.6.2"
+
+# ── Force UTF-8 output on Windows ──
+# Windows terminals default to cp1252 which can't encode ✓/✗/─/⚡.
+# Reconfigure stdout/stderr to UTF-8 with error replacement so print()
+# never raises UnicodeEncodeError.
+if sys.platform == "win32":
+    for _stream_name in ("stdout", "stderr"):
+        _stream = getattr(sys, _stream_name)
+        if hasattr(_stream, "reconfigure"):
+            try:
+                _stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
 
 
 # ── ANSI colors ──
@@ -603,11 +616,47 @@ def cmd_benchmark(args):
     """entroly benchmark — run competitive comparison."""
     print(f"\n{C.CYAN}{C.BOLD}  Entroly Competitive Benchmark{C.RESET}\n")
 
-    bench_script = os.path.join(os.path.dirname(__file__), "..", "bench", "compare.py")
-    if os.path.exists(bench_script):
-        subprocess.run([sys.executable, bench_script])
+    from entroly.server import EntrolyEngine
+    from entroly.auto_index import auto_index
+
+    engine = EntrolyEngine()
+    auto_index(engine)
+
+    queries = [
+        "How does authentication work?",
+        "Find security vulnerabilities",
+        "Explain the data model",
+    ]
+
+    # Get total tokens
+    if engine._use_rust:
+        stats = engine._rust.stats()
+        total = stats.get("session", {}).get("total_tokens_tracked", 0)
     else:
-        print(f"  {C.RED}Benchmark script not found at {bench_script}{C.RESET}")
+        total = getattr(engine, "_total_token_count", 0)
+
+    if total == 0:
+        print(f"  {C.YELLOW}No files indexed. Run from a project directory.{C.RESET}")
+        return
+
+    print(f"  Codebase: {total:,} total tokens\n")
+    print(f"  {'Query':<45} {'Raw':>8} {'Entroly':>8} {'Saved':>6}")
+    print(f"  {'─'*45} {'─'*8} {'─'*8} {'─'*6}")
+
+    total_saved = 0
+    for q in queries:
+        engine.advance_turn()
+        opt = engine.optimize_context(token_budget=4096, query=q)
+        selected = opt.get("selected_fragments", []) or opt.get("selected", [])
+        used = sum(f.get("token_count", 0) for f in selected)
+        saved = max(total - used, 0)
+        pct = (saved * 100) // max(total, 1)
+        total_saved += saved
+        print(f"  {q:<45} {total:>7,} {used:>7,} {pct:>5}%")
+
+    avg_pct = (total_saved * 100) // max(total * len(queries), 1)
+    print(f"\n  {C.GREEN}{C.BOLD}Average reduction: {avg_pct}%{C.RESET}")
+    print(f"  {C.GRAY}Entroly selects only the fragments relevant to each query.{C.RESET}\n")
 
 
 def cmd_status(args):
@@ -757,6 +806,9 @@ def cmd_clean(args):
 
     if args.yes:
         confirmed = True
+    elif not sys.stdin.isatty():
+        # Non-interactive (piped/redirected) — skip prompt, default to no
+        confirmed = False
     else:
         try:
             answer = input(f"\n  {C.BOLD}Remove all cached state? [y/N]{C.RESET} ").strip().lower()
@@ -775,11 +827,12 @@ def cmd_clean(args):
         removed += 1
         print(f"  {C.GREEN}Removed{C.RESET} {checkpoint_dir}")
 
-    # Remove index files
+    # Remove index files (skip those already removed with checkpoints dir)
     for idx_file in index_files:
-        idx_file.unlink()
-        removed += 1
-        print(f"  {C.GREEN}Removed{C.RESET} {idx_file}")
+        if idx_file.exists():
+            idx_file.unlink()
+            removed += 1
+            print(f"  {C.GREEN}Removed{C.RESET} {idx_file}")
 
     # Remove pull cache
     if pull_cache.exists():
@@ -1184,7 +1237,12 @@ def cmd_demo(args):
     avg_pct = (total_saved * 100) // max(total_tokens_raw * len(sample_queries), 1)
 
     # Show projected savings across popular models
-    print(f"  {C.GREEN}{C.BOLD}Average: {avg_pct}% fewer tokens per request{C.RESET}\n")
+    if avg_pct == 0 and total_tokens_raw < 4096:
+        print(f"  {C.GREEN}{C.BOLD}Your entire codebase fits within the token budget!{C.RESET}")
+        print(f"  {C.GRAY}Entroly shines on larger codebases (>4K tokens) where it selects{C.RESET}")
+        print(f"  {C.GRAY}only relevant fragments instead of sending everything.{C.RESET}\n")
+    else:
+        print(f"  {C.GREEN}{C.BOLD}Average: {avg_pct}% fewer tokens per request{C.RESET}\n")
     print(f"  {C.BOLD}Projected daily savings (100 requests/day):{C.RESET}")
     for model in models:
         daily_cost = estimate_cost(total_saved // len(sample_queries) * 100, model)
@@ -1491,7 +1549,14 @@ def cmd_role(args):
         },
     }
 
-    action = getattr(args, "role_action", "list")
+    # Support both `entroly role list` and `entroly role --preset backend`
+    preset = getattr(args, "preset", None)
+    if preset:
+        # --preset is shorthand for "apply <name>"
+        action = "apply"
+        args.name = preset
+    else:
+        action = getattr(args, "role_action", "list")
 
     if action == "list":
         for name, info in roles.items():
@@ -2054,12 +2119,16 @@ def main():
         help="Role-based weight presets (frontend, backend, sre, data, fullstack)",
     )
     role_parser.add_argument(
-        "role_action", choices=["list", "apply"],
-        help="List available roles or apply one",
+        "role_action", nargs="?", choices=["list", "apply"], default="list",
+        help="List available roles or apply one (default: list)",
     )
     role_parser.add_argument(
         "name", nargs="?", default=None,
         help="Role name to apply",
+    )
+    role_parser.add_argument(
+        "--preset", type=str, default=None,
+        help="Shorthand: entroly role --preset backend",
     )
 
     # entroly completions
@@ -2108,10 +2177,38 @@ def main():
     }
 
     handler = _dispatch.get(args.command)
+    rc = 0
     if handler:
-        handler(args)
+        try:
+            handler(args)
+        except KeyboardInterrupt:
+            print(f"\n  {C.GRAY}Interrupted.{C.RESET}")
+            rc = 130
+        except Exception as e:
+            print(f"\n  {C.RED}Error:{C.RESET} {e}", file=sys.stderr)
+            rc = 1
     else:
         parser.print_help()
+
+    # Flush and terminate immediately.
+    #
+    # We use os._exit() instead of sys.exit() because:
+    #   1. The Rust engine (entroly_core via PyO3) may hold OS-level threads
+    #      that Python's threading.join() cannot interrupt, causing sys.exit()
+    #      to block indefinitely during interpreter shutdown.
+    #   2. Python's logging shutdown flushes handlers synchronously; if the
+    #      Rust engine's log sink is slow or blocked, this hangs.
+    #   3. On Windows/PowerShell, sys.exit() raises SystemExit which can be
+    #      misinterpreted as a failure when stderr has prior output.
+    #
+    # This is the standard pattern used by pip, poetry, and other CLI tools
+    # that wrap native libraries.
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except Exception:
+        pass
+    os._exit(rc)
 
 
 if __name__ == "__main__":
