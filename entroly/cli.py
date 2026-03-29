@@ -1625,6 +1625,15 @@ def cmd_optimize(args):
     engine.advance_turn()
     opt = engine.optimize_context(token_budget=budget, query=task)
     selected = opt.get("selected_fragments", []) or opt.get("selected", [])
+    # Deduplicate fragments by source path
+    seen_sources = set()
+    deduped = []
+    for f in selected:
+        src = f.get("source", "")
+        if src not in seen_sources:
+            seen_sources.add(src)
+            deduped.append(f)
+    selected = deduped
     tokens_used = sum(f.get("token_count", 0) for f in selected)
 
     if not quiet:
