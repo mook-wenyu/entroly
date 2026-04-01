@@ -326,7 +326,7 @@ print("\n═══ B. BUDGET PRESSURE ═══")
 
 def test_budget_forces_tradeoffs():
     """With tiny budget, highest-value fragments win."""
-    e = sc.EntrolyEngine()
+    e = sc.EntrolyEngine(exploration_rate=0.0)
     # All same size (100 tokens), different relevance (recency-based)
     frag_ids = []
     for i in range(20):
@@ -411,7 +411,7 @@ print("\n═══ D. FEEDBACK LEARNING CONVERGENCE ═══")
 
 def test_feedback_convergence():
     """After 20 success signals, boosted fragment dominates selection."""
-    e = sc.EntrolyEngine()
+    e = sc.EntrolyEngine(exploration_rate=0.0)
     r_good = e.ingest("def calculate_tax(income): return income * 0.3", "tax.py", 100, False)
     r_noise = e.ingest("def unrelated_util(): pass", "util.py", 100, False)
     r_noise2 = e.ingest("x = 1  # just a variable", "var.py", 100, False)
