@@ -88,3 +88,43 @@ jobs:
         with:
           skip-existing: true
           password: ${{ secrets.PYPI_TOKEN }}
+
+  publish-npm:
+    needs: build-and-push
+    if: startsWith(github.ref, 'refs/tags/entroly-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install Rust + wasm-pack
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          source ~/.cargo/env
+          cargo install wasm-pack
+
+      - name: Build Wasm package
+        working-directory: entroly-wasm
+        run: |
+          source ~/.cargo/env
+          wasm-pack build --target nodejs --out-dir pkg
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#entroly-v}" >> $GITHUB_OUTPUT
+
+      - name: Update version in package.json
+        working-directory: entroly-wasm
+        run: |
+          npm version ${{ steps.version.outputs.VERSION }} --no-git-tag-version
+
+      - name: Publish to npm
+        working-directory: entroly-wasm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
