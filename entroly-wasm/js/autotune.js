@@ -26,9 +26,7 @@ const MAX_WEIGHT = 0.80;         // Ceiling per weight
 const JOURNAL_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
 
 
-// ═══════════════════════════════════════════════════════════════════════════
-// FEEDBACK JOURNAL — Persistent cross-session episode storage
-// ═══════════════════════════════════════════════════════════════════════════
+// --- Feedback Journal ---
 
 class FeedbackJournal {
   constructor(journalDir) {
@@ -116,9 +114,7 @@ class FeedbackJournal {
 }
 
 
-// ═══════════════════════════════════════════════════════════════════════════
-// REWARD-WEIGHTED OPTIMIZER with Natural Gradient + Exploration
-// ═══════════════════════════════════════════════════════════════════════════
+// --- Reward-Weighted Optimizer ---
 
 /**
  * Extract weight vector from an episode's stored format.
@@ -153,8 +149,7 @@ function normalizeWeights(w) {
 function optimize(episodes, currentWeights) {
   if (episodes.length < 3) return null;
 
-  // ━━━ Step 1: Global Advantage Normalization (REINFORCE++, 2025) ━━━
-  // A_i = (r_i - μ) / (σ + ε)  — normalized rewards remove bias
+  // Advantage normalization
   const rewards = episodes.map(e => e.r);
   const μ = rewards.reduce((a, b) => a + b) / rewards.length;
   const σ = Math.sqrt(rewards.reduce((s, r) => s + (r - μ) ** 2, 0) / rewards.length);
@@ -166,14 +161,11 @@ function optimize(episodes, currentWeights) {
     ? rewards.map(r => r > 0 ? 1.0 : r < 0 ? -1.0 : 0)
     : rewards.map(r => (r - μ) / (σ + 1e-8));
 
-  // ━━━ Step 2: Exponential Decay Weights (EXP3.S non-stationarity) ━━━
-  // Newer episodes matter more. γ^age gives half-life ≈ 138 episodes.
+  // Exponential decay — newer episodes matter more
   const sortedEps = [...episodes].sort((a, b) => a.t - b.t);
   const decayWeights = sortedEps.map((e, i) => DECAY_GAMMA ** (episodes.length - 1 - i));
 
-  // ━━━ Step 3: Reward-Weighted Mean (M-step of EM) ━━━
-  // w* = Σ(decay_i · advantage_i⁺ · w_i) / Σ(decay_i · advantage_i⁺)
-  // Only positive advantages contribute to attraction
+  // Reward-weighted mean: positive advantages attract, negative repel
   const attract = { w_r: 0, w_f: 0, w_s: 0, w_e: 0 };
   let attractSum = 0;
   const repel = { w_r: 0, w_f: 0, w_s: 0, w_e: 0 };
@@ -202,9 +194,7 @@ function optimize(episodes, currentWeights) {
 
   if (repelSum > 0) for (const k of WEIGHT_KEYS) repel[k] /= repelSum;
 
-  // ━━━ Step 4: Adaptive Per-Dimension Step Size (CMA-ES LED, 2024) ━━━
-  // SNR_k = |μ_k| / σ_k for each weight dimension
-  // High SNR → we're confident → larger step
+  // Per-dimension step size: high SNR → larger step
   const dimStats = {};
   for (const k of WEIGHT_KEYS) {
     const values = sortedEps.map(e => extractWeights(e.w)[k]);
@@ -219,9 +209,7 @@ function optimize(episodes, currentWeights) {
   const confidence = Math.min(1.0, N / WARMUP_EPISODES);
   const baseAlpha = confidence * MAX_BLEND_RATE;
 
-  // ━━━ Step 5: Combine Attraction & Repulsion with Natural Gradient ━━━
-  // Natural gradient: scale updates by inverse Fisher (≈ 1/variance per dim)
-  // Δw_k = α_k · (1/σ²_k) · [(attract_k - current_k) - β·(repel_k - current_k)]
+  // Natural gradient update with attraction/repulsion
   const β = repelSum > 0 ? 0.15 * Math.min(1.0, repelSum / attractSum) : 0;
   const optimal = {};
   const blended = {};
@@ -248,11 +236,10 @@ function optimize(episodes, currentWeights) {
   const normalizedOptimal = normalizeWeights(optimal);
   const normalizedBlended = normalizeWeights(blended);
 
-  // ━━━ Step 6: Exploration Bonus (UCB1-style) ━━━
+  // Exploration bonus
   const exploration = computeExplorationBonus(sortedEps);
 
-  // ━━━ Step 7: Polyak-Ruppert Average ━━━
-  // Running average of all weight vectors (optimal O(1/N) convergence)
+  // Polyak average
   const polyak = { w_r: 0, w_f: 0, w_s: 0, w_e: 0 };
   for (const ep of sortedEps) {
     const w = extractWeights(ep.w);
@@ -261,8 +248,7 @@ function optimize(episodes, currentWeights) {
   for (const k of WEIGHT_KEYS) polyak[k] /= sortedEps.length;
   const normalizedPolyak = normalizeWeights(polyak);
 
-  // ━━━ Step 8: Regret Estimation ━━━
-  // Counterfactual: how much better would optimal have done?
+  // Regret estimation
   const avgObserved = μ;
   const avgPositive = episodes.filter(e => e.r > 0).length > 0
     ? episodes.filter(e => e.r > 0).reduce((s, e) => s + e.r, 0) / episodes.filter(e => e.r > 0).length
@@ -319,9 +305,7 @@ function computeExplorationBonus(episodes) {
 }
 
 
-// ═══════════════════════════════════════════════════════════════════════════
-// CONFIG I/O
-// ═══════════════════════════════════════════════════════════════════════════
+// --- Config I/O ---
 
 function findConfigPath() {
   for (const p of [
@@ -344,9 +328,7 @@ function saveConfig(config) {
 }
 
 
-// ═══════════════════════════════════════════════════════════════════════════
-// PUBLIC API
-// ═══════════════════════════════════════════════════════════════════════════
+// --- Public API ---
 
 /**
  * Run optimization from journal data.
@@ -456,15 +438,7 @@ function runAutotune() {
 
   console.error(`[autotune] Journal: ${journal.journalPath}`);
   console.error(`[autotune] Episodes: ${stats.episodes} (${stats.successes}✓ ${stats.failures}✗ avg=${stats.avgReward} span=${stats.oldestDays}d)`);
-  console.error('[autotune]');
-  console.error('[autotune] Algorithm: Reward-Weighted Natural Policy Gradient');
-  console.error('[autotune]   - Global advantage normalization (REINFORCE++, 2025)');
-  console.error('[autotune]   - Exponential decay γ=0.995 (EXP3.S non-stationarity)');
-  console.error('[autotune]   - Per-dimension adaptive α via SNR (CMA-ES LED, 2024)');
-  console.error('[autotune]   - Fisher information regularization (natural gradient)');
-  console.error('[autotune]   - UCB1 exploration bonus');
-  console.error('[autotune]   - Polyak-Ruppert averaging');
-  console.error('[autotune]');
+
 
   if (stats.episodes < 3) {
     console.error('[autotune] ⚠ Need ≥3 feedback episodes. Use MCP tools to provide feedback:');
@@ -508,35 +482,9 @@ function runAutotune() {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// NOVEL: TASK-CONDITIONED WEIGHT PROFILES
-// ═══════════════════════════════════════════════════════════════════════════
-//
-// Key insight: debugging needs different weights than feature work.
-//   - Bug fix  → high recency (recent edits) + high semantic (match bug desc)
-//   - Feature  → high entropy (diverse context) + high frequency (core modules)
-//   - Refactor → high frequency (most-used) + high entropy (find patterns)
-//
-// The engine already classifies queries via classify_task(). We leverage this
-// to maintain PER-TASK-TYPE weight profiles and optimize each independently.
-//
-// This is genuinely novel — no system in the literature:
-//   1. Classifies developer queries into task types
-//   2. Maintains per-task-type weight profiles
-//   3. Optimizes each profile independently from real feedback
-//   4. Auto-selects the right profile at query time
-//
-// The feedback journal stores the query → we classify retroactively.
-// Each task type accumulates its own episodes → independent optimization.
-//
-// Architecture:
-//   Journal episode: { ..., q: "fix auth bug" }
-//   classify("fix auth bug") → "Debugging"
-//   profiles["Debugging"] = optimize(debugging_episodes, current_debugging_weights)
-//   profiles["Feature"]   = optimize(feature_episodes, current_feature_weights)
-//
-// At query time:
-//   classify(query) → task_type → load profiles[task_type] → set_weights()
+// --- Task-Conditioned Weight Profiles ---
+// Different tasks need different weights: debugging prioritizes recency+semantic,
+// feature work prioritizes entropy+frequency. Profiles are optimized independently.
 
 // Simple task classifier (mirrors the Rust classify_task logic)
 const TASK_PATTERNS = {
@@ -667,7 +615,7 @@ module.exports = {
   startAutotuneDaemon,
   runAutotune,
   hotReloadWeights,
-  // Novel: Task-Conditioned Profiles
+  // Task-conditioned profiles
   TaskProfileOptimizer,
   classifyQuery,
   TASK_PRIORS,
