@@ -56,7 +56,7 @@
 
   <!-- Title -->
   <text x="450" y="35" text-anchor="middle" class="title">How Entroly Optimizes Every AI Request</text>
-  <text x="450" y="52" text-anchor="middle" class="subtitle">19 Rust modules · &lt;10ms overhead · 78% token reduction · closed-loop learning</text>
+  <text x="450" y="52" text-anchor="middle" class="subtitle">19 Rust modules · &lt;10ms overhead · <tspan style="opacity:0.6">70-</tspan><tspan style="opacity:1;font-weight:700;fill:#e2e8f0">95%</tspan> token reduction · closed-loop learning</text>
 
   <!-- ════════ STAGE 1: INGEST ════════ -->
   <text x="100" y="82" text-anchor="middle" class="stage-label">① Ingest</text>
@@ -178,8 +178,8 @@
   <!-- To LLM -->
   <rect x="660" y="226" width="220" height="65" rx="6" fill="url(#box-output)" stroke="#14b8a6" stroke-width="1.5" opacity="0.9" filter="url(#boxGlow)"/>
   <text x="770" y="250" text-anchor="middle" class="box-label" font-size="13">→ Your AI Tool</text>
-  <text x="770" y="268" text-anchor="middle" class="box-metric" font-size="11">41,200 tokens (was 186,420)</text>
-  <text x="770" y="284" text-anchor="middle" class="box-metric" font-size="12">78% saved · 8.2ms</text>
+  <text x="770" y="268" text-anchor="middle" class="box-metric" font-size="11">9,300 - 55K tokens (was 186,420)</text>
+  <text x="770" y="284" text-anchor="middle" class="box-metric" font-size="12"><tspan style="opacity:0.4;font-weight:400">70-</tspan>95% saved · 8.2ms</text>
 
   <!-- Arrow from pyramid to LLM -->
   <line x1="770" y1="210" x2="770" y2="224" stroke="#34d399" stroke-width="2" marker-end="url(#arrowGreen)"/>

@@ -66,11 +66,11 @@
 
   <!-- Token bar (reduced) -->
   <text x="460" y="106" class="label">Tokens per request:</text>
-  <rect x="630" y="93" width="42" height="16" rx="4" fill="url(#barGreen)" opacity="0.8"/>
-  <text x="828" y="106" text-anchor="end" class="label-bold" fill="#86efac">41,200</text>
+  <rect x="630" y="93" width="10" height="16" rx="4" fill="url(#barGreen)" opacity="0.8"/>
+  <text x="828" y="106" text-anchor="end" class="label-bold" fill="#86efac">9,300 - 55K</text>
   <!-- Savings badge -->
   <rect x="688" y="90" width="65" height="20" rx="10" fill="#059669" opacity="0.9"/>
-  <text x="720" y="104" text-anchor="middle" class="tag" fill="#ecfdf5">-78%</text>
+  <text x="720" y="104" text-anchor="middle" class="tag" fill="#ecfdf5"><tspan style="opacity:0.5;font-weight:400">70-</tspan>95%</text>
 
   <!-- Visibility bar -->
   <text x="460" y="130" class="label">Codebase visibility:</text>
@@ -79,9 +79,9 @@
 
   <!-- Cost -->
   <text x="460" y="154" class="label">Cost per 1K requests:</text>
-  <text x="630" y="154" class="label-bold" fill="#86efac">~$124</text>
+  <text x="630" y="154" class="label-bold" fill="#86efac">$28 - $168</text>
   <rect x="688" y="141" width="75" height="20" rx="10" fill="#059669" opacity="0.9"/>
-  <text x="725" y="155" text-anchor="middle" class="tag" fill="#ecfdf5">-$436/mo</text>
+  <text x="725" y="155" text-anchor="middle" class="tag" fill="#ecfdf5">SAVE UP TO 95%</text>
 
   <!-- Learning -->
   <text x="460" y="170" class="label">Learns from outcomes:</text>
@@ -92,7 +92,7 @@
 
   <!-- Metric 1: Token Savings -->
   <g>
-    <text x="120" y="234" text-anchor="middle" class="metric" fill="#34d399" filter="url(#glow)">78%</text>
+    <text x="120" y="234" text-anchor="middle" class="metric" fill="#34d399" filter="url(#glow)"><tspan style="font-size:0.4em;opacity:0.4;font-weight:400;baseline-shift:super">70-</tspan>95%</text>
     <text x="120" y="254" text-anchor="middle" class="metric-sub">Token Reduction</text>
     <text x="120" y="268" text-anchor="middle" class="metric-sub">per request</text>
   </g>

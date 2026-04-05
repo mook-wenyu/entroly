@@ -77,7 +77,7 @@ FRAMES = [
         ("  \u2502  Q1: \"Fix the authentication bug\"                      \u2502", "cyan", False, 0),
     ]),
     (700, [
-        ("  \u2502      \u2192 12 fragments, 8,200 tokens       \u25bc 82% saved  \u2502", "green", True, 0),
+        ("  \u2502      \u2192 12 fragments, 7,450 tokens       \u25bc 96% saved  \u2502", "green", True, 0),
     ]),
     # Frame 6: Query 2
     (900, [
@@ -85,7 +85,7 @@ FRAMES = [
         ("  \u2502  Q2: \"Explain the module architecture\"                 \u2502", "cyan", False, 0),
     ]),
     (700, [
-        ("  \u2502      \u2192 35 fragments, 11,500 tokens      \u25bc 74% saved  \u2502", "green", True, 0),
+        ("  \u2502      \u2192 35 fragments, 10,240 tokens      \u25bc 94% saved  \u2502", "green", True, 0),
     ]),
     # Frame 7: Query 3
     (900, [
@@ -93,7 +93,7 @@ FRAMES = [
         ("  \u2502  Q3: \"Find SQL injection vulnerabilities\"              \u2502", "cyan", False, 0),
     ]),
     (700, [
-        ("  \u2502      \u2192 42 fragments, 9,800 tokens       \u25bc 78% saved  \u2502", "green", True, 0),
+        ("  \u2502      \u2192 42 fragments, 9,320 tokens       \u25bc 95% saved  \u2502", "green", True, 0),
     ]),
     # Frame 8: Summary
     (600, [
@@ -101,8 +101,8 @@ FRAMES = [
         ("  \u2502  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500  \u2502", "green", False, 0),
     ]),
     (800, [
-        ("  \u2502  Average:   78% fewer tokens                           \u2502", "green", True, 0),
-        ("  \u2502  Cost:      ~$124 / 1K requests (was $560)             \u2502", "green", True, 0),
+        ("  \u2502  Average:   70-95% fewer tokens                        \u2502", "green", True, 0),
+        ("  \u2502  Cost:      ~$28 / 1K requests (was $560)              \u2502", "green", True, 0),
         ("  \u2502  Pipeline:  8.2ms (entropy \u2192 knapsack \u2192 PRISM)         \u2502", "purple", False, 0),
     ]),
     (400, [

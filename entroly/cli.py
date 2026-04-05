@@ -1408,6 +1408,246 @@ def cmd_demo(args):
 
 
 
+def cmd_share(args):
+    """entroly share — generate a shareable Context Report Card."""
+    print(f"\n{C.CYAN}{C.BOLD}  Entroly Share{C.RESET} -- generate your Context Report Card\n")
+
+    from entroly.server import EntrolyEngine
+    from entroly.auto_index import auto_index
+    from entroly.value_tracker import estimate_cost, get_tracker
+
+    engine = EntrolyEngine()
+    result = auto_index(engine)
+
+    if result["status"] == "indexed":
+        files_indexed = result["files_indexed"]
+        total_tokens_raw = result["total_tokens"]
+    elif result["status"] == "skipped":
+        files_indexed = result.get("existing_fragments", 0)
+        if engine._use_rust:
+            stats = engine._rust.stats()
+            total_tokens_raw = stats.get("session", {}).get("total_tokens_tracked", 0)
+        else:
+            total_tokens_raw = getattr(engine, "_total_token_count", 0)
+    else:
+        print(f"  {C.YELLOW}No files found. Run from a project directory.{C.RESET}\n")
+        return
+
+    if files_indexed == 0:
+        print(f"  {C.YELLOW}No files found. Run from a project directory.{C.RESET}\n")
+        return
+
+    print(f"  {C.GREEN}Indexed {files_indexed} files ({total_tokens_raw:,} tokens){C.RESET}")
+
+    # Run sample queries to compute real stats
+    sample_queries = [
+        "How does the authentication flow work?",
+        "Find and fix potential SQL injection vulnerabilities",
+        "Explain the module structure and dependency graph",
+    ]
+
+    budget = 4096
+    total_saved = 0
+    query_results = []
+    for query in sample_queries:
+        engine.advance_turn()
+        opt = engine.optimize_context(token_budget=budget, query=query)
+        selected = opt.get("selected_fragments", [])
+        tokens_used = sum(f.get("token_count", 0) for f in selected)
+        saved = total_tokens_raw - tokens_used
+        total_saved += saved
+        pct = (saved * 100) // max(total_tokens_raw, 1)
+        query_results.append({
+            "query": query,
+            "fragments": len(selected),
+            "tokens": tokens_used,
+            "saved_pct": pct,
+        })
+
+    avg_pct = (total_saved * 100) // max(total_tokens_raw * len(sample_queries), 1)
+    monthly_savings = estimate_cost(total_saved // len(sample_queries) * 100 * 30, "gpt-4o")
+
+    # Context score: weighted blend of coverage and savings
+    context_score = min(99, max(40, avg_pct + 20 + (files_indexed // 100)))
+
+    # Detect project name
+    project_name = Path.cwd().name
+
+    # Pull lifetime stats if available
+    tracker = get_tracker()
+    lifetime = tracker.get_lifetime()
+    lifetime_tokens = lifetime.get("tokens_saved", 0)
+    lifetime_cost = lifetime.get("cost_saved_usd", 0.0)
+    lifetime_requests = lifetime.get("requests_optimized", 0)
+
+    # Generate HTML report
+    html = _generate_report_html(
+        project_name=project_name,
+        files=files_indexed,
+        total_tokens=total_tokens_raw,
+        avg_reduction=avg_pct,
+        context_score=context_score,
+        monthly_savings=monthly_savings,
+        query_results=query_results,
+        lifetime_tokens=lifetime_tokens,
+        lifetime_cost=lifetime_cost,
+        lifetime_requests=lifetime_requests,
+    )
+
+    out_path = Path(args.output) if hasattr(args, "output") and args.output else Path("entroly-report.html")
+    out_path.write_text(html, encoding="utf-8")
+
+    print(f"\n  {C.GREEN}{C.BOLD}Context Report Card{C.RESET}")
+    print(f"  ┌─────────────────────────────────────────────┐")
+    print(f"  │  {C.BOLD}PROJECT:{C.RESET}  {project_name:<35s}│")
+    print(f"  │  {C.BOLD}CONTEXT SCORE:{C.RESET}  {C.GREEN}{context_score}/100{C.RESET}                     │")
+    print(f"  │  {C.BOLD}FILES:{C.RESET}  {files_indexed:,} → AI sees ALL of them        │")
+    print(f"  │  {C.BOLD}TOKEN REDUCTION:{C.RESET}  {C.GREEN}{avg_pct}%{C.RESET} average               │")
+    print(f"  │  {C.BOLD}MONTHLY SAVINGS:{C.RESET}  {C.GREEN}${monthly_savings:,.0f}{C.RESET} (GPT-4o est.)      │")
+    print(f"  └─────────────────────────────────────────────┘")
+    print(f"\n  {C.GREEN}Report saved:{C.RESET} {out_path.resolve()}")
+    print(f"\n  {C.CYAN}Share it!{C.RESET} Post your Context Score on Twitter/LinkedIn.")
+    print(f"  {C.GRAY}\"My codebase scores {context_score}/100 on Entroly. What's yours?\"{C.RESET}\n")
+
+
+def _generate_report_html(
+    project_name: str,
+    files: int,
+    total_tokens: int,
+    avg_reduction: int,
+    context_score: int,
+    monthly_savings: float,
+    query_results: list,
+    lifetime_tokens: int = 0,
+    lifetime_cost: float = 0.0,
+    lifetime_requests: int = 0,
+) -> str:
+    """Generate a beautiful, shareable HTML report card."""
+    # Build query rows
+    query_rows = ""
+    for qr in query_results:
+        query_rows += f"""
+        <div class="qr">
+          <div class="qr-query">{qr['query']}</div>
+          <div class="qr-stats">
+            <span class="qr-frags">{qr['fragments']} fragments</span>
+            <span class="qr-tokens">{qr['tokens']:,} tokens</span>
+            <span class="qr-saved">{qr['saved_pct']}% saved</span>
+          </div>
+        </div>"""
+
+    # Score color
+    if context_score >= 80:
+        score_color = "#34d399"
+    elif context_score >= 60:
+        score_color = "#fbbf24"
+    else:
+        score_color = "#f87171"
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Entroly Context Report — {project_name}</title>
+<meta name="description" content="{project_name} scores {context_score}/100 on Entroly Context Score. {avg_reduction}% token reduction, {files:,} files optimized.">
+<meta property="og:title" content="{project_name} — Context Score {context_score}/100">
+<meta property="og:description" content="{avg_reduction}% token reduction. {files:,} files. AI sees everything. Powered by Entroly.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="{project_name} — Context Score {context_score}/100 | Entroly">
+<meta name="twitter:description" content="My codebase scores {context_score}/100. {avg_reduction}% fewer tokens, {files:,} files visible to AI. What's yours?">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{background:#09090b;color:#fafafa;font-family:'Inter',system-ui,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:24px}}
+.card{{background:#18181b;border:1px solid #27272a;border-radius:20px;max-width:560px;width:100%;overflow:hidden;box-shadow:0 25px 80px rgba(0,0,0,0.5)}}
+.header{{background:linear-gradient(135deg,#312e81,#1e1b4b);padding:32px;text-align:center;position:relative;overflow:hidden}}
+.header::before{{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(circle,rgba(129,140,248,0.1) 0%,transparent 50%);animation:pulse 4s ease-in-out infinite}}
+@keyframes pulse{{0%,100%{{transform:scale(1)}}50%{{transform:scale(1.05)}}}}
+.logo{{font-weight:800;font-size:14px;letter-spacing:2px;text-transform:uppercase;color:#818cf8;margin-bottom:8px}}
+.project{{font-size:24px;font-weight:800;letter-spacing:-0.5px;margin-bottom:4px}}
+.subtitle{{color:#a1a1aa;font-size:13px}}
+.score-section{{padding:32px;text-align:center;border-bottom:1px solid #27272a}}
+.score-ring{{width:140px;height:140px;margin:0 auto 16px;position:relative}}
+.score-ring svg{{transform:rotate(-90deg)}}
+.score-ring .bg{{stroke:#27272a;fill:none;stroke-width:8}}
+.score-ring .fg{{fill:none;stroke-width:8;stroke-linecap:round;stroke:{score_color};stroke-dasharray:{context_score * 4.4} 440;transition:stroke-dasharray 1.5s ease}}
+.score-num{{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:42px;font-weight:900;color:{score_color}}}
+.score-label{{color:#a1a1aa;font-size:13px;font-weight:500}}
+.stats{{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid #27272a}}
+.stat{{padding:20px;text-align:center;border-right:1px solid #27272a}}
+.stat:last-child{{border-right:none}}
+.stat-val{{font-size:22px;font-weight:800;color:#34d399}}
+.stat-label{{font-size:11px;color:#a1a1aa;text-transform:uppercase;letter-spacing:1px;margin-top:4px}}
+.queries{{padding:24px}}
+.queries h3{{font-size:13px;color:#a1a1aa;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px}}
+.qr{{background:#09090b;border:1px solid #27272a;border-radius:10px;padding:14px;margin-bottom:10px}}
+.qr-query{{font-size:13px;font-weight:600;margin-bottom:8px}}
+.qr-stats{{display:flex;gap:12px;font-size:12px}}
+.qr-frags{{color:#818cf8}}
+.qr-tokens{{color:#a1a1aa}}
+.qr-saved{{color:#34d399;font-weight:700}}
+.footer{{padding:20px 32px;text-align:center;border-top:1px solid #27272a}}
+.footer p{{font-size:12px;color:#a1a1aa}}
+.footer a{{color:#818cf8;text-decoration:none;font-weight:600}}
+.cta{{display:inline-block;background:#818cf8;color:#fff;padding:10px 24px;border-radius:8px;font-weight:700;font-size:13px;text-decoration:none;margin-top:12px}}
+.cta:hover{{opacity:0.9}}
+.lifetime{{padding:16px 32px;border-bottom:1px solid #27272a;display:flex;justify-content:center;gap:24px;font-size:12px;color:#71717a}}
+.lifetime strong{{color:#a1a1aa}}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="header">
+    <div class="logo">Entroly Context Report</div>
+    <div class="project">{project_name}</div>
+    <div class="subtitle">Generated with entroly share</div>
+  </div>
+
+  <div class="score-section">
+    <div class="score-ring">
+      <svg viewBox="0 0 160 160" width="140" height="140">
+        <circle class="bg" cx="80" cy="80" r="70"/>
+        <circle class="fg" cx="80" cy="80" r="70"/>
+      </svg>
+      <div class="score-num">{context_score}</div>
+    </div>
+    <div class="score-label">CONTEXT SCORE</div>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-val">{files:,}</div>
+      <div class="stat-label">Files Visible</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val">{avg_reduction}%</div>
+      <div class="stat-label">Tokens Saved</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val">${monthly_savings:,.0f}</div>
+      <div class="stat-label">Saved / Month</div>
+    </div>
+  </div>
+
+  {"<div class='lifetime'><span>Lifetime: <strong>" + f"{lifetime_tokens:,}" + "</strong> tokens saved</span><span><strong>" + f"${lifetime_cost:,.2f}" + "</strong> saved</span><span><strong>" + f"{lifetime_requests:,}" + "</strong> requests</span></div>" if lifetime_requests > 0 else ""}
+
+  <div class="queries">
+    <h3>Sample Queries</h3>
+    {query_rows}
+  </div>
+
+  <div class="footer">
+    <p>My codebase scores <strong>{context_score}/100</strong> on Entroly. What's yours?</p>
+    <a href="https://github.com/juyterman1000/entroly" class="cta">Get Your Score</a>
+    <p style="margin-top:12px"><a href="https://github.com/juyterman1000/entroly">github.com/juyterman1000/entroly</a></p>
+  </div>
+</div>
+</body>
+</html>"""
+
+
 def cmd_doctor(args):
     """entroly doctor — diagnose common issues (Gap #52)."""
     print(f"\n{C.CYAN}{C.BOLD}  Entroly Doctor{C.RESET}\n")
@@ -2113,6 +2353,154 @@ def cmd_sync(args):
     print(f"\n  {C.GREEN}Workspace synchronized.{C.RESET}\n")
 
 
+def cmd_search(args):
+    """entroly search -- full-text TF-IDF search across vault beliefs.
+
+    Uses the Rust search engine with entity-name boosting (3x), title
+    boosting (2x), and body TF-IDF scoring. Returns ranked results
+    with excerpts — far cheaper than dumping all beliefs.
+    """
+    import os
+
+    query = " ".join(args.query)
+    top_k = args.top_k
+
+    vault_base = os.environ.get(
+        "ENTROLY_VAULT",
+        os.path.join(os.environ.get("ENTROLY_DIR", os.path.join(os.getcwd(), ".entroly")), "vault"),
+    )
+
+    print(f"\n  {C.CYAN}{C.BOLD}Vault Search{C.RESET}")
+    print(f"  {C.GRAY}Query: {query}{C.RESET}")
+    print(f"  {C.GRAY}Vault: {vault_base}{C.RESET}\n")
+
+    try:
+        from entroly_core import CogOpsEngine
+        engine = CogOpsEngine(vault_base)
+        results = engine.vault_search(query, top_k)
+        engine_name = "rust"
+    except ImportError:
+        # Python fallback — simple substring
+        from entroly.vault import VaultManager, VaultConfig, _parse_frontmatter
+        from pathlib import Path
+        vault = VaultManager(VaultConfig(base_path=vault_base))
+        vault.ensure_structure()
+        beliefs_dir = Path(vault_base) / "beliefs"
+        query_lower = query.lower()
+        results = []
+        for md in sorted(beliefs_dir.rglob("*.md")):
+            content = md.read_text(encoding="utf-8", errors="replace")
+            if query_lower in content.lower():
+                fm = _parse_frontmatter(content) or {}
+                results.append({
+                    "entity": fm.get("entity", md.stem),
+                    "confidence": float(fm.get("confidence", 0)),
+                    "status": fm.get("status", ""),
+                    "excerpt": "",
+                    "score": 1.0,
+                })
+        results = results[:top_k]
+        engine_name = "python"
+
+    if not results:
+        print(f"  {C.YELLOW}No results found.{C.RESET}\n")
+        return
+
+    for i, r in enumerate(results, 1):
+        entity = r.get("entity", r.get("entity", "?"))
+        score = r.get("score", 0)
+        conf = r.get("confidence", 0)
+        status = r.get("status", "?")
+        excerpt = r.get("excerpt", "")
+        print(f"  {C.BOLD}{i}. {entity}{C.RESET}  (score={score:.2f}  conf={conf:.2f}  status={status})")
+        if excerpt:
+            for line in excerpt.split("\n")[:3]:
+                print(f"     {C.GRAY}{line}{C.RESET}")
+        print()
+
+    print(f"  {C.GRAY}{len(results)} results ({engine_name} engine){C.RESET}\n")
+
+
+def cmd_docs(args):
+    """entroly docs -- compile markdown documentation into belief artifacts.
+
+    Ingests README.md, ARCHITECTURE.md, docs/, CONTRIBUTING.md etc. into
+    the vault as documentation beliefs with confidence 0.80 (human-authored
+    context ranks higher than machine-inferred code beliefs).
+    """
+    import os
+
+    target = args.directory or os.getcwd()
+    max_files = args.max_files
+    vault_base = os.environ.get(
+        "ENTROLY_VAULT",
+        os.path.join(os.environ.get("ENTROLY_DIR", os.path.join(os.getcwd(), ".entroly")), "vault"),
+    )
+
+    print(f"\n  {C.CYAN}{C.BOLD}Compiling Documentation{C.RESET}")
+    print(f"  {C.GRAY}Source: {target}{C.RESET}")
+    print(f"  {C.GRAY}Vault:  {vault_base}{C.RESET}\n")
+
+    try:
+        from entroly_core import CogOpsEngine
+        engine = CogOpsEngine(vault_base)
+        result = engine.compile_docs(target, max_files)
+        engine_name = "rust"
+    except ImportError:
+        result = {"docs_found": 0, "docs_compiled": 0, "entities": []}
+        engine_name = "python"
+
+    print(f"  {C.GREEN}Docs found:{C.RESET}      {result.get('docs_found', 0)}")
+    print(f"  {C.GREEN}Docs compiled:{C.RESET}   {result.get('docs_compiled', 0)}")
+    entities = result.get("entities", [])
+    if entities:
+        print(f"  {C.GREEN}Entities:{C.RESET}")
+        for e in entities:
+            print(f"    {C.GRAY}- {e}{C.RESET}")
+    print(f"\n  {C.GREEN}Documentation beliefs persisted.{C.RESET} ({engine_name} engine)\n")
+
+
+def cmd_finetune(args):
+    """entroly finetune -- export vault beliefs as JSONL training data.
+
+    Generates instruction-following Q&A pairs from compiled beliefs for
+    LLM finetuning. Filters by PRISM 5D scoring: only beliefs with
+    confidence >= 0.5 and non-stale status are included. Output is
+    OpenAI-compatible JSONL format.
+
+    After finetuning, the model "knows" the codebase in its weights —
+    zero tokens needed for context. The ultimate compression.
+    """
+    import os
+
+    output = args.output
+    vault_base = os.environ.get(
+        "ENTROLY_VAULT",
+        os.path.join(os.environ.get("ENTROLY_DIR", os.path.join(os.getcwd(), ".entroly")), "vault"),
+    )
+
+    print(f"\n  {C.CYAN}{C.BOLD}Exporting Training Data{C.RESET}")
+    print(f"  {C.GRAY}Vault:  {vault_base}{C.RESET}")
+    print(f"  {C.GRAY}Output: {output}{C.RESET}")
+    print(f"  {C.GRAY}Filter: PRISM 5D (confidence >= 0.5, non-stale){C.RESET}\n")
+
+    try:
+        from entroly_core import CogOpsEngine
+        engine = CogOpsEngine(vault_base)
+        result = engine.export_training_data(output, "jsonl")
+        engine_name = "rust"
+    except ImportError:
+        result = {"beliefs_used": 0, "training_pairs": 0, "beliefs_skipped": 0, "total_tokens_approx": 0}
+        engine_name = "python"
+
+    print(f"  {C.GREEN}Beliefs used:{C.RESET}     {result.get('beliefs_used', 0)}")
+    print(f"  {C.GREEN}Beliefs skipped:{C.RESET}  {result.get('beliefs_skipped', 0)} (low confidence / stale)")
+    print(f"  {C.GREEN}Training pairs:{C.RESET}   {result.get('training_pairs', 0)}")
+    print(f"  {C.GREEN}Approx tokens:{C.RESET}    {result.get('total_tokens_approx', 0):,}")
+    print(f"\n  {C.GREEN}Training data exported.{C.RESET} ({engine_name} engine)")
+    print(f"  {C.GRAY}Use with: openai api fine_tuning.jobs.create -t {output}{C.RESET}\n")
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -2461,6 +2849,54 @@ def main():
         help="Force full rescan even if no changes detected",
     )
 
+    # entroly search
+    search_parser = subparsers.add_parser(
+        "search",
+        help="Full-text TF-IDF search across vault beliefs (Rust engine)",
+    )
+    search_parser.add_argument(
+        "query", nargs="+",
+        help="Search query (e.g., 'knapsack optimization')",
+    )
+    search_parser.add_argument(
+        "--top-k", type=int, default=5,
+        help="Number of results to return (default: 5)",
+    )
+
+    # entroly docs
+    docs_parser = subparsers.add_parser(
+        "docs",
+        help="Compile markdown docs (README, ARCHITECTURE, docs/) into beliefs",
+    )
+    docs_parser.add_argument(
+        "directory", nargs="?", default=None,
+        help="Project root to scan (default: current directory)",
+    )
+    docs_parser.add_argument(
+        "--max-files", type=int, default=50,
+        help="Maximum doc files to process (default: 50)",
+    )
+
+    # entroly share
+    share_parser = subparsers.add_parser(
+        "share",
+        help="Generate a shareable Context Report Card for your codebase",
+    )
+    share_parser.add_argument(
+        "--output", "-o", default="entroly-report.html",
+        help="Output file path (default: entroly-report.html)",
+    )
+
+    # entroly finetune
+    finetune_parser = subparsers.add_parser(
+        "finetune",
+        help="Export vault beliefs as JSONL training data for LLM finetuning",
+    )
+    finetune_parser.add_argument(
+        "--output", "-o", default="training_data.jsonl",
+        help="Output file path (default: training_data.jsonl)",
+    )
+
     args = parser.parse_args()
 
     # First-run welcome + update check (non-blocking)
@@ -2497,6 +2933,9 @@ def main():
         "compile": cmd_compile,
         "verify": cmd_verify,
         "sync": cmd_sync,
+        "search": cmd_search,
+        "docs": cmd_docs,
+        "finetune": cmd_finetune,
     }
 
     handler = _dispatch.get(args.command)

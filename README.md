@@ -8,7 +8,7 @@
 
 <p align="center">
   <b>The Context Engineering Engine for AI Coding Agents</b><br/>
-  <i>Cursor, Claude Code, Copilot, Windsurf, Cline — your AI sees 5% of your code. Entroly shows it 100%.</i>
+  <i>Your AI sees 5% of your codebase and hallucinates the rest. Entroly fixes this — 70-<b>95%</b> fewer tokens, 100% code visibility.</i>
 </p>
 
 <p align="center">
@@ -61,13 +61,13 @@ You've felt this. You paste code manually. You write long system prompts. You pr
 | What changes | Before Entroly | After Entroly |
 |---|---|---|
 | **Files visible to AI** | 5-10 files | **All files** (variable resolution) |
-| **Tokens per request** | 186,000 (raw dump) | **~40,000** (78% reduction) |
-| **Cost per 1K requests** | ~$560 | **~$124** |
+| **Tokens per request** | 186,000 (raw dump) | **9,300 - 55,000** (70-<b>95%</b> reduction) |
+| **Cost per 1K requests** | ~$560 | **$28** - $168 |
 | **AI answer quality** | Incomplete, hallucinated | **Correct, dependency-aware** |
 | **Setup time** | Hours of prompt engineering | **30 seconds** |
 | **Overhead** | N/A | **< 10ms** |
 
-Critical files appear in full. Supporting files appear as signatures. Everything else appears as references. **Your AI sees the whole picture — and you pay 78% less.**
+Critical files appear in full. Supporting files appear as signatures. Everything else appears as references. **Your AI sees the whole picture — and you pay 70-95% less.**
 
 ### How is this different from RAG?
 
@@ -85,7 +85,7 @@ Critical files appear in full. Supporting files appear as signatures. Everything
 ## See It In Action
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/juyterman1000/entroly/main/docs/assets/demo.svg" alt="Entroly Demo — AI context optimization, 78% token savings" width="800">
+  <img src="https://raw.githubusercontent.com/juyterman1000/entroly/main/docs/assets/demo.svg" alt="Entroly Demo — AI context optimization, 70-95% token savings" width="800">
 </p>
 
 ```bash

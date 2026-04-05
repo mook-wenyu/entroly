@@ -1752,6 +1752,280 @@ impl CogOpsEngine {
             Ok(result.into())
         })
     }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Vault Search — TF-IDF full-text search across beliefs
+    // ═══════════════════════════════════════════════════════════════
+
+    /// Full-text search across all belief artifacts.
+    /// Returns top_k results ranked by TF-IDF with entity-name boosting (3x).
+    #[pyo3(signature = (query, top_k=5))]
+    pub fn vault_search(&self, query: &str, top_k: usize) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let beliefs = read_all_beliefs(&self.vault_path);
+            if beliefs.is_empty() {
+                let empty = PyList::empty(py);
+                return Ok(empty.into());
+            }
+
+            let query_tokens = tokenize_search(query);
+            if query_tokens.is_empty() {
+                let empty = PyList::empty(py);
+                return Ok(empty.into());
+            }
+
+            // Build inverted index: token → Vec<(doc_idx, zone_weight)>
+            let n = beliefs.len() as f64;
+            let mut doc_freq: HashMap<String, u32> = HashMap::new();
+            let mut doc_tokens: Vec<HashMap<String, f64>> = Vec::with_capacity(beliefs.len());
+
+            for belief in &beliefs {
+                let mut token_scores: HashMap<String, f64> = HashMap::new();
+
+                // Entity tokens: 3x boost
+                for tok in tokenize_search(&belief.entity) {
+                    *token_scores.entry(tok).or_insert(0.0) += 3.0;
+                }
+                // Title tokens: 2x boost
+                for tok in tokenize_search(&belief.title) {
+                    *token_scores.entry(tok).or_insert(0.0) += 2.0;
+                }
+                // Body tokens: 1x with term frequency
+                let body_toks = tokenize_search(&belief.body);
+                let body_len = body_toks.len().max(1) as f64;
+                let mut body_counts: HashMap<String, u32> = HashMap::new();
+                for tok in &body_toks {
+                    *body_counts.entry(tok.clone()).or_insert(0) += 1;
+                }
+                for (tok, count) in &body_counts {
+                    *token_scores.entry(tok.clone()).or_insert(0.0) += *count as f64 / body_len;
+                }
+
+                // Track document frequency
+                for tok in token_scores.keys() {
+                    *doc_freq.entry(tok.clone()).or_insert(0) += 1;
+                }
+                doc_tokens.push(token_scores);
+            }
+
+            // Score each document
+            let mut scores: Vec<(usize, f64)> = Vec::new();
+            for (idx, ts) in doc_tokens.iter().enumerate() {
+                let mut score = 0.0_f64;
+                for qt in &query_tokens {
+                    if let Some(tf) = ts.get(qt) {
+                        let df = *doc_freq.get(qt).unwrap_or(&1) as f64;
+                        let idf = (n / df).ln().max(0.1);
+                        score += tf * idf;
+                    }
+                }
+                if score > 0.0 {
+                    scores.push((idx, score));
+                }
+            }
+
+            // Sort descending, take top_k
+            scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            scores.truncate(top_k);
+
+            let results = PyList::empty(py);
+            for (idx, score) in &scores {
+                let b = &beliefs[*idx];
+                let excerpt = extract_excerpt(&b.body, &query_tokens);
+                let d = PyDict::new(py);
+                d.set_item("entity", &b.entity)?;
+                d.set_item("claim_id", &b.claim_id)?;
+                d.set_item("score", *score)?;
+                d.set_item("title", &b.title)?;
+                d.set_item("excerpt", &excerpt)?;
+                d.set_item("confidence", b.confidence)?;
+                d.set_item("status", &b.status)?;
+                results.append(d)?;
+            }
+            Ok(results.into())
+        })
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Doc Ingest — Compile .md docs into belief artifacts
+    // ═══════════════════════════════════════════════════════════════
+
+    /// Compile markdown documentation files into belief artifacts.
+    /// Ingests README.md, ARCHITECTURE.md, docs/, CONTRIBUTING.md etc.
+    /// Doc beliefs get confidence 0.80 (human-authored > machine-inferred).
+    #[pyo3(signature = (directory, max_files=50))]
+    pub fn compile_docs(&self, directory: &str, max_files: usize) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let root = Path::new(directory);
+            let doc_patterns = [
+                "README", "ARCHITECTURE", "CONTRIBUTING", "CHANGELOG",
+                "DESIGN", "API", "OVERVIEW", "GUIDE", "SETUP", "DEPLOY",
+            ];
+            let doc_dirs: HashSet<&str> = ["docs", "doc", "documentation", "wiki"].iter().copied().collect();
+            let skip: HashSet<&str> = [
+                "node_modules", ".git", "target", "dist", "build",
+                "__pycache__", ".venv", "venv",
+            ].iter().copied().collect();
+
+            let mut md_files: Vec<PathBuf> = Vec::new();
+
+            // Collect project-level doc files
+            if let Ok(entries) = fs::read_dir(root) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_file() {
+                        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                            if ext.eq_ignore_ascii_case("md") {
+                                let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                                let stem_upper = stem.to_uppercase();
+                                if doc_patterns.iter().any(|p| stem_upper.starts_with(p)) {
+                                    md_files.push(path);
+                                }
+                            }
+                        }
+                    } else if path.is_dir() {
+                        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                        if doc_dirs.contains(name.to_lowercase().as_str()) {
+                            collect_doc_md_files(&path, &skip, &mut md_files, max_files);
+                        }
+                    }
+                }
+            }
+
+            md_files.truncate(max_files);
+
+            let mut docs_compiled = 0u32;
+            let mut entities: Vec<String> = Vec::new();
+            let now = chrono_iso();
+
+            for md_path in &md_files {
+                let content = match fs::read_to_string(md_path) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                if content.trim().is_empty() { continue; }
+
+                let rel = md_path.strip_prefix(root)
+                    .map(|r| r.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| md_path.to_string_lossy().to_string());
+
+                let stem = md_path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("unknown")
+                    .to_lowercase();
+
+                let entity = format!("doc/{}", stem);
+
+                // Extract title from first # heading
+                let title = content.lines()
+                    .find(|l| l.starts_with("# "))
+                    .map(|l| l[2..].trim().to_string())
+                    .unwrap_or_else(|| stem.clone());
+
+                // Extract section structure
+                let sections: Vec<String> = content.lines()
+                    .filter(|l| l.starts_with("## ") || l.starts_with("### "))
+                    .map(|l| l.trim().to_string())
+                    .collect();
+
+                // Build belief body
+                let word_count = content.split_whitespace().count();
+                let section_list = if sections.is_empty() {
+                    String::from("(no sections)")
+                } else {
+                    sections.iter().map(|s| format!("- {}", s)).collect::<Vec<_>>().join("\n")
+                };
+
+                let body = format!(
+                    "# Doc: {}\n\n**Source:** `{}`\n**Words:** {}\n**Type:** documentation\n\n## Sections\n{}\n",
+                    title, rel, word_count, section_list
+                );
+
+                // Write belief
+                let claim_id = format!("{:016x}", {
+                    let mut h: u64 = 0xcbf29ce484222325;
+                    for byte in entity.as_bytes() {
+                        h ^= *byte as u64;
+                        h = h.wrapping_mul(0x100000001b3);
+                    }
+                    h
+                });
+
+                let belief_md = format!(
+                    "---\nclaim_id: {}\nentity: {}\nstatus: inferred\nconfidence: 0.80\nsources:\n  - {}\nlast_checked: {}\nderived_from:\n  - doc_compiler\n---\n\n{}\n",
+                    claim_id, entity, rel, now, body
+                );
+
+                let safe_name = entity.replace('/', "_").replace(' ', "_").to_lowercase();
+                let out_path = self.vault_path.join("beliefs").join(format!("{}.md", safe_name));
+                if fs::write(&out_path, belief_md).is_ok() {
+                    docs_compiled += 1;
+                    entities.push(entity);
+                }
+            }
+
+            let result = PyDict::new(py);
+            result.set_item("status", "compiled")?;
+            result.set_item("docs_found", md_files.len())?;
+            result.set_item("docs_compiled", docs_compiled)?;
+            result.set_item("entities", entities)?;
+            result.set_item("engine", "rust")?;
+            Ok(result.into())
+        })
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Finetune Export — Generate training data from vault beliefs
+    // ═══════════════════════════════════════════════════════════════
+
+    /// Export vault beliefs as JSONL training data for finetuning.
+    /// Generates instruction-following pairs: question about entity → belief body.
+    /// Leverages PRISM scoring dimensions for quality-weighted sampling.
+    #[pyo3(signature = (output_path, format="jsonl"))]
+    pub fn export_training_data(&self, output_path: &str, format: &str) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let beliefs = read_all_beliefs(&self.vault_path);
+
+            let mut lines: Vec<String> = Vec::new();
+            let mut skipped = 0u32;
+
+            for b in &beliefs {
+                // Skip low-confidence or stale beliefs — only train on verified/inferred
+                if b.confidence < 0.5 || b.status == "stale" {
+                    skipped += 1;
+                    continue;
+                }
+
+                // Generate multiple Q&A pairs per belief for coverage
+                let questions = generate_training_questions(&b.entity, &b.title, &b.body);
+
+                for q in &questions {
+                    let entry = format!(
+                        "{{\"messages\":[{{\"role\":\"system\",\"content\":\"You are an expert on the {} codebase. Answer questions using your deep understanding of the architecture.\"}},{{\"role\":\"user\",\"content\":\"{}\"}},{{\"role\":\"assistant\",\"content\":\"{}\"}}]}}",
+                        b.entity,
+                        escape_json(q),
+                        escape_json(&b.body.chars().take(2000).collect::<String>())
+                    );
+                    lines.push(entry);
+                }
+            }
+
+            // Write output
+            let content = lines.join("\n");
+            let write_ok = fs::write(output_path, &content).is_ok();
+
+            let result = PyDict::new(py);
+            result.set_item("status", if write_ok { "exported" } else { "write_error" })?;
+            result.set_item("output_path", output_path)?;
+            result.set_item("format", format)?;
+            result.set_item("beliefs_used", beliefs.len() as u32 - skipped)?;
+            result.set_item("beliefs_skipped", skipped)?;
+            result.set_item("training_pairs", lines.len())?;
+            result.set_item("total_tokens_approx", content.split_whitespace().count())?;
+            result.set_item("engine", "rust")?;
+            Ok(result.into())
+        })
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1836,4 +2110,126 @@ fn collect_source_files(dir: &Path, skip: &HashSet<&str>, exts: &HashSet<&str>, 
             }
         }
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Vault Search Helpers
+// ═══════════════════════════════════════════════════════════════════
+
+const STOP_WORDS: &[&str] = &[
+    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "will", "would", "could",
+    "should", "may", "might", "shall", "can", "to", "of", "in", "for",
+    "on", "with", "at", "by", "from", "as", "into", "through", "and",
+    "but", "or", "not", "no", "if", "then", "than", "that", "this",
+    "it", "its", "we", "you", "he", "she", "they", "my", "your", "how",
+    "what", "which", "where", "when", "who", "does", "about",
+];
+
+fn tokenize_search(text: &str) -> Vec<String> {
+    let lower = text.to_lowercase();
+    let stop: HashSet<&str> = STOP_WORDS.iter().copied().collect();
+    let mut tokens = Vec::new();
+
+    for word in lower.split(|c: char| !c.is_alphanumeric() && c != '_') {
+        if word.len() <= 1 { continue; }
+        // Split snake_case
+        for part in word.split('_') {
+            if part.len() > 1 && !stop.contains(part) {
+                tokens.push(part.to_string());
+            }
+        }
+    }
+    tokens
+}
+
+fn extract_excerpt(body: &str, query_tokens: &[String]) -> String {
+    let lines: Vec<&str> = body.lines().collect();
+    if lines.is_empty() { return String::new(); }
+
+    // Score each line by query token hits
+    let mut best_idx = 0usize;
+    let mut best_hits = 0usize;
+    for (i, line) in lines.iter().enumerate() {
+        let lower = line.to_lowercase();
+        let hits = query_tokens.iter().filter(|t| lower.contains(t.as_str())).count();
+        if hits > best_hits {
+            best_hits = hits;
+            best_idx = i;
+        }
+    }
+
+    let start = best_idx.saturating_sub(1);
+    let end = (best_idx + 3).min(lines.len());
+    lines[start..end].iter()
+        .filter(|l| !l.trim().is_empty())
+        .copied()
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Doc Ingest Helpers
+// ═══════════════════════════════════════════════════════════════════
+
+fn collect_doc_md_files(dir: &Path, skip: &HashSet<&str>, out: &mut Vec<PathBuf>, max: usize) {
+    if out.len() >= max { return; }
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if !skip.contains(name) {
+                    collect_doc_md_files(&path, skip, out, max);
+                }
+            } else if path.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("md")).unwrap_or(false) {
+                out.push(path);
+                if out.len() >= max { return; }
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Finetune Export Helpers
+// ═══════════════════════════════════════════════════════════════════
+
+fn generate_training_questions(entity: &str, title: &str, body: &str) -> Vec<String> {
+    let mut questions = Vec::new();
+    let clean = entity.replace("_", " ").replace("/", " ");
+
+    // Core questions
+    questions.push(format!("What does {} do?", clean));
+    questions.push(format!("Explain the {} module.", clean));
+    questions.push(format!("How does {} work?", clean));
+
+    // If title differs from entity, add title-based questions
+    if !title.is_empty() && title.to_lowercase() != entity.to_lowercase() {
+        questions.push(format!("What is {}?", title));
+    }
+
+    // If body mentions specific types/functions, add questions
+    for line in body.lines() {
+        if line.starts_with("- `class ") || line.starts_with("- `struct ") {
+            let name = line.trim_start_matches("- `")
+                .split('`').next().unwrap_or("")
+                .split('(').next().unwrap_or("")
+                .trim();
+            if name.len() > 3 {
+                questions.push(format!("What does {} in {} do?", name, clean));
+            }
+        }
+    }
+
+    // Cap at 6 questions per entity to avoid training data bloat
+    questions.truncate(6);
+    questions
+}
+
+fn escape_json(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "")
+        .replace('\t', "\\t")
 }

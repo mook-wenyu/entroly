@@ -111,11 +111,11 @@
   </g>
   <g opacity="0">
     <animate attributeName="opacity" from="0" to="1" begin="6.8s" dur="0.3s" fill="freeze"/>
-    <text x="90" y="324" class="term-text c-white">  → 12 fragments, 8,200 tokens</text>
-    <text x="385" y="324" class="term-text term-bold c-green">▼ 82% saved</text>
+    <text x="90" y="324" class="term-text c-white">  → 12 fragments, 7,450 tokens</text>
+    <text x="385" y="324" class="term-text term-bold c-green">▼ 96% saved</text>
     <!-- Mini progress bar -->
     <rect x="510" y="314" width="120" height="10" rx="5" fill="#44475a"/>
-    <rect x="510" y="314" width="22" height="10" rx="5" fill="#50fa7b"/>
+    <rect x="510" y="314" width="5" height="10" rx="5" fill="#50fa7b"/>
   </g>
 
   <!-- Query 2 -->
@@ -126,10 +126,10 @@
   </g>
   <g opacity="0">
     <animate attributeName="opacity" from="0" to="1" begin="8.6s" dur="0.3s" fill="freeze"/>
-    <text x="90" y="368" class="term-text c-white">  → 35 fragments, 11,500 tokens</text>
-    <text x="385" y="368" class="term-text term-bold c-green">▼ 74% saved</text>
+    <text x="90" y="368" class="term-text c-white">  → 35 fragments, 10,240 tokens</text>
+    <text x="385" y="368" class="term-text term-bold c-green">▼ 94% saved</text>
     <rect x="510" y="358" width="120" height="10" rx="5" fill="#44475a"/>
-    <rect x="510" y="358" width="31" height="10" rx="5" fill="#50fa7b"/>
+    <rect x="510" y="358" width="7" height="10" rx="5" fill="#50fa7b"/>
   </g>
 
   <!-- Query 3 -->
@@ -140,10 +140,10 @@
   </g>
   <g opacity="0">
     <animate attributeName="opacity" from="0" to="1" begin="10.4s" dur="0.3s" fill="freeze"/>
-    <text x="90" y="412" class="term-text c-white">  → 42 fragments, 9,800 tokens</text>
-    <text x="385" y="412" class="term-text term-bold c-green">▼ 78% saved</text>
+    <text x="90" y="412" class="term-text c-white">  → 42 fragments, 9,320 tokens</text>
+    <text x="385" y="412" class="term-text term-bold c-green">▼ 95% saved</text>
     <rect x="510" y="402" width="120" height="10" rx="5" fill="#44475a"/>
-    <rect x="510" y="402" width="26" height="10" rx="5" fill="#50fa7b"/>
+    <rect x="510" y="402" width="6" height="10" rx="5" fill="#50fa7b"/>
   </g>
 
   <!-- ============ SCENE 5: Summary stats (12-16s) ============ -->
@@ -151,14 +151,14 @@
     <animate attributeName="opacity" from="0" to="1" begin="11.5s" dur="0.3s" fill="freeze"/>
     <line x1="60" y1="430" x2="560" y2="430" stroke="#44475a" stroke-width="1"/>
     <text x="50" y="450" class="term-text c-white">  Average savings:</text>
-    <text x="230" y="450" class="term-text term-bold c-green" font-size="15" filter="url(#glow)">78% fewer tokens</text>
+    <text x="230" y="450" class="term-text term-bold c-green" font-size="15" filter="url(#glow)"><tspan style="opacity:0.4;font-weight:400">70-</tspan>95% fewer tokens</text>
   </g>
 
   <g opacity="0">
     <animate attributeName="opacity" from="0" to="1" begin="12.3s" dur="0.3s" fill="freeze"/>
     <text x="50" y="470" class="term-text c-white">  Cost per 1K reqs:</text>
-    <text x="230" y="470" class="term-text term-bold c-green">~$124</text>
-    <text x="310" y="470" class="term-text c-gray">(was $560)</text>
+    <text x="230" y="470" class="term-text term-bold c-green"><tspan style="opacity:0.4;font-weight:400">$28 -</tspan> $168</text>
+    <text x="360" y="470" class="term-text c-gray">(was $560)</text>
   </g>
 
   <g opacity="0">

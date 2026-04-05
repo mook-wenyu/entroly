@@ -331,6 +331,20 @@ class VerificationEngine:
         now = datetime.now(timezone.utc)
 
         for b in beliefs:
+            # Status-driven staleness: the change listener or sync pipeline
+            # sets status to "stale" when source files change. Respect that
+            # regardless of the timestamp — the code reality has drifted.
+            if b.get("status") == "stale":
+                stale.append(StaleReport(
+                    claim_id=b.get("claim_id", ""),
+                    entity=b.get("entity", ""),
+                    status="stale",
+                    last_checked=b.get("last_checked", "unknown"),
+                    hours_since=0,  # status-driven, not time-driven
+                    confidence=b.get("confidence", 0),
+                ))
+                continue
+
             last = b.get("last_checked", "")
             if not last:
                 # No last_checked → treat as stale

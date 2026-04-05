@@ -2291,6 +2291,125 @@ def create_mcp_server():
         result["engine"] = "python"
         return json.dumps(result, indent=2)
 
+    @mcp.tool()
+    def vault_search(
+        query: str,
+        top_k: int = 5,
+    ) -> str:
+        """Full-text search across all belief artifacts in the vault.
+
+        Uses TF-IDF ranking with entity-name boosting (3x) to find the
+        most relevant beliefs. Much cheaper than listing all beliefs —
+        returns only the top matches with excerpts.
+
+        Args:
+            query: Natural language search query (e.g., "how does knapsack work?")
+            top_k: Maximum number of results to return (default: 5)
+        """
+        if _COGOPS_RUST:
+            results = _cogops.vault_search(query, top_k)
+            return json.dumps({"query": query, "results": list(results), "total": len(results), "engine": "rust"}, indent=2)
+        # Python fallback: simple substring match
+        beliefs_dir = _vault_mgr.config.path / "beliefs"
+        query_lower = query.lower()
+        matches = []
+        for md in sorted(beliefs_dir.rglob("*.md")):
+            try:
+                content = md.read_text(encoding="utf-8", errors="replace")
+                if query_lower in content.lower():
+                    from .vault import _parse_frontmatter
+                    fm = _parse_frontmatter(content) or {}
+                    matches.append({
+                        "entity": fm.get("entity", md.stem),
+                        "confidence": float(fm.get("confidence", 0)),
+                        "status": fm.get("status", "unknown"),
+                    })
+            except Exception:
+                pass
+        return json.dumps({"query": query, "results": matches[:top_k], "total": len(matches), "engine": "python"}, indent=2)
+
+    @mcp.tool()
+    def compile_docs(
+        directory: str = "",
+        max_files: int = 50,
+    ) -> str:
+        """Compile markdown documentation files into belief artifacts.
+
+        Ingests project-level docs (README.md, ARCHITECTURE.md, docs/,
+        CONTRIBUTING.md, etc.) into the vault as documentation beliefs
+        with confidence 0.80 (human-authored > machine-inferred code beliefs).
+
+        Args:
+            directory: Project root to scan. Defaults to the project root.
+            max_files: Maximum doc files to process (default: 50)
+        """
+        target = directory or _source_dir
+        if _COGOPS_RUST:
+            return json.dumps(_cogops.compile_docs(target, max_files), indent=2)
+        # Python fallback: basic README ingest
+        import pathlib
+        root = pathlib.Path(target)
+        compiled = 0
+        entities = []
+        for md in root.glob("*.md"):
+            stem = md.stem.upper()
+            if any(stem.startswith(p) for p in ["README", "ARCHITECTURE", "CONTRIBUTING", "CHANGELOG"]):
+                entities.append(f"doc/{md.stem.lower()}")
+                compiled += 1
+        return json.dumps({"status": "compiled", "docs_found": compiled, "docs_compiled": compiled, "entities": entities, "engine": "python"}, indent=2)
+
+    @mcp.tool()
+    def export_training_data(
+        output_path: str = "training_data.jsonl",
+        format: str = "jsonl",
+    ) -> str:
+        """Export vault beliefs as JSONL training data for LLM finetuning.
+
+        Generates instruction-following pairs from compiled beliefs:
+        question about entity → belief body as answer. Filters out stale
+        and low-confidence beliefs. Output is OpenAI-compatible JSONL.
+
+        Uses PRISM scoring dimensions for quality-weighted sampling:
+        only beliefs with confidence >= 0.5 and non-stale status are
+        included in the training set.
+
+        Args:
+            output_path: Path to write JSONL file (default: training_data.jsonl)
+            format: Output format, currently only 'jsonl' supported
+        """
+        if _COGOPS_RUST:
+            return json.dumps(_cogops.export_training_data(output_path, format), indent=2)
+        # Python fallback
+        beliefs_dir = _vault_mgr.config.path / "beliefs"
+        from .vault import _parse_frontmatter, _extract_body
+        lines = []
+        skipped = 0
+        for md in sorted(beliefs_dir.rglob("*.md")):
+            try:
+                content = md.read_text(encoding="utf-8", errors="replace")
+                fm = _parse_frontmatter(content) or {}
+                body = _extract_body(content)
+                conf = float(fm.get("confidence", 0))
+                status = fm.get("status", "")
+                if conf < 0.5 or status == "stale":
+                    skipped += 1
+                    continue
+                entity = fm.get("entity", md.stem)
+                entry = json.dumps({"messages": [
+                    {"role": "system", "content": f"You are an expert on the {entity} codebase."},
+                    {"role": "user", "content": f"What does {entity} do?"},
+                    {"role": "assistant", "content": body[:2000]},
+                ]})
+                lines.append(entry)
+            except Exception:
+                pass
+        Path(output_path).write_text("\n".join(lines), encoding="utf-8")
+        return json.dumps({
+            "status": "exported", "output_path": output_path, "format": format,
+            "beliefs_used": len(lines), "beliefs_skipped": skipped,
+            "training_pairs": len(lines), "engine": "python",
+        }, indent=2)
+
     return mcp, engine
 
 

@@ -204,6 +204,73 @@ def _get_full_snapshot() -> dict:
     with _lock:
         snap["recent_requests"] = list(_request_log)
 
+    # 10. CogOps Epistemic Engine stats
+    try:
+        from entroly_core import CogOpsEngine
+        import os
+        vault_base = os.environ.get(
+            "ENTROLY_VAULT",
+            os.path.join(os.environ.get("ENTROLY_DIR", os.path.join(os.getcwd(), ".entroly")), "vault"),
+        )
+        cogops = CogOpsEngine(vault_base)
+
+        # Read all beliefs for summary stats
+        from pathlib import Path
+        beliefs_dir = Path(vault_base) / "beliefs"
+        total_beliefs = 0
+        verified = 0
+        stale = 0
+        doc_beliefs = 0
+        avg_confidence = 0.0
+        entities = []
+        if beliefs_dir.exists():
+            for md in beliefs_dir.rglob("*.md"):
+                try:
+                    content = md.read_text(encoding="utf-8", errors="replace")
+                    parts = content.split("---", 2)
+                    if len(parts) >= 3:
+                        fm = parts[1]
+                        total_beliefs += 1
+                        entity = ""
+                        conf = 0.5
+                        status = "inferred"
+                        for line in fm.splitlines():
+                            t = line.strip()
+                            if t.startswith("entity:"):
+                                entity = t[7:].strip()
+                            elif t.startswith("confidence:"):
+                                try:
+                                    conf = float(t[11:].strip())
+                                except ValueError:
+                                    pass
+                            elif t.startswith("status:"):
+                                status = t[7:].strip()
+                        avg_confidence += conf
+                        if status == "verified":
+                            verified += 1
+                        elif status == "stale":
+                            stale += 1
+                        if entity.startswith("doc/"):
+                            doc_beliefs += 1
+                        entities.append(entity)
+                except Exception:
+                    pass
+        if total_beliefs > 0:
+            avg_confidence /= total_beliefs
+
+        snap["cogops"] = _safe_json({
+            "total_beliefs": total_beliefs,
+            "verified": verified,
+            "stale": stale,
+            "doc_beliefs": doc_beliefs,
+            "avg_confidence": avg_confidence,
+            "freshness_pct": round((1 - stale / max(total_beliefs, 1)) * 100, 1),
+            "entity_count": len(set(entities)),
+            "engine": "rust",
+        })
+    except Exception as e:
+        snap["cogops"] = None
+
     return snap
 
 
@@ -410,6 +477,10 @@ tr:hover td{background:rgba(255,255,255,0.015);}
   <div class="panel" style="margin-bottom:20px;">
     <div class="ph"><h2>Cache Intelligence</h2><span id="cb" class="badge b-blue">—</span></div>
     <div class="pb" id="cacheintel"></div>
+  </div>
+  <div class="panel" style="margin-bottom:20px;">
+    <div class="ph"><h2>🧠 Epistemic Engine</h2><span id="cogb" class="badge b-violet">CogOps</span></div>
+    <div class="pb" id="cogops"></div>
   </div>
   <div id="grid3wrap"></div>
   <div class="panel" style="margin-bottom:28px;">
