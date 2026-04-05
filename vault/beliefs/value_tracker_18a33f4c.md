@@ -18,6 +18,7 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+epistemic_layer: verification
 ---
 
 # Module: value_tracker
@@ -39,3 +40,8 @@ derived_from:
 - `def get_confidence(self) -> Dict[str, Any]` — Return real-time confidence snapshot for IDE widgets.  This is the single endpoint an IDE status bar polls.
 - `def get_trends(self) -> Dict[str, Any]` — Return all trend data for dashboard charts.
 - `def get_tracker() -> ValueTracker` — Get or create the global ValueTracker singleton.
+
+## Related Modules
+
+- **Used by:** [[cli_18a33f4c]], [[dashboard_18a33f4c]]
+- **Architecture:** [[arch_closed_loop_feedback_dbg2ca9i]]

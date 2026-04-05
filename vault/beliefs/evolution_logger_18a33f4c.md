@@ -12,6 +12,7 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+epistemic_layer: evolution
 ---
 
 # Module: evolution_logger
@@ -26,3 +27,7 @@ derived_from:
 ## Functions
 - `def to_dict(self) -> Dict[str, Any]`
 - `def stats(self) -> Dict[str, Any]` — Return evolution statistics.
+
+## Related Modules
+
+- **Part of:** [[lib_18a33f4c]]

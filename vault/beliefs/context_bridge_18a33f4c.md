@@ -18,6 +18,8 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - lib_18a33f4c
+epistemic_layer: action
 ---
 
 # Module: context_bridge
@@ -99,3 +101,7 @@ derived_from:
 - `def update_agent_load(self, agent_id: str, load: float) -> Optional[str]` — Update agent load factor, returns new tier if changed.
 - `def tick(self) -> None` — Advance all clocks (LOD + bus + memory).
 - `def get_stats(self) -> Dict[str, Any]`
+
+## Related Modules
+
+- **Architecture:** [[arch_rust_python_boundary_c4e5f3b2]]

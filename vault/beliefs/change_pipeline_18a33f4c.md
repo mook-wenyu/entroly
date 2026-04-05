@@ -18,6 +18,8 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - lib_18a33f4c
+epistemic_layer: evolution
 ---
 
 # Module: change_pipeline
@@ -38,3 +40,7 @@ derived_from:
 - `def review_diff(diff_text: str) -> List[ReviewFinding]` — Review a diff for common issues.
 - `def __init__(self, vault: VaultManager, verification: VerificationEngine)`
 - `def refresh_docs(self, changed_files: List[str]) -> Dict[str, Any]` — Trigger belief refresh for changed files.
+
+## Related Modules
+
+- **Part of:** [[lib_18a33f4c]]

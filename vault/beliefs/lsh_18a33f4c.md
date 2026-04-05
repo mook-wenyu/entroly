@@ -18,6 +18,8 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - lib_18a33f4c
+epistemic_layer: belief
 ---
 
 # Module: lsh
@@ -51,3 +53,8 @@ derived_from:
 - `fn test_no_duplicates_in_results()`
 - `fn test_scale_1k_query_returns_small_set()`
 - `fn test_context_scorer_ordering()`
+
+## Related Modules
+
+- **Used by:** [[cache_18a33f4c]], [[lib_18a33f4c]]
+- **Architecture:** [[arch_dedup_hierarchy_e6a7b5d4]], [[arch_optimize_pipeline_a7c2e1f0]]

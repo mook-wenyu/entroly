@@ -18,6 +18,8 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - lib_18a33f4c
+epistemic_layer: action
 ---
 
 # Module: proxy
@@ -61,3 +63,8 @@ derived_from:
 - `async def shutdown(self) -> None`
 - `async def handle_proxy(self, request: Request) -> StreamingResponse | JSONResponse` — Main proxy handler — intercept, optimize, forward.  Uses pipelined async architecture: 1. Parse request + start HTTP connection warmup concurrently 2. Run Rust pipeline in thread pool (off event loop)
 - `async def event_generator()`
+
+## Related Modules
+
+- **Used by:** [[cli_18a33f4c]]
+- **Architecture:** [[arch_rust_python_boundary_c4e5f3b2]]

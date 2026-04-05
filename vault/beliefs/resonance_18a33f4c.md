@@ -18,6 +18,8 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - lib_18a33f4c
+epistemic_layer: belief
 ---
 
 # Module: resonance
@@ -66,3 +68,8 @@ derived_from:
 - `fn test_coverage_zero_selected()`
 - `fn test_coverage_monotone_in_overlap()`
 - `fn test_chapman_estimator_accuracy()`
+
+## Related Modules
+
+- **Used by:** [[lib_18a33f4c]]
+- **Architecture:** [[arch_closed_loop_feedback_dbg2ca9i]], [[arch_optimize_pipeline_a7c2e1f0]], [[arch_rl_learning_loop_b3d4f2a1]]

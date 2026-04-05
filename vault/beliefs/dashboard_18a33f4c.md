@@ -13,6 +13,8 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - value_tracker_18a33f4c
+epistemic_layer: action
 ---
 
 # Module: dashboard
@@ -28,3 +30,8 @@ derived_from:
 - `def log_message(self, format, *args)`
 - `def do_GET(self)`
 - `def start_dashboard(engine: Any = None, port: int = 9378, daemon: bool = True)` —  Start the dashboard HTTP server in a background thread.  Args: engine: The EntrolyEngine instance to pull real data from. port: Port to serve on (default: 9378). daemon: Run as daemon thread (dies wi
+
+## Related Modules
+
+- **Depends on:** [[value_tracker_18a33f4c]]
+- **Used by:** [[cli_18a33f4c]]

@@ -18,6 +18,7 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+epistemic_layer: evolution
 ---
 
 # Module: skill_engine
@@ -43,3 +44,7 @@ derived_from:
 - `def benchmark_skill(self, skill_id: str) -> Dict[str, Any]` — Benchmark a skill and update its metrics.
 - `def promote_or_prune(self, skill_id: str) -> Dict[str, Any]` — Evaluate a skill for promotion or pruning.
 - `def list_skills(self) -> List[Dict[str, Any]]` — List all skills in the registry.
+
+## Related Modules
+
+- **Part of:** [[lib_18a33f4c]]

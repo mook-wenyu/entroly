@@ -18,6 +18,9 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - lib_18a33f4c
+epistemic_layer: truth/belief
+boundary_note: "Hash computation = Truth. Similarity thresholds = Belief."
 ---
 
 # Module: dedup
@@ -44,3 +47,8 @@ derived_from:
 - `fn test_identical_texts()`
 - `fn test_dedup_catches_exact()`
 - `fn test_dedup_allows_different()`
+
+## Related Modules
+
+- **Used by:** [[cache_18a33f4c]], [[cognitive_bus_18a33f4c]], [[conversation_pruner_18a33f4c]], [[health_18a33f4c]], [[knapsack_sds_18a33f4c]], [[lib_18a33f4c]]
+- **Architecture:** [[arch_dedup_hierarchy_e6a7b5d4]], [[arch_memory_lifecycle_b9dae8g7]], [[arch_optimize_pipeline_a7c2e1f0]]

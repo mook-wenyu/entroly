@@ -18,6 +18,12 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - server_18a33f4c
+  - auto_index_18a33f4c
+  - dashboard_18a33f4c
+  - proxy_18a33f4c
+  - proxy_config_18a33f4c
+epistemic_layer: action
 ---
 
 # Module: cli
@@ -56,3 +62,8 @@ derived_from:
 - `def cmd_optimize(args)` — entroly optimize — generate an optimized context snapshot for a specific task.  This is the primary command for subagent-driven workflows. It indexes the codebase, selects the mathematically optimal f
 - `def cmd_feedback(args)` — entroly feedback — signal outcome quality to improve future context selection.  After an agent completes a task using optimized context, run this to tell Entroly whether the context was helpful. Entro
 - `def main()` — Main CLI entry point.
+
+## Related Modules
+
+- **Depends on:** [[dashboard_18a33f4c]], [[proxy_18a33f4c]], [[proxy_config_18a33f4c]], [[server_18a33f4c]], [[value_tracker_18a33f4c]]
+- **Used by:** [[_docker_launcher_18a33f4c]]

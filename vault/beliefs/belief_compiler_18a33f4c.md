@@ -18,6 +18,8 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - lib_18a33f4c
+epistemic_layer: evolution
 ---
 
 # Module: belief_compiler
@@ -44,3 +46,7 @@ derived_from:
 - `def generate_module_diagram(modules: Dict[str, List[CodeEntity]]) -> str` — Generate a Mermaid module-level architecture diagram.
 - `def __init__(self, vault: VaultManager)`
 - `def compile_file(self, file_path: str, content: str) -> Optional[BeliefArtifact]` — Compile a single file into a belief artifact.
+
+## Related Modules
+
+- **Architecture:** [[arch_cogops_epistemic_engine_a8c9d7f6]], [[arch_rust_python_boundary_c4e5f3b2]]

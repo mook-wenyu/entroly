@@ -18,6 +18,9 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - fragment_18a33f4c
+  - depgraph_18a33f4c
+epistemic_layer: truth
 ---
 
 # Module: utilization
@@ -39,3 +42,9 @@ derived_from:
 - `fn test_partial_utilization()`
 - `fn test_empty_fragments()`
 - `fn test_identifier_overlap_weighted_higher()`
+
+## Related Modules
+
+- **Depends on:** [[depgraph_18a33f4c]], [[fragment_18a33f4c]]
+- **Used by:** [[lib_18a33f4c]]
+- **Architecture:** [[arch_closed_loop_feedback_dbg2ca9i]], [[arch_rl_learning_loop_b3d4f2a1]], [[arch_scoring_dimensions_caf1b9h8]]

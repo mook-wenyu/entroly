@@ -18,6 +18,8 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - lib_18a33f4c
+epistemic_layer: verification
 ---
 
 # Module: guardrails
@@ -54,3 +56,8 @@ derived_from:
 - `fn test_feedback_tracker()`
 - `fn test_ucb_variance_tracking()`
 - `fn test_raven_ucb_convergence()`
+
+## Related Modules
+
+- **Used by:** [[channel_18a33f4c]], [[lib_18a33f4c]]
+- **Architecture:** [[arch_scoring_dimensions_caf1b9h8]]

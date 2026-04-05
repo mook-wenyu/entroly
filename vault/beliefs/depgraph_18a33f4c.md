@@ -18,6 +18,8 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - lib_18a33f4c
+epistemic_layer: truth
 ---
 
 # Module: depgraph
@@ -75,3 +77,7 @@ derived_from:
 - `fn test_pymethods_exports_methods()`
 - `fn run(&self, input: &str) -> String`
 - `pub fn stop(&self)`
+
+## Related Modules
+
+- **Used by:** [[channel_18a33f4c]], [[health_18a33f4c]], [[hierarchical_18a33f4c]], [[lib_18a33f4c]], [[semantic_dedup_18a33f4c]], [[utilization_18a33f4c]]

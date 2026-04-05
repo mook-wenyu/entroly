@@ -18,6 +18,8 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - lib_18a33f4c
+epistemic_layer: evolution
 ---
 
 # Module: autotune
@@ -51,3 +53,7 @@ derived_from:
 - `def optimize_all(self) -> Dict[str, Dict]` — Classify episodes by task type and optimize each independently.
 - `def get_profile_for_query(self, query: str) -> Tuple[Dict[str, float], str, float]` — Get optimal weights for a query. Returns (weights, task_type, confidence).
 - `def apply_to_engine(self, engine, query: str) -> Tuple[str, float]` — Apply task-conditioned weights to an engine.
+
+## Related Modules
+
+- **Architecture:** [[arch_closed_loop_feedback_dbg2ca9i]], [[arch_rl_learning_loop_b3d4f2a1]], [[arch_rust_python_boundary_c4e5f3b2]]

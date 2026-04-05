@@ -14,6 +14,8 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - lib_18a33f4c
+epistemic_layer: evolution
 ---
 
 # Module: change_listener
@@ -30,3 +32,7 @@ derived_from:
 - `def scan_once(self, force: bool = False, max_files: int = 100) -> WorkspaceSyncResult`
 - `def start(self, interval_s: int = 120, max_files: int = 100, force_initial: bool = False) -> Dict[str, Any]`
 - `def stop(self) -> Dict[str, Any]`
+
+## Related Modules
+
+- **Part of:** [[lib_18a33f4c]]

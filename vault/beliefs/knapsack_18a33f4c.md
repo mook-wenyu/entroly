@@ -18,6 +18,9 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - arch_optimize_pipeline_a7c2e1f0
+  - arch_scoring_dimensions_caf1b9h8
+epistemic_layer: action
 ---
 
 # Module: knapsack
@@ -46,3 +49,9 @@ derived_from:
 - `fn test_feedback_affects_selection()`
 - `fn test_soft_bisection_respects_budget()`
 - `fn test_temperature_transition()`
+
+## Related Modules
+
+- **Depends on:** [[fragment_18a33f4c]]
+- **Used by:** [[lib_18a33f4c]]
+- **Architecture:** [[arch_optimize_pipeline_a7c2e1f0]], [[arch_rl_learning_loop_b3d4f2a1]], [[arch_scoring_dimensions_caf1b9h8]]

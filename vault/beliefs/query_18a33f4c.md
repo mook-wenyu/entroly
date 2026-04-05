@@ -18,6 +18,9 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - lib_18a33f4c
+epistemic_layer: truth/action
+boundary_note: "Query parsing = Truth. Intent routing = Action."
 ---
 
 # Module: query
@@ -49,3 +52,8 @@ derived_from:
 - `fn test_analyze_query_vague_needs_refinement()`
 - `fn test_stopwords_filtered()`
 - `fn test_idf_penalizes_common_terms()`
+
+## Related Modules
+
+- **Used by:** [[lib_18a33f4c]]
+- **Architecture:** [[arch_query_resolution_flow_fda4ec1k]]

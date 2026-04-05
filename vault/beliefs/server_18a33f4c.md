@@ -18,6 +18,11 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - arch_rust_python_boundary_c4e5f3b2
+  - arch_query_resolution_flow_fda4ec1k
+  - auto_index_18a33f4c
+  - lib_18a33f4c
+epistemic_layer: action
 ---
 
 # Module: server
@@ -71,3 +76,8 @@ derived_from:
 - `def verify_beliefs() -> str` — Run a full verification pass on all beliefs in the vault.  Checks for: - Staleness (beliefs past their freshness window) - Contradictions (conflicting claims about the same entity) - Confidence diverg
 - `def blast_radius(changed_files: str) -> str` — Analyze the blast radius of file changes on existing beliefs.  Given a list of changed files, determines which beliefs need re-verification, which may be invalidated, and the overall risk level (low/m
 - `def main()` — Entry point for the entroly MCP server.
+
+## Related Modules
+
+- **Used by:** [[_docker_launcher_18a33f4c]], [[cli_18a33f4c]]
+- **Architecture:** [[arch_concurrency_model_ecf3db0j]], [[arch_query_resolution_flow_fda4ec1k]], [[arch_rust_python_boundary_c4e5f3b2]]

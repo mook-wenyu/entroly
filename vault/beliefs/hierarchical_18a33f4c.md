@@ -18,6 +18,9 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - fragment_18a33f4c
+  - depgraph_18a33f4c
+epistemic_layer: belief
 ---
 
 # Module: hierarchical
@@ -47,3 +50,9 @@ derived_from:
 - `fn test_pagerank_hub_gets_highest()`
 - `fn test_hierarchical_compress_end_to_end()`
 - `fn test_empty_fragments()`
+
+## Related Modules
+
+- **Depends on:** [[depgraph_18a33f4c]], [[fragment_18a33f4c]]
+- **Used by:** [[lib_18a33f4c]]
+- **Architecture:** [[arch_multi_resolution_f7b8c6e5]]

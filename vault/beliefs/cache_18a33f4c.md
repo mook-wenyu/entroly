@@ -18,6 +18,10 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - arch_dedup_hierarchy_e6a7b5d4
+  - arch_closed_loop_feedback_dbg2ca9i
+  - arch_information_theory_stack_d5f6a4c3
+epistemic_layer: truth
 ---
 
 # Module: cache
@@ -176,3 +180,9 @@ derived_from:
 - `fn test_bench_distribution_shift_torture()`
 - `fn test_bench_ablation_study()`
 - `fn test_bench_scale_invariance()`
+
+## Related Modules
+
+- **Depends on:** [[dedup_18a33f4c]], [[lsh_18a33f4c]]
+- **Used by:** [[lib_18a33f4c]]
+- **Architecture:** [[arch_closed_loop_feedback_dbg2ca9i]], [[arch_dedup_hierarchy_e6a7b5d4]], [[arch_information_theory_stack_d5f6a4c3]], [[arch_memory_lifecycle_b9dae8g7]], [[arch_optimize_pipeline_a7c2e1f0]]

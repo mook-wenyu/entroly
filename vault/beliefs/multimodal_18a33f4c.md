@@ -10,6 +10,7 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+epistemic_layer: belief
 ---
 
 # Module: multimodal
@@ -20,3 +21,7 @@ derived_from:
 ## Types
 - `class ModalContent:` —  The normalized output of every multi-modal converter.  Always ingested via remember_fragment(text, source=source, ...). All metadata is embedded in `text` in a structured format.
 - `class DiffHunk:`
+
+## Related Modules
+
+- **Part of:** [[lib_18a33f4c]]

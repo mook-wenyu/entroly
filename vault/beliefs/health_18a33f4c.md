@@ -18,6 +18,10 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - dedup_18a33f4c
+  - fragment_18a33f4c
+  - depgraph_18a33f4c
+epistemic_layer: verification
 ---
 
 # Module: health
@@ -63,3 +67,9 @@ derived_from:
 - `fn test_snake_case_conversion()`
 - `fn test_empty_codebase_no_panic()`
 - `fn test_naming_issue_python_camel_case()`
+
+## Related Modules
+
+- **Depends on:** [[dedup_18a33f4c]], [[depgraph_18a33f4c]], [[fragment_18a33f4c]]
+- **Used by:** [[lib_18a33f4c]]
+- **Architecture:** [[arch_dedup_hierarchy_e6a7b5d4]], [[arch_scoring_dimensions_caf1b9h8]]

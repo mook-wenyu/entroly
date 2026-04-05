@@ -18,6 +18,7 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+epistemic_layer: evolution
 ---
 
 # Module: verification_engine
@@ -38,3 +39,7 @@ derived_from:
 - `def full_verification_pass(self) -> VerificationReport` — Run a complete verification pass on all beliefs.
 - `def check_belief(self, claim_id: str) -> Dict[str, Any]` — Verify a single belief by claim_id.
 - `def coverage_gaps(self, source_dir: str) -> List[CoverageGap]` — Find source files with no corresponding belief.
+
+## Related Modules
+
+- **Part of:** [[lib_18a33f4c]]

@@ -15,6 +15,8 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - lib_18a33f4c
+epistemic_layer: action
 ---
 
 # Module: query_refiner
@@ -32,3 +34,7 @@ derived_from:
 - `def analyze(self, query: str, fragment_summaries: List[str] | None = None) -> dict` —  Analyze a query for vagueness and key terms.  Returns: dict with: - vagueness_score (float, 0–1) - key_terms (list[str]) - needs_refinement (bool) - reason (str)
 - `def refine(self, query: str, fragment_summaries: List[str] | None = None) -> str` —  Refine a query using: 1. Rust heuristic (always runs, zero latency) 2. LLM refinement (only if query needs_refinement AND llm_fn is set)  Returns the refined query string (original if no refinement a
 - `def make_openai_refine_fn(api_key: str, model: str = "gpt-4o-mini") -> Callable[[str], str]` —  Return a function that calls OpenAI to refine a query.  Requires: openai package (`pip install openai`). The function is synchronous and makes one API call per invocation.  Usage: refiner = QueryRefi
+
+## Related Modules
+
+- **Architecture:** [[arch_query_resolution_flow_fda4ec1k]], [[arch_rust_python_boundary_c4e5f3b2]]

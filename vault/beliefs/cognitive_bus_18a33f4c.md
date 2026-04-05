@@ -18,6 +18,8 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - dedup_18a33f4c
+epistemic_layer: action
 ---
 
 # Module: cognitive_bus
@@ -81,3 +83,9 @@ derived_from:
 - `fn test_bus_no_self_routing()`
 - `fn test_bus_task_context_boosts_priority()`
 - `fn test_bus_stats_counters()`
+
+## Related Modules
+
+- **Depends on:** [[dedup_18a33f4c]]
+- **Used by:** [[lib_18a33f4c]]
+- **Architecture:** [[arch_concurrency_model_ecf3db0j]], [[arch_dedup_hierarchy_e6a7b5d4]], [[arch_information_theory_stack_d5f6a4c3]]

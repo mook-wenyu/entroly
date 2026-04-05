@@ -18,6 +18,9 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - lib_18a33f4c
+epistemic_layer: truth/belief
+boundary_note: "Shannon measurement = Truth. Entropy-based scoring = Belief."
 ---
 
 # Module: entropy
@@ -57,3 +60,8 @@ derived_from:
 - `fn test_entropy_divergence_nonnegative()`
 - `fn test_entropy_divergence_low_for_code()`
 - `fn test_noise_penalty_in_information_score()`
+
+## Related Modules
+
+- **Used by:** [[anomaly_18a33f4c]], [[conversation_pruner_18a33f4c]], [[lib_18a33f4c]]
+- **Architecture:** [[arch_concurrency_model_ecf3db0j]], [[arch_information_theory_stack_d5f6a4c3]]

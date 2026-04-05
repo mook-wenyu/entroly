@@ -18,6 +18,9 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - arch_cogops_epistemic_engine_a8c9d7f6
+  - arch_closed_loop_feedback_dbg2ca9i
+epistemic_layer: action
 ---
 
 # Module: cogops
@@ -90,3 +93,8 @@ derived_from:
 - `fn is_leap(y: u64) -> bool`
 - `fn extract_fm_value(content: &str, key: &str) -> Option<String>` — Extract a value from YAML-like frontmatter.
 - `fn collect_source_files(dir: &Path, skip: &HashSet<&str>, exts: &HashSet<&str>, out: &mut Vec<PathBuf>, max: usize)`
+
+## Related Modules
+
+- **Used by:** [[lib_18a33f4c]]
+- **Architecture:** [[arch_closed_loop_feedback_dbg2ca9i]], [[arch_cogops_epistemic_engine_a8c9d7f6]], [[arch_query_resolution_flow_fda4ec1k]]

@@ -1914,6 +1914,137 @@ def cmd_feedback(args):
     print(f"  {C.GRAY}Entroly will adjust future context selections based on this signal.{C.RESET}\n")
 
 
+def cmd_compile(args):
+    """entroly compile -- compile source code into persistent belief artifacts.
+
+    Scans a directory for source files, extracts code entities, resolves
+    dependencies, and writes belief artifacts to the vault. This is the
+    foundation of Cross-Session Memory: compile once, start warm forever.
+    """
+    from entroly.server import EntrolyEngine, create_mcp_server
+    from entroly.belief_compiler import BeliefCompiler
+    from entroly.vault import VaultManager, VaultConfig
+    import os
+
+    target = getattr(args, "directory", None) or os.getcwd()
+    max_files = getattr(args, "max_files", 200)
+
+    vault_base = os.environ.get(
+        "ENTROLY_VAULT",
+        os.path.join(os.environ.get("ENTROLY_DIR", os.path.join(os.getcwd(), ".entroly")), "vault"),
+    )
+    vault = VaultManager(VaultConfig(base_path=vault_base))
+    vault.ensure_structure()
+    compiler = BeliefCompiler(vault)
+
+    print(f"\n  {C.CYAN}{C.BOLD}Compiling Beliefs{C.RESET}")
+    print(f"  {C.GRAY}Source:  {target}{C.RESET}")
+    print(f"  {C.GRAY}Vault:   {vault_base}{C.RESET}")
+    print(f"  {C.GRAY}Max files: {max_files}{C.RESET}\n")
+
+    result = compiler.compile_directory(target, max_files)
+
+    print(f"  {C.GREEN}Files processed:{C.RESET}    {result.files_processed}")
+    print(f"  {C.GREEN}Entities extracted:{C.RESET} {result.entities_extracted}")
+    print(f"  {C.GREEN}Beliefs written:{C.RESET}    {result.beliefs_written}")
+    if result.errors:
+        print(f"  {C.YELLOW}Errors:{C.RESET}             {len(result.errors)}")
+        for e in result.errors[:5]:
+            print(f"    {C.GRAY}- {e}{C.RESET}")
+
+    coverage = vault.coverage_index()
+    print(f"\n  {C.CYAN}Vault coverage:{C.RESET} {coverage['total_beliefs']} beliefs")
+    print(f"  {C.CYAN}Avg confidence:{C.RESET} {coverage['average_confidence']:.2f}")
+    print(f"\n  {C.GREEN}Beliefs persisted.{C.RESET} Next session starts warm.\n")
+
+
+def cmd_verify(args):
+    """entroly verify -- run verification pass on all beliefs.
+
+    Checks for staleness, contradictions, confidence divergence. Writes
+    verification artifacts to vault/verification/. This promotes beliefs
+    from 'inferred' to 'verified' or flags them as 'stale'.
+    """
+    from entroly.verification_engine import VerificationEngine
+    from entroly.vault import VaultManager, VaultConfig
+    import os
+
+    vault_base = os.environ.get(
+        "ENTROLY_VAULT",
+        os.path.join(os.environ.get("ENTROLY_DIR", os.path.join(os.getcwd(), ".entroly")), "vault"),
+    )
+    vault = VaultManager(VaultConfig(base_path=vault_base))
+    vault.ensure_structure()
+    verifier = VerificationEngine(vault, freshness_hours=24.0, min_confidence=0.5)
+
+    print(f"\n  {C.CYAN}{C.BOLD}Verifying Beliefs{C.RESET}")
+    print(f"  {C.GRAY}Vault: {vault_base}{C.RESET}\n")
+
+    report = verifier.full_verification_pass()
+    rd = report.to_dict()
+
+    print(f"  {C.GREEN}Beliefs checked:{C.RESET}     {rd.get('total_beliefs', 0)}")
+    print(f"  {C.GREEN}Stale:{C.RESET}               {rd.get('stale_count', 0)}")
+    print(f"  {C.GREEN}Contradictions:{C.RESET}      {rd.get('contradiction_count', 0)}")
+    print(f"  {C.GREEN}Low confidence:{C.RESET}      {rd.get('low_confidence_count', 0)}")
+
+    stale = rd.get("stale", [])
+    if stale:
+        print(f"\n  {C.YELLOW}Stale beliefs:{C.RESET}")
+        for s in stale[:10]:
+            ent = s.get("entity", "unknown") if isinstance(s, dict) else str(s)
+            print(f"    - {ent}")
+
+    print(f"\n  {C.GREEN}Verification artifacts written to vault/verification/{C.RESET}\n")
+
+
+def cmd_sync(args):
+    """entroly sync -- detect workspace changes and update beliefs.
+
+    Scans for new/modified/deleted files since last sync, marks affected
+    beliefs stale, recompiles changed files, and runs verification.
+    This is the Change-Driven Pipeline (Flow 4).
+    """
+    from entroly.change_listener import WorkspaceChangeListener
+    from entroly.belief_compiler import BeliefCompiler
+    from entroly.verification_engine import VerificationEngine
+    from entroly.change_pipeline import ChangePipeline
+    from entroly.vault import VaultManager, VaultConfig
+    import os
+
+    target = getattr(args, "directory", None) or os.getcwd()
+    max_files = getattr(args, "max_files", 100)
+    force = getattr(args, "force", False)
+
+    vault_base = os.environ.get(
+        "ENTROLY_VAULT",
+        os.path.join(os.environ.get("ENTROLY_DIR", os.path.join(os.getcwd(), ".entroly")), "vault"),
+    )
+    vault = VaultManager(VaultConfig(base_path=vault_base))
+    vault.ensure_structure()
+    compiler = BeliefCompiler(vault)
+    verifier = VerificationEngine(vault, freshness_hours=24.0, min_confidence=0.5)
+    change_pipe = ChangePipeline(vault, verifier)
+
+    listener = WorkspaceChangeListener(
+        vault=vault, compiler=compiler, verifier=verifier,
+        change_pipe=change_pipe, project_dir=target,
+    )
+
+    print(f"\n  {C.CYAN}{C.BOLD}Syncing Workspace{C.RESET}")
+    print(f"  {C.GRAY}Source: {target}{C.RESET}")
+    print(f"  {C.GRAY}Vault:  {vault_base}{C.RESET}\n")
+
+    result = listener.scan_once(force=force, max_files=max_files)
+    rd = result.to_dict()
+
+    print(f"  {C.GREEN}Files scanned:{C.RESET}    {rd.get('files_scanned', 0)}")
+    print(f"  {C.GREEN}Files changed:{C.RESET}    {rd.get('files_changed', 0)}")
+    print(f"  {C.GREEN}Beliefs updated:{C.RESET}  {rd.get('beliefs_updated', 0)}")
+    print(f"  {C.GREEN}Beliefs staled:{C.RESET}   {rd.get('beliefs_staled', 0)}")
+    print(f"\n  {C.GREEN}Workspace synchronized.{C.RESET}\n")
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -2224,6 +2355,44 @@ def main():
         help="Shell type",
     )
 
+    # entroly compile
+    compile_parser = subparsers.add_parser(
+        "compile",
+        help="Compile source code into persistent belief artifacts (Cross-Session Memory)",
+    )
+    compile_parser.add_argument(
+        "directory", nargs="?", default=None,
+        help="Directory to scan (default: current directory)",
+    )
+    compile_parser.add_argument(
+        "--max-files", type=int, default=200,
+        help="Maximum files to process (default: 200)",
+    )
+
+    # entroly verify
+    subparsers.add_parser(
+        "verify",
+        help="Run verification pass on all beliefs (staleness, contradictions)",
+    )
+
+    # entroly sync
+    sync_parser = subparsers.add_parser(
+        "sync",
+        help="Detect workspace changes and update beliefs (Change-Driven Pipeline)",
+    )
+    sync_parser.add_argument(
+        "directory", nargs="?", default=None,
+        help="Directory to scan (default: current directory)",
+    )
+    sync_parser.add_argument(
+        "--max-files", type=int, default=100,
+        help="Maximum files to process (default: 100)",
+    )
+    sync_parser.add_argument(
+        "--force", action="store_true",
+        help="Force full rescan even if no changes detected",
+    )
+
     args = parser.parse_args()
 
     # First-run welcome + update check (non-blocking)
@@ -2257,6 +2426,9 @@ def main():
         "migrate": cmd_migrate,
         "role": cmd_role,
         "completions": cmd_completions,
+        "compile": cmd_compile,
+        "verify": cmd_verify,
+        "sync": cmd_sync,
     }
 
     handler = _dispatch.get(args.command)

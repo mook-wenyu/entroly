@@ -18,6 +18,7 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+epistemic_layer: evolution
 ---
 
 # Module: vault
@@ -44,3 +45,7 @@ derived_from:
 - `def write_verification(self, artifact: VerificationArtifact) -> Dict[str, Any]` — Write a verification artifact to the vault.
 - `def coverage_index(self) -> Dict[str, Any]` — Build a coverage index of all beliefs for the router.
 - `def mark_beliefs_stale_for_files(self, changed_files: List[str]) -> Dict[str, Any]` — Mark beliefs stale when their sources overlap the changed files.
+
+## Related Modules
+
+- **Architecture:** [[arch_cogops_epistemic_engine_a8c9d7f6]]

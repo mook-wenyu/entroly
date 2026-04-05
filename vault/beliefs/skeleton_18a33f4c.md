@@ -18,6 +18,8 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - lib_18a33f4c
+epistemic_layer: truth
 ---
 
 # Module: skeleton
@@ -74,3 +76,8 @@ derived_from:
 - `fn test_vue_sfc_skeleton()`
 - `fn test_html_skeleton()`
 - `fn test_css_skeleton()`
+
+## Related Modules
+
+- **Used by:** [[lib_18a33f4c]]
+- **Architecture:** [[arch_multi_resolution_f7b8c6e5]]

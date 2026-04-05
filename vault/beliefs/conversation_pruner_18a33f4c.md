@@ -18,6 +18,9 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - entropy_18a33f4c
+  - dedup_18a33f4c
+epistemic_layer: action
 ---
 
 # Module: conversation_pruner
@@ -89,3 +92,9 @@ derived_from:
 - `fn stress_500_blocks_under_200ms()`
 - `fn stress_progressive_thresholds_all_utilizations()`
 - `fn stress_forward_overlap_correctness()`
+
+## Related Modules
+
+- **Depends on:** [[dedup_18a33f4c]], [[entropy_18a33f4c]]
+- **Used by:** [[lib_18a33f4c]]
+- **Architecture:** [[arch_information_theory_stack_d5f6a4c3]], [[arch_multi_resolution_f7b8c6e5]]

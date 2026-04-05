@@ -16,6 +16,11 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - arch_memory_lifecycle_b9dae8g7
+  - arch_multi_resolution_f7b8c6e5
+  - lib_18a33f4c
+epistemic_layer: truth/belief
+boundary_note: "Raw chunking = Truth. Salience decisions = Belief."
 ---
 
 # Module: fragment
@@ -34,3 +39,8 @@ derived_from:
 - `fn test_ebbinghaus_half_life()`
 - `fn test_relevance_scoring()`
 - `fn test_softcap_properties()`
+
+## Related Modules
+
+- **Used by:** [[anomaly_18a33f4c]], [[channel_18a33f4c]], [[health_18a33f4c]], [[hierarchical_18a33f4c]], [[knapsack_18a33f4c]], [[knapsack_sds_18a33f4c]], [[lib_18a33f4c]], [[semantic_dedup_18a33f4c]], [[utilization_18a33f4c]]
+- **Architecture:** [[arch_memory_lifecycle_b9dae8g7]], [[arch_multi_resolution_f7b8c6e5]], [[arch_optimize_pipeline_a7c2e1f0]], [[arch_rl_learning_loop_b3d4f2a1]], [[arch_scoring_dimensions_caf1b9h8]]

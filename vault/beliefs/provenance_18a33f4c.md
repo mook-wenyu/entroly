@@ -17,6 +17,7 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+epistemic_layer: belief
 ---
 
 # Module: provenance
@@ -36,3 +37,7 @@ derived_from:
 - `def quality_flagged_sources(self) -> List[str]` — Sources with code quality issues.
 - `def hallucination_risk(self) -> str` —  low    — all fragments file-backed, high confidence medium — some low-confidence fragments, or 1-2 unverified high   — significant unverified content or very low confidence
 - `def to_dict(self) -> Dict[str, Any]`
+
+## Related Modules
+
+- **Part of:** [[lib_18a33f4c]]

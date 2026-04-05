@@ -15,6 +15,7 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+epistemic_layer: belief
 ---
 
 # Module: long_term_memory
@@ -32,3 +33,7 @@ derived_from:
 - `def tick(self) -> None` — Advance the hippocampus clock by 1 tick (called on each advance_turn).
 - `def stats(self) -> dict` — Get long-term memory statistics for the dashboard.
 - `def consolidate(self) -> str` — Force a consolidation cycle (sleep-replay).
+
+## Related Modules
+
+- **Architecture:** [[arch_memory_lifecycle_b9dae8g7]]

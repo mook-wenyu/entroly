@@ -18,6 +18,7 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+epistemic_layer: action
 ---
 
 # Module: epistemic_router
@@ -39,3 +40,7 @@ derived_from:
 - `def assess_risk(query: str, intent: EpistemicIntent) -> RiskLevel` — Assess the risk level of a query domain.
 - `def record_miss(self, query: str) -> None` — Explicitly record a miss (system couldn't answer satisfactorily).
 - `def stats(self) -> Dict[str, Any]` — Return routing statistics for observability.
+
+## Related Modules
+
+- **Architecture:** [[arch_cogops_epistemic_engine_a8c9d7f6]]

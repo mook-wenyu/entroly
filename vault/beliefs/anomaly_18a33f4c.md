@@ -18,6 +18,9 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - fragment_18a33f4c
+  - entropy_18a33f4c
+epistemic_layer: verification
 ---
 
 # Module: anomaly
@@ -42,3 +45,9 @@ derived_from:
 - `fn test_small_group_skipped()`
 - `fn test_uniform_group_no_anomalies()`
 - `fn test_cross_directory_isolation()`
+
+## Related Modules
+
+- **Depends on:** [[entropy_18a33f4c]], [[fragment_18a33f4c]]
+- **Used by:** [[lib_18a33f4c]]
+- **Architecture:** [[arch_information_theory_stack_d5f6a4c3]]

@@ -18,6 +18,8 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - lib_18a33f4c
+epistemic_layer: action
 ---
 
 # Module: nkbe
@@ -51,3 +53,8 @@ derived_from:
 - `fn test_reinforce_gradient_basic()`
 - `fn test_dual_gap_nonnegative()`
 - `fn test_two_agents_split()`
+
+## Related Modules
+
+- **Used by:** [[lib_18a33f4c]]
+- **Architecture:** [[arch_information_theory_stack_d5f6a4c3]]

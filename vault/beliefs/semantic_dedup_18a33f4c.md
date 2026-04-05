@@ -18,6 +18,11 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - arch_dedup_hierarchy_e6a7b5d4
+  - arch_information_theory_stack_d5f6a4c3
+  - fragment_18a33f4c
+  - depgraph_18a33f4c
+epistemic_layer: belief
 ---
 
 # Module: semantic_dedup
@@ -41,3 +46,9 @@ derived_from:
 - `fn test_dedup_stats()`
 - `fn test_empty_input()`
 - `fn test_threshold_sensitivity()`
+
+## Related Modules
+
+- **Depends on:** [[depgraph_18a33f4c]], [[fragment_18a33f4c]]
+- **Used by:** [[lib_18a33f4c]]
+- **Architecture:** [[arch_dedup_hierarchy_e6a7b5d4]]

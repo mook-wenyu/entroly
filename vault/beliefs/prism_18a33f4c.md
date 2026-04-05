@@ -18,6 +18,10 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - arch_rl_learning_loop_b3d4f2a1
+  - arch_scoring_dimensions_caf1b9h8
+  - lib_18a33f4c
+epistemic_layer: evolution
 ---
 
 # Module: prism
@@ -59,3 +63,8 @@ derived_from:
 - `fn test_spectral_energy_sums_to_one()`
 - `fn test_sym_matrix4_array_roundtrip()`
 - `fn test_5d_non_diagonal_eigendecomposition()`
+
+## Related Modules
+
+- **Used by:** [[lib_18a33f4c]], [[query_persona_18a33f4c]]
+- **Architecture:** [[arch_query_resolution_flow_fda4ec1k]], [[arch_rl_learning_loop_b3d4f2a1]], [[arch_scoring_dimensions_caf1b9h8]]

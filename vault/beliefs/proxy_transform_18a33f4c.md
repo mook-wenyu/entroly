@@ -12,6 +12,7 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+epistemic_layer: belief
 ---
 
 # Module: proxy_transform
@@ -25,3 +26,7 @@ derived_from:
 - `def extract_model(body: Dict[str, Any], path: str = "") -> str` — Extract the model name from the request body or URL path.  Gemini embeds the model in the URL path rather than the body: /v1beta/models/gemini-2.0-flash:generateContent
 - `def compute_token_budget(model: str, config: ProxyConfig) -> int` — Compute the token budget for context injection.  When ECDB (Entropy-Calibrated Dynamic Budget) is disabled, uses the static context_fraction.  When enabled, use compute_dynamic_budget() instead — this
 - `def calibrated_token_count(content: str, source: str = "") -> int` — Estimate token count using per-language char/token ratios.  More accurate than len/4 — saves 15-25% of wasted context budget.
+
+## Related Modules
+
+- **Part of:** [[lib_18a33f4c]]

@@ -9,6 +9,8 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - lib_18a33f4c
+epistemic_layer: truth
 ---
 
 # Module: config
@@ -18,3 +20,7 @@ derived_from:
 
 ## Types
 - `class EntrolyConfig:` — Configuration for the Entroly MCP server.
+
+## Related Modules
+
+- **Part of:** [[lib_18a33f4c]]

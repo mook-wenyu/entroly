@@ -16,6 +16,7 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+epistemic_layer: action
 ---
 
 # Module: prefetch
@@ -34,3 +35,7 @@ derived_from:
 - `def __init__(self, co_access_window: int = 5)`
 - `def record_access(self, file_path: str, turn: int) -> None` —  Record that a file was accessed at a given turn.  Updates co-access counts with all files accessed within the co-access window.
 - `def stats(self) -> dict`
+
+## Related Modules
+
+- **Part of:** [[lib_18a33f4c]]

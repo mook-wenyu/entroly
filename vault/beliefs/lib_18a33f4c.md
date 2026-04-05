@@ -18,6 +18,7 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+epistemic_layer: action
 ---
 
 # Module: lib
@@ -119,3 +120,8 @@ derived_from:
 - `fn test_recall_ranking_is_monotone_descending()` — Recall ranking must be MONOTONE: fragment[0].relevance >= fragment[1].relevance >= ... If this fails, the LLM sees irrelevant context before relevant context.
 - `fn test_context_scorer_similarity_monotone()` — ContextScorer must be MONOTONE in similarity: higher similarity → higher score (everything else equal). If this fails, the scorer would rank distant fragments above close ones.
 - `fn test_lsh_never_drops_exact_match_after_scale()` — LshIndex must not silently drop exact-match entries even after 1000 inserts. If this fails, some fragments will NEVER be recalled regardless of query.
+
+## Related Modules
+
+- **Depends on:** [[anomaly_18a33f4c]], [[cache_18a33f4c]], [[causal_18a33f4c]], [[channel_18a33f4c]], [[cognitive_bus_18a33f4c]], [[cogops_18a33f4c]], [[conversation_pruner_18a33f4c]], [[dedup_18a33f4c]], [[depgraph_18a33f4c]], [[entropy_18a33f4c]], [[fragment_18a33f4c]], [[guardrails_18a33f4c]], [[health_18a33f4c]], [[hierarchical_18a33f4c]], [[knapsack_18a33f4c]], [[knapsack_sds_18a33f4c]], [[lsh_18a33f4c]], [[nkbe_18a33f4c]], [[prism_18a33f4c]], [[query_18a33f4c]], [[query_persona_18a33f4c]], [[resonance_18a33f4c]], [[sast_18a33f4c]], [[semantic_dedup_18a33f4c]], [[skeleton_18a33f4c]], [[utilization_18a33f4c]]
+- **Architecture:** [[arch_concurrency_model_ecf3db0j]], [[arch_memory_lifecycle_b9dae8g7]], [[arch_optimize_pipeline_a7c2e1f0]], [[arch_rust_python_boundary_c4e5f3b2]]

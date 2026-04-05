@@ -11,6 +11,7 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+epistemic_layer: action
 ---
 
 # Module: repo_map
@@ -24,3 +25,7 @@ derived_from:
 ## Functions
 - `def build_repo_map(root: str | Path) -> Dict[str, List[FileMapEntry]]`
 - `def render_repo_map_markdown(grouped: Dict[str, List[FileMapEntry]]) -> str`
+
+## Related Modules
+
+- **Part of:** [[lib_18a33f4c]]

@@ -18,6 +18,8 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - prism_18a33f4c
+epistemic_layer: action
 ---
 
 # Module: query_persona
@@ -77,3 +79,9 @@ derived_from:
 - `fn test_manifold_stats()`
 - `fn test_max_archetypes_cap()`
 - `fn test_pitman_yor_probability()`
+
+## Related Modules
+
+- **Depends on:** [[prism_18a33f4c]]
+- **Used by:** [[lib_18a33f4c]]
+- **Architecture:** [[arch_query_resolution_flow_fda4ec1k]]

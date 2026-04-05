@@ -18,6 +18,8 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - lib_18a33f4c
+epistemic_layer: truth
 ---
 
 # Module: checkpoint
@@ -38,3 +40,7 @@ derived_from:
 - `def list_checkpoints(self) -> List[Dict[str, Any]]` — List all available checkpoints with metadata.
 - `def restore_fragments(self, checkpoint: Checkpoint) -> List[ContextFragment]` — Extract ContextFragment objects from a checkpoint.
 - `def stats(self) -> dict`
+
+## Related Modules
+
+- **Architecture:** [[arch_memory_lifecycle_b9dae8g7]], [[arch_rust_python_boundary_c4e5f3b2]]

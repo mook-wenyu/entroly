@@ -12,6 +12,7 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+epistemic_layer: action
 ---
 
 # Module: proxy_config
@@ -26,3 +27,7 @@ derived_from:
 - `def context_window_for_model(model: str) -> int` — Look up context window size for a model name, with fuzzy prefix matching.
 - `def resolve_quality(value: str) -> float` — Accept either a named preset or a float 0.0-1.0.
 - `def from_env(cls) -> ProxyConfig` — Create config from environment variables, with tuning_config.json overlay.  Supports single-dial mode: set ENTROLY_QUALITY=0.0–1.0 to auto-derive all numeric params from Pareto-interpolated profiles.
+
+## Related Modules
+
+- **Used by:** [[cli_18a33f4c]]

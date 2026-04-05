@@ -18,6 +18,8 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - lib_18a33f4c
+epistemic_layer: truth
 ---
 
 # Module: sast
@@ -102,3 +104,7 @@ derived_from:
 - `fn test_target_blank_with_noopener_suppressed()`
 - `fn test_vue_file_detects_js_rules()`
 - `fn test_html_onerror_xss()`
+
+## Related Modules
+
+- **Used by:** [[lib_18a33f4c]]

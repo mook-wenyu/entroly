@@ -18,6 +18,9 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - arch_information_theory_stack_d5f6a4c3
+  - arch_optimize_pipeline_a7c2e1f0
+epistemic_layer: evolution
 ---
 
 # Module: channel
@@ -85,3 +88,9 @@ derived_from:
 - `fn test_bookend_preserves_all_indices()`
 - `fn test_bookend_small_input()`
 - `fn test_bookend_empty()`
+
+## Related Modules
+
+- **Depends on:** [[depgraph_18a33f4c]], [[fragment_18a33f4c]], [[guardrails_18a33f4c]]
+- **Used by:** [[lib_18a33f4c]]
+- **Architecture:** [[arch_concurrency_model_ecf3db0j]], [[arch_information_theory_stack_d5f6a4c3]], [[arch_optimize_pipeline_a7c2e1f0]]

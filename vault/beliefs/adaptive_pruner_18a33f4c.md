@@ -16,6 +16,7 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+epistemic_layer: action
 ---
 
 # Module: adaptive_pruner
@@ -34,3 +35,7 @@ derived_from:
 - `def __init__(self)`
 - `def available(self) -> bool`
 - `def scan(self, content: str, source: str = "") -> list[str]` —  Scan fragment content for code quality issues.  Returns list of issue strings (empty = clean).
+
+## Related Modules
+
+- **Part of:** [[lib_18a33f4c]]

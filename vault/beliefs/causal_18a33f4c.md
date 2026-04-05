@@ -18,6 +18,8 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - lib_18a33f4c
+epistemic_layer: belief
 ---
 
 # Module: causal
@@ -73,3 +75,8 @@ derived_from:
 - `fn test_self_links_excluded()`
 - `fn test_serde_roundtrip()`
 - `fn test_temporal_eviction_under_capacity()`
+
+## Related Modules
+
+- **Used by:** [[lib_18a33f4c]]
+- **Architecture:** [[arch_closed_loop_feedback_dbg2ca9i]], [[arch_optimize_pipeline_a7c2e1f0]]

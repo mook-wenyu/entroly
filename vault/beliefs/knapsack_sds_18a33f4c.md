@@ -18,6 +18,9 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - dedup_18a33f4c
+  - fragment_18a33f4c
+epistemic_layer: action
 ---
 
 # Module: knapsack_sds
@@ -52,3 +55,9 @@ derived_from:
 - `fn test_diversity_score_range()`
 - `fn test_resolution_preference_by_budget()`
 - `fn test_fast_path_selects_all_when_budget_generous()`
+
+## Related Modules
+
+- **Depends on:** [[dedup_18a33f4c]], [[fragment_18a33f4c]]
+- **Used by:** [[lib_18a33f4c]]
+- **Architecture:** [[arch_dedup_hierarchy_e6a7b5d4]], [[arch_multi_resolution_f7b8c6e5]], [[arch_optimize_pipeline_a7c2e1f0]]

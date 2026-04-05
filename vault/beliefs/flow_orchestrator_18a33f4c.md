@@ -11,6 +11,7 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+epistemic_layer: evolution
 ---
 
 # Module: flow_orchestrator
@@ -24,3 +25,7 @@ derived_from:
 
 ## Functions
 - `def to_dict(self) -> Dict[str, Any]`
+
+## Related Modules
+
+- **Architecture:** [[arch_cogops_epistemic_engine_a8c9d7f6]]

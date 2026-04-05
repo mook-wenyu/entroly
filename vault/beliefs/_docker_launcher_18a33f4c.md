@@ -9,6 +9,9 @@ last_checked: 2026-04-04T19:51:14Z
 derived_from:
   - cogops_compiler
   - sast
+  - server_18a33f4c
+  - cli_18a33f4c
+epistemic_layer: evolution
 ---
 
 # Module: _docker_launcher
@@ -19,3 +22,7 @@ derived_from:
 
 ## Functions
 - `def launch() -> None` — Main entry point — docker launch or native fallback.  Routes CLI subcommands (init, dashboard, health, autotune, benchmark, status, proxy) to the local CLI handler. Only `serve` and bare `entroly` go 
+
+## Related Modules
+
+- **Depends on:** [[cli_18a33f4c]], [[server_18a33f4c]]
