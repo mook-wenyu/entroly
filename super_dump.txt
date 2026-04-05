@@ -1,0 +1,3708 @@
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge\agent.py
+--- Snippet (First 10 lines) ---
+"""
+Agent — the core cognitive unit.
+
+Supports:
+- Memory attachment and delegation (Tests 3, 5)
+- Output hooks for injection testing (Test 1)
+- TF embedding-based semantic drift detection (Test 4)
+- Goal preservation under self-modification (Test 6)
+"""
+
+CLASS: Agent - An autonomous agent with memory, goals, task tracking, and drift detection capabilities.
+FUNC: __init__ - 
+FUNC: set_output_hook - Override the agent's output with a deterministic function.
+FUNC: produce_output - Generate output, applying hook if set.
+FUNC: attach_memory - 
+FUNC: recall - Delegate to attached Memory, using its consistency model.
+FUNC: store - Delegate to attached Memory.
+FUNC: set_task - Set the original task. Records the baseline embedding.
+FUNC: refine_task - Apply a refinement to the current task. Computes embedding distance from the ORIGINAL task. If dista
+FUNC: get_task_embedding - Return the TF embedding of the current task text.
+FUNC: compute_embedding_distance - Cosine distance between two embeddings.
+FUNC: get_drift_alerts - Return step indices where drift exceeded threshold.
+FUNC: set_goal - Set and freeze the agent's goal. Embedding is computed once.
+FUNC: get_goal - 
+FUNC: get_goal_embedding - Return the FROZEN goal embedding (computed at set_goal time). This ensures self_optimize cannot drif
+FUNC: self_optimize - Self-optimization that respects constraints.  When 'maintain_goal' is in constraints: - Goal text is
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge\cli.py
+--- Snippet (First 10 lines) ---
+"""
+Ebbiforge CLI — Command-line interface.
+
+Usage:
+    ebbiforge version          Show version and system info
+    ebbiforge demo             Run the interactive swarm demo
+    ebbiforge benchmark        Run performance benchmark
+    ebbiforge example <name>   Run a built-in example
+"""
+
+FUNC: _version - Show version and system info.
+FUNC: _demo - Run the interactive swarm demo.
+FUNC: _benchmark - Run performance benchmark.
+FUNC: _example - Run a built-in example.
+FUNC: main - CLI entry point.
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge\embeddings.py
+--- Snippet (First 10 lines) ---
+"""
+Genuine TF-IDF embedding engine for semantic distance computation.
+
+No mocks — real linear algebra over bag-of-words vectors.
+Used for drift detection (Test 4) and goal preservation (Test 6).
+"""
+
+import math
+import re
+import struct
+FUNC: tokenize - Lowercase tokenization with punctuation stripping.
+FUNC: cosine_similarity - Cosine similarity between two sparse vectors (dicts).
+FUNC: cosine_distance - 1 - cosine_similarity. Range [0, 2], typically [0, 1] for TF vectors.
+CLASS: Embedding - A sparse TF vector stored as a dict. Provides .tobytes() for deterministic hashing (Test 6).
+FUNC: text_to_embedding - Compute a TF (term frequency) vector from text.  We use raw TF (not TF-IDF) since we don't have a co
+FUNC: __init__ - 
+FUNC: vector - 
+FUNC: tobytes - Deterministic serialization: sorted keys, 64-bit floats.
+FUNC: __repr__ - 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge\memory.py
+--- Snippet (First 10 lines) ---
+"""
+Thread-safe, versioned, timestamp-aware Memory store.
+
+Supports:
+- Timestamped writes with append-only history (Test 3)
+- Strong consistency via per-key pessimistic locking (Test 5)
+- Staleness policies for temporal belief management
+"""
+
+import threading
+CLASS: Memory - A key-value store with full versioning, timestamps, and optional strong consistency (per-key pessimi
+FUNC: __init__ - 
+FUNC: _get_key_lock - 
+FUNC: store - Store a value with optional timestamp. Appends to history.
+FUNC: retrieve - Retrieve the current value for a key.
+FUNC: recall - Retrieve value. Under strong consistency, HOLDS the per-key lock until the next store() on the same 
+FUNC: get_history - Return the full append-only history for a key.
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge\overmind.py
+--- Snippet (First 10 lines) ---
+"""
+Overmind — The Master Python Loop governing the 4-Tier LOD Swarm.
+
+Executes the MPPI strategic plan and monitors the Genius Score.
+All values derived from the real Rust engine — zero hardcoding.
+"""
+
+import time
+import math
+from typing import Dict, Any
+CLASS: Overmind - The Master Python Loop governing the Production Swarm Engine. Executes the MPPI strategic plan and m
+FUNC: __init__ - 
+FUNC: compute_genius_score - Calculates the 5-variable Genius Score. (Efficiency, Retention, Coherence, Adaptability, Alignment) 
+FUNC: step_mppi_planner - Model Predictive Path Integral (MPPI) Planner. Given the current macro state, predict if the swarm n
+FUNC: run - Main loop pulling from the Rust backend.
+FUNC: stop - 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge\runtime.py
+--- Snippet (First 10 lines) ---
+"""
+Runtime — execution engine with genuine reasoning capabilities.
+
+Implements:
+- Symbolic math solving (Test 2: bat-and-ball, arithmetic)
+- Epistemic boundary detection / solvability classification (Test 2)
+- Constraint-aware task decomposition (Test 7)
+- Causal vs correlational reasoning (Test 8)
+
+No LLM calls. All reasoning is algorithmic:
+CLASS: TaskResult - Result of a Runtime execution, with reasoning metadata.
+CLASS: Decomposition - Metadata about how a task was decomposed.
+CLASS: SubTask - A single subtask in a decomposition, preserving parent constraints.
+CLASS: ArithmeticSolver - Symbolic solver for the class of word problems in the test suite.  Handles: - Direct arithmetic: "Wh
+CLASS: SolvabilityDetector - Determines whether a question is solvable, partially solvable, or fundamentally indeterminate.  Uses
+CLASS: CausalReasoner - Rule-based causal reasoning engine.  Implements structural causal model (SCM) heuristics: 1. Detect 
+CLASS: ConstraintDecomposer - Constraint-aware task decomposition engine.  Detects JOINT constraints (budget, capacity, etc.) and 
+CLASS: Runtime - The main execution engine.  Routes tasks to the appropriate reasoning engine: 1. AArithmeticSolver f
+FUNC: __init__ - 
+FUNC: __str__ - 
+FUNC: __repr__ - 
+FUNC: __init__ - 
+FUNC: get_subtasks - 
+FUNC: __init__ - 
+FUNC: __str__ - 
+FUNC: __repr__ - 
+FUNC: try_solve - Attempt to solve a math problem. Returns (answer_str, steps) or None.
+FUNC: classify - 
+FUNC: analyze - 
+FUNC: decompose - Decompose a task while preserving joint constraints. Returns (subtasks, Decomposition, answer) or No
+FUNC: __init__ - 
+FUNC: execute - Execute a task and return a structured result.
+FUNC: get_last_decomposition - Return the decomposition metadata from the last execution.
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge\swarm.py
+--- Snippet (First 10 lines) ---
+"""
+Swarm — multi-agent pipeline executor with belief provenance tracking.
+
+Supports:
+- Sequential pipeline execution (each agent sees previous output)
+- Provenance chain: tracks agent_name, source, confidence for every claim
+- Detection of unsourced / unverified beliefs (Test 1)
+"""
+
+
+CLASS: ProvenanceRecord - A single link in the belief provenance chain.
+CLASS: ProvenanceChain - Full provenance chain for a pipeline result.
+CLASS: SwarmResult - Result of a Swarm execution, carrying provenance metadata.
+CLASS: Swarm - Multi-agent swarm with pipeline execution and provenance tracking.  In pipeline mode, agents execute
+FUNC: __init__ - 
+FUNC: __repr__ - 
+FUNC: __init__ - 
+FUNC: add - 
+FUNC: has_unverified - 
+FUNC: __repr__ - 
+FUNC: __init__ - 
+FUNC: provenance - 
+FUNC: __str__ - 
+FUNC: __repr__ - 
+FUNC: __init__ - 
+FUNC: add - Add an agent to the swarm.
+FUNC: run - Execute a task through the swarm.  In pipeline mode: agents run sequentially, each receiving the pre
+FUNC: get_belief_provenance - Return the provenance chain for a SwarmResult.  Returns None ONLY if no provenance was tracked (brok
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge\task.py
+--- Snippet (First 10 lines) ---
+"""
+Task data class.
+
+Holds the prompt and configuration options for execution.
+"""
+
+
+class Task:
+    """
+    A task to be executed by a Runtime or Swarm.
+CLASS: Task - A task to be executed by a Runtime or Swarm.  Parameters ---------- prompt : str     The natural lan
+FUNC: __init__ - 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge\__init__.py
+--- Snippet (First 10 lines) ---
+"""
+Ebbiforge — High-Performance Multi-Agent AI Framework
+
+The developer framework for building AI agent systems at scale.
+100M agents in Rust, selective LLM reasoning, belief provenance,
+enterprise compliance, and plug-and-play data connectors.
+
+Core primitives:
+    Agent, Swarm, Runtime, Task, Memory
+
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge\__main__.py
+--- Snippet (First 10 lines) ---
+"""Entry point for python -m ebbiforge."""
+from ebbiforge.cli import main
+
+main()
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge\connectors\base.py
+--- Snippet (First 10 lines) ---
+"""
+Base abstractions for Ebbiforge connectors.
+
+`DataSource` is the interface every connector implements.
+`Signal` is the universal unit of data flowing into the swarm.
+
+Developers subclass `DataSource` and implement `fetch()` to
+connect ANY external system — stocks, IoT sensors, game servers,
+social media, databases, whatever.
+"""
+CLASS: Signal - The universal unit of external data flowing into the swarm.  This is domain-agnostic by design. A Si
+CLASS: DataSource - Abstract interface for all data connectors.  Subclass this and implement `fetch()` to connect any ex
+FUNC: intensity - Signal intensity for swarm injection = value × weight, clamped to [-1, 1].
+FUNC: fetch - Fetch the latest signals from this data source.  Returns a list of Signal objects. Called by the swa
+FUNC: stream - Generator that yields signal batches at regular intervals.  Usage:     for signals in feed.stream(in
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge\connectors\http_poller.py
+--- Snippet (First 10 lines) ---
+"""
+HTTP Poller — Generic REST API connector.
+
+Polls ANY HTTP endpoint on an interval and converts the JSON response
+into swarm signals using a user-provided transform function.
+
+This replaces domain-specific connectors like CoinGecko or GitHub —
+the developer defines what URL to hit and how to interpret the response.
+
+Usage — Crypto prices:
+CLASS: HTTPPoller - Generic HTTP polling connector.  Fetches JSON from any URL and transforms it into signals using a us
+FUNC: __init__ - 
+FUNC: fetch - Fetch and transform the latest data from the HTTP endpoint.
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge\connectors\rss_feed.py
+--- Snippet (First 10 lines) ---
+"""
+RSS Feed Connector — Ingest any RSS/Atom feed as signals.
+
+Domain-agnostic: works with news feeds, release notes, blog posts,
+monitoring alerts published via RSS, or any other RSS/Atom source.
+
+Usage:
+    from ebbiforge.connectors import RSSFeed
+
+    feed = RSSFeed(
+FUNC: _default_transform - Default: signal intensity proportional to summary length.
+CLASS: RSSFeed - RSS/Atom feed connector.  Fetches and parses any RSS/Atom feed, converting entries into signals usin
+FUNC: __init__ - 
+FUNC: fetch - Fetch latest feed entries and convert to signals.
+FUNC: fetch_new - Return only signals from entries not seen before.
+FUNC: _parse_feed - Parse RSS 2.0 or Atom XML into entry dicts.
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge\connectors\webhook.py
+--- Snippet (First 10 lines) ---
+"""
+Webhook Receiver — Accept external signals via HTTP POST.
+
+Runs a lightweight HTTP server in a background thread. External
+systems POST JSON signals which are queued for swarm consumption.
+
+This is domain-agnostic — ANY system that can send HTTP POST can
+feed data into your swarm (Stripe webhooks, Slack events, IoT gateways,
+game servers, monitoring alerts, etc.).
+
+CLASS: _WebhookHandler - Internal HTTP handler.
+CLASS: WebhookReceiver - HTTP webhook receiver for external signal ingestion.  Runs a background HTTP server. Any system that
+FUNC: do_POST - 
+FUNC: log_message - 
+FUNC: __init__ - 
+FUNC: start - Start the webhook listener in a background thread.
+FUNC: stop - Stop the webhook listener.
+FUNC: fetch - Return all pending signals (non-destructive peek).
+FUNC: drain - Drain all pending signals from the queue (destructive).
+FUNC: pending_count - 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge\connectors\__init__.py
+--- Snippet (First 10 lines) ---
+"""
+Ebbiforge Connectors — Plug-and-play data source adapters.
+
+The core abstraction is `DataSource` — an interface that any developer
+can implement to feed their own real-world data into the swarm.
+
+Built-in connectors are EXAMPLES showing the pattern. Developers are
+expected to write their own for their specific domain.
+
+Usage (custom connector):
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge\outputs\base.py
+--- Snippet (First 10 lines) ---
+"""
+Base abstractions for Ebbiforge outputs.
+
+`OutputSink` is the interface every output adapter implements.
+`SwarmEvent` is the universal output payload from the swarm.
+"""
+
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
+CLASS: SwarmEvent - A discrete event emitted by the swarm engine.  This is domain-agnostic. A SwarmEvent could represent
+CLASS: OutputSink - Abstract interface for all output adapters.  Subclass this and implement `emit()` to send swarm even
+FUNC: to_dict - 
+FUNC: emit - Send a swarm event to this output destination.
+FUNC: emit_batch - Send multiple events. Override for batch-optimized outputs.
+FUNC: close - Clean up resources. Override if needed.
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge\outputs\console.py
+--- Snippet (First 10 lines) ---
+"""
+Console Output — Rich terminal display for swarm events.
+
+Provides a formatted, color-coded terminal output with live metrics.
+Useful for development, demos, and monitoring.
+
+Usage:
+    from ebbiforge.outputs import ConsoleOutput, SwarmEvent
+
+    console = ConsoleOutput(verbose=True)
+FUNC: _supports_ansi - Detect if the output stream supports ANSI color codes.
+CLASS: ConsoleOutput - Rich terminal output for swarm events.  Color-codes events by severity and adds contextual icons. Su
+FUNC: __init__ - 
+FUNC: emit - Print a formatted event to the terminal.
+FUNC: event_count - 
+FUNC: _c - Return ANSI code if colors are enabled, empty string otherwise.
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge\outputs\jsonfile.py
+--- Snippet (First 10 lines) ---
+"""
+JSON File Output — Append swarm events to a JSONL file.
+
+Writes events as newline-delimited JSON, perfect for log analysis,
+data pipelines, or feeding into downstream ML systems.
+
+Usage:
+    from ebbiforge.outputs import JSONFileOutput
+
+    logger = JSONFileOutput("swarm_events.jsonl")
+CLASS: JSONFileOutput - Newline-delimited JSON file output.  Appends each event as a single JSON line, making it easy to pro
+FUNC: __init__ - 
+FUNC: emit - Append an event as a JSON line (thread-safe).
+FUNC: close - Flush and close the file.
+FUNC: event_count - 
+FUNC: __del__ - Safety net: close file if not explicitly closed.
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge\outputs\webhook_out.py
+--- Snippet (First 10 lines) ---
+"""
+Webhook Output — POST swarm events to any URL.
+
+Send swarm events to external services via HTTP POST.
+Works with Slack webhooks, Discord webhooks, custom APIs,
+PagerDuty, Zapier, IFTTT, or any HTTP endpoint.
+
+Usage:
+    from ebbiforge.outputs import WebhookOutput, SwarmEvent
+
+CLASS: WebhookOutput - HTTP webhook output adapter.  POSTs swarm events as JSON to any URL. Supports custom headers for aut
+FUNC: __init__ - 
+FUNC: emit - POST an event to the webhook URL.
+FUNC: emit_batch - Send a batch of events.
+FUNC: close - Flush any remaining buffered events.
+FUNC: _flush - 
+FUNC: _send - 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge\outputs\__init__.py
+--- Snippet (First 10 lines) ---
+"""
+Ebbiforge Outputs — Plug-and-play output adapters.
+
+The core abstraction is `OutputSink` — an interface that developers
+implement to send swarm results anywhere.
+
+Built-in adapters:
+    - ConsoleOutput: Rich terminal output with live metrics
+    - WebhookOutput: POST results to any URL
+    - JSONFileOutput: Append results to a JSONL file
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\Cargo.lock
+Skipped full parse, generic file.
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\Cargo.toml
+[package]
+name = "ebbiforge-core"
+version = "4.0.0"
+edition = "2021"
+description = "High-performance AI Agent Runtime — 100M agent scale"
+
+[lib]
+name = "ebbiforge_core"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Async Runtime
+tokio = { version = "1.32", features = ["full"] }
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Python Bindings
+pyo3 = { version = "0.23", features = ["extension-module"] }
+
+# Utilities
+anyhow = "1.0"
+thiserror = "1.0"
+dashmap = "5.5"
+regex = "1.10"
+parking_lot = "0.12"
+reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "json", "gzip", "brotli"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+chrono = "0.4"
+
+# Storage Backends
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+qdrant-client = "1.7"
+
+# Security (Cryptography)
+ed25519-dalek = "2.1"
+aes-gcm = "0.10"
+rand = "0.8"
+rand_distr = "0.4"
+hex = "0.4"
+rayon = "1.8"
+urlencoding = "2.1.3"
+fastembed = { version = "5.11.0", default-features = false, features = ["hf-hub", "hf-hub-rustls-tls", "ort-download-binaries-rustls-tls"] }
+candle-core = "0.9.2"
+candle-nn = "0.9.2"
+memmap2 = "0.9"
+
+
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\README.md
+# Ebbiforge Core
+
+**High-performance multi-agent runtime built in Rust with Python bindings.**
+
+Ebbiforge Core is the engine behind the Ebbiforge framework. It is designed for deploying scalable agent societies using data-oriented architecture and biological memory models.
+
+## Build from Source
+
+```bash
+cd ebbiforge-core
+cargo build --release
+```
+
+## Quick Start
+
+```python
+import ebbiforge_core as ors
+
+# Initialize a production swarm with 10,000 full-fidelity agents
+graph = ors.AgentGraphPy()
+swarm = ors.ProductionTensorSwarm(agent_count=10000)
+
+# Add 1,000,000 dormant agents (Tier 1 bitflags, zero context overhead)
+dormant = [ors.DormantAgent(id=i, predicted_state=0, wakeup_conditions=i%2) for i in range(1_000_000)]
+swarm.add_dormant_agents(dormant)
+
+# Rapidly filter agents via SIMD (promotes 1M agents in under 12ms)
+swarm.set_global_triggers(1)
+swarm.tick()
+
+# Process promoted agents through the async multiplexer
+promoted_agents = swarm.pop_promotions()
+for p in promoted_agents:
+    graph.spawn_task(f"Task_{p}", ors.HistoryBuffer(), agent_name="Scout")
+```
+
+## Architecture
+
+| Module | Description |
+|--------|-------------|
+| **TensorSwarm Engine** | Struct-of-Arrays (SoA) layout processed by Rayon SIMD threads. |
+| **4-Tier LOD System** | Dormant, Simplified, Full, and Heavy compute tiers for 10M+ agents. |
+| **Ebbinghaus Memory** | Cosine similarity tracks prediction error, powering biological memory decay. |
+| **Pollination RL** | Temporal Difference (TD) learning creates evolving information broker networks. |
+| **Zero-Copy Memory** | `Arc<RwLock>` implementations for O(1) multi-threaded history access. |
+| **Safety Shield** | Predictive action analysis blocks dangerous behavior prior to execution. |
+
+## Performance
+
+- 10,000,000+ parallel entities via CPU Level-of-Detail
+
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\.cargo\config.toml
+[env]
+PYO3_USE_ABI3_FORWARD_COMPATIBILITY = "1"
+
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\python\__init__.py
+--- Snippet (First 10 lines) ---
+#   P y t h o n   s t u b   f o r   m a t u r i n 
+ 
+ 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\resources\eval_data\cogops_eval.jsonl
+Skipped full parse, generic file.
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\lib.rs
+--- Snippet (First 10 lines) ---
+//! Ebbiforge Core v4.0.0 - High-Performance AI Agent Runtime
+//!
+//! This library provides the core infrastructure for building and running
+//! autonomous AI agents with a focus on safety, memory efficiency (zero-copy),
+//! and production reliability.
+// All modules re-exported for Python bindings
+
+pub mod compliance;
+pub mod core;
+pub mod evolution;
+STRUCT: pub struct TrajectoryPoint 
+IMPL: impl TrajectoryPoint 
+FN: pub fn new(step: u32, action: String, thought: String) -> Self 
+STRUCT: pub struct HistoryBuffer 
+IMPL: impl HistoryBuffer 
+FN: pub fn new() -> Self 
+FN: pub fn add(&self, item: TrajectoryPoint) 
+FN: pub fn len(&self) -> usize 
+FN: pub fn fork(&self) -> Self 
+FN: pub fn to_json(&self) -> String 
+FN: pub fn last(&self) -> Option<TrajectoryPoint> 
+FN: pub fn last_action(&self) -> Option<String> 
+FN: pub fn get_raw(&self) -> Vec<TrajectoryPoint> 
+FN: pub fn merge(&self, other: &HistoryBuffer) 
+FN: pub fn setup_logging(level: Option<String>) 
+FN: fn ebbiforge_core(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\compliance\audit.rs
+--- Snippet (First 10 lines) ---
+//! Audit logging for compliance
+//!
+//! Provides immutable, append-only audit trail for all agent actions.
+
+use parking_lot::RwLock;
+use pyo3::prelude::*;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use tracing::warn; // Add tracing::warn for logging
+STRUCT: pub struct AuditEvent 
+IMPL: impl AuditEvent 
+FN: pub fn __repr__(&self) -> String 
+STRUCT: pub struct AuditLogger 
+IMPL: impl AuditLogger 
+FN: pub fn new() -> Self 
+FN: fn generate_id() -> String 
+FN: fn now() -> String 
+FN: pub fn log_approval(&self, agent_id: &str, action: &str) -> String 
+FN: pub fn log_denial(&self, agent_id: &str, action: &str, reason: &str) -> String 
+FN: pub fn export_json(&self) -> String 
+FN: pub fn export_user_logs(&self, user_id: &str) -> String 
+FN: pub fn delete_user_logs(&self, user_id: &str) 
+FN: pub fn count(&self) -> usize 
+IMPL: impl Default for AuditLogger 
+FN: fn default() -> Self 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\compliance\escalation.rs
+--- Snippet (First 10 lines) ---
+//! Escalation Flow for human-in-the-loop approval
+//!
+//! Queues high-risk actions for human approval before execution.
+
+use parking_lot::RwLock;
+use pyo3::prelude::*;
+use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
+use tracing::{info, warn};
+ENUM: pub enum RiskLevel 
+IMPL: impl RiskLevel 
+FN: pub fn __repr__(&self) -> String 
+STRUCT: pub struct PendingAction 
+IMPL: impl PendingAction 
+FN: pub fn __repr__(&self) -> String 
+FN: pub fn to_json(&self) -> String 
+STRUCT: pub struct EscalationResult 
+IMPL: impl EscalationResult 
+FN: pub fn __repr__(&self) -> String 
+STRUCT: pub struct EscalationFlow 
+IMPL: impl EscalationFlow 
+FN: pub fn new() -> Self 
+FN: pub fn check(&self, agent_id: String, action: String, data: String) -> EscalationResult 
+FN: pub fn get_pending(&self) -> Vec<PendingAction> 
+FN: pub fn approve(&self, pending_id: String) -> bool 
+FN: pub fn reject(&self, pending_id: String) -> bool 
+FN: pub fn pending_count(&self) -> usize 
+IMPL: impl EscalationFlow 
+FN: fn queue_action(
+IMPL: impl Default for EscalationFlow 
+FN: fn default() -> Self 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\compliance\mod.rs
+--- Snippet (First 10 lines) ---
+//! Compliance module for Regulated AI
+//!
+//! This module provides enterprise-grade compliance features:
+//! - Audit logging (immutable action records)
+//! - PII redaction (auto-detect and mask sensitive data)
+//! - Policy enforcement (configurable rules engine)
+//! - Decision traceability (full lineage tracking)
+//! - Rate limiting (cost control)
+//! - Escalation flow (human-in-the-loop)
+//! - Input sanitization (prompt injection defense)
+STRUCT: pub struct ComplianceResult 
+IMPL: impl ComplianceResult 
+FN: pub fn new(
+FN: pub fn __repr__(&self) -> String 
+STRUCT: pub struct ComplianceEngine 
+IMPL: impl ComplianceEngine 
+FN: pub fn new() -> Self 
+FN: pub fn check_action(&self, agent_id: String, action: String, data: String) -> ComplianceResult 
+FN: pub fn redact_pii(&self, text: String) -> String 
+FN: pub fn add_policy(
+FN: pub fn export_audit_logs(&self) -> String 
+FN: pub fn get_trace(&self, trace_id: String) -> String 
+FN: pub fn delete_user_data(&self, user_id: String) -> bool 
+FN: pub fn export_user_data(&self, user_id: String) -> String 
+FN: pub fn stats(&self) -> String 
+IMPL: impl Default for ComplianceEngine 
+FN: fn default() -> Self 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\compliance\pii.rs
+--- Snippet (First 10 lines) ---
+//! PII Detection and Redaction
+//!
+//! Automatically detect and mask sensitive data:
+//! - Email addresses
+//! - Phone numbers
+//! - Social Security Numbers
+//! - Credit card numbers
+//! - API keys
+
+use pyo3::prelude::*;
+STRUCT: pub struct PIIMatch 
+IMPL: impl PIIMatch 
+FN: pub fn __repr__(&self) -> String 
+STRUCT: pub struct PIIRedactor 
+IMPL: impl PIIRedactor 
+FN: pub fn new(redaction_char: char) -> Self 
+FN: pub fn detect_pii(&self, text: &str) -> Vec<PIIMatch> 
+FN: pub fn redact(&self, text: &str) -> String 
+FN: pub fn is_clean(&self, text: &str) -> bool 
+IMPL: impl Default for PIIRedactor 
+FN: fn default() -> Self 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\compliance\policy.rs
+--- Snippet (First 10 lines) ---
+//! Policy Engine for compliance rules
+//!
+//! Evaluates configurable rules to allow/deny agent actions.
+
+use parking_lot::RwLock;
+use pyo3::prelude::*;
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+use tracing::info;
+STRUCT: pub struct Policy 
+IMPL: impl Policy 
+FN: pub fn new(id: String, action_pattern: String, allowed: bool, reason: String) -> Self 
+FN: pub fn __repr__(&self) -> String 
+STRUCT: pub struct PolicyResult 
+STRUCT: pub struct PolicyEngine 
+IMPL: impl PolicyEngine 
+FN: pub fn new() -> Self 
+FN: fn add_default_policies(&self) 
+FN: pub fn add_policy(&self, id: &str, action_pattern: &str, allowed: bool, reason: &str) 
+FN: pub fn evaluate(&self, _agent_id: &str, action: &str, data: &str) -> PolicyResult 
+FN: pub fn count(&self) -> usize 
+FN: pub fn list_policies(&self) -> Vec<Policy> 
+IMPL: impl Default for PolicyEngine 
+FN: fn default() -> Self 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\compliance\ratelimit.rs
+--- Snippet (First 10 lines) ---
+//! Rate Limiter for enterprise cost control
+//!
+//! Prevents runaway API costs by limiting requests per agent/time window.
+
+use parking_lot::RwLock;
+use pyo3::prelude::*;
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+use tracing::{info, warn};
+STRUCT: pub struct RateLimitConfig 
+IMPL: impl RateLimitConfig 
+FN: pub fn new(requests_per_minute: u32, tokens_per_minute: u32, actions_per_hour: u32) -> Self 
+IMPL: impl Default for RateLimitConfig 
+FN: fn default() -> Self 
+STRUCT: struct SlidingWindow 
+IMPL: impl SlidingWindow 
+FN: fn new(limit: u32, window_secs: u64) -> Self 
+FN: fn check_and_increment(&mut self) -> bool 
+FN: fn remaining(&self) -> u32 
+STRUCT: pub struct RateLimitResult 
+IMPL: impl RateLimitResult 
+FN: pub fn __repr__(&self) -> String 
+STRUCT: pub struct RateLimiter 
+IMPL: impl RateLimiter 
+FN: pub fn new(config: Option<RateLimitConfig>) -> Self 
+FN: pub fn check_request(&self, agent_id: String) -> RateLimitResult 
+FN: pub fn check_action(&self, agent_id: String) -> RateLimitResult 
+FN: pub fn get_stats(&self, agent_id: String) -> String 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\compliance\sanitizer.rs
+--- Snippet (First 10 lines) ---
+//! Input Sanitizer for prompt injection defense
+//!
+//! Detects and blocks common prompt injection patterns.
+
+use pyo3::prelude::*;
+use regex::Regex;
+use std::sync::LazyLock;
+use tracing::{info, warn};
+
+/// Known injection patterns
+STRUCT: pub struct SanitizeResult 
+IMPL: impl SanitizeResult 
+FN: pub fn __repr__(&self) -> String 
+STRUCT: pub struct InputSanitizer 
+IMPL: impl InputSanitizer 
+FN: pub fn new(block_on_threat: bool) -> Self 
+FN: pub fn check(&self, input: String) -> SanitizeResult 
+FN: pub fn sanitize(&self, input: String) -> String 
+FN: pub fn is_safe(&self, input: String) -> bool 
+IMPL: impl Default for InputSanitizer 
+FN: fn default() -> Self 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\compliance\trace.rs
+--- Snippet (First 10 lines) ---
+//! Decision traceability for compliance
+//!
+//! Tracks the full lineage of agent decisions for audit purposes.
+
+use parking_lot::RwLock;
+use pyo3::prelude::*;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+/// A single step in a decision trace
+STRUCT: pub struct TraceStep 
+STRUCT: pub struct DecisionTrace 
+STRUCT: pub struct DecisionTracker 
+IMPL: impl DecisionTracker 
+FN: pub fn new() -> Self 
+FN: fn generate_id(prefix: &str) -> String 
+FN: fn now() -> String 
+FN: pub fn start_trace(&self, agent_id: &str, action: &str) -> String 
+FN: pub fn add_step(
+FN: pub fn complete_trace(&self, trace_id: &str, status: &str) 
+FN: pub fn get_trace(&self, trace_id: &str) -> String 
+FN: pub fn get_lineage(&self, trace_id: &str) -> Vec<TraceStep> 
+FN: pub fn export_user_traces(&self, user_id: &str) -> String 
+FN: pub fn delete_user_traces(&self, user_id: &str) 
+FN: pub fn count(&self) -> usize 
+IMPL: impl Default for DecisionTracker 
+FN: fn default() -> Self 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\core\agent.rs
+--- Snippet (First 10 lines) ---
+use pyo3::prelude::*;
+
+/// Represents an autonomous agent with a specific persona and instructions.
+///
+/// `Agent` is the core unit of logic in the CogOps ecosystem, encapsulating
+/// instructions, behavior, and potential handoff targets.
+#[pyclass]
+#[derive(Clone, Debug)]
+pub struct Agent {
+    /// The unique identifier for the agent
+STRUCT: pub struct Agent 
+IMPL: impl Agent 
+FN: pub fn new(name: String, instructions: String) -> Self 
+FN: pub fn add_handoff(&mut self, agent_name: String) 
+FN: pub fn get_handoffs(&self) -> Vec<String> 
+FN: pub fn get_handoff_target(&self, action: &str) -> Option<String> 
+STRUCT: pub struct AgentRegistry 
+IMPL: impl AgentRegistry 
+FN: pub fn new() -> Self 
+FN: pub fn register(&mut self, agent: Agent) 
+FN: pub fn get(&self, name: &str) -> Option<Agent> 
+FN: pub fn resolve_handoff(&self, from_agent: &str, action: &str) -> Option<Agent> 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\core\config.rs
+--- Snippet (First 10 lines) ---
+use pyo3::prelude::*;
+use serde::{Deserialize, Serialize};
+
+/// Safety configuration
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[pyclass]
+pub struct SafetyConfig {
+    #[pyo3(get, set)]
+    pub risk_threshold: f64,
+    #[pyo3(get, set)]
+STRUCT: pub struct SafetyConfig 
+STRUCT: pub struct PruningConfig 
+STRUCT: pub struct IntrospectionConfig 
+STRUCT: pub struct EbbiforgeConfig 
+IMPL: impl EbbiforgeConfig 
+FN: pub fn new() -> Self 
+IMPL: impl Default for EbbiforgeConfig 
+FN: fn default() -> Self 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\core\graph.rs
+--- Snippet (First 10 lines) ---
+use crate::{HistoryBuffer, TrajectoryPoint};
+use pyo3::prelude::*;
+use std::sync::Arc;
+use tokio::runtime::Runtime;
+use tracing::info;
+
+pub struct AgentGraph {
+    runtime: Arc<Runtime>,
+}
+STRUCT: pub struct AgentGraph 
+IMPL: impl AgentGraph 
+FN: pub fn new() -> Self 
+FN: pub fn run_task(&self, task_id: String, buffer: &HistoryBuffer) -> PyResult<()> 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\core\middleware.rs
+--- Snippet (First 10 lines) ---
+use crate::TrajectoryPoint;
+use parking_lot::RwLock;
+use pyo3::prelude::*;
+use std::sync::Arc;
+use tracing::info;
+
+/// Shared state passed through the Ebbiforge middleware pipeline.
+#[pyclass]
+#[derive(Clone, Default)]
+pub struct EbbiforgeContext {
+STRUCT: pub struct EbbiforgeContext 
+IMPL: impl EbbiforgeContext 
+FN: pub fn new(task_id: String, prompt: String) -> Self 
+FN: pub fn add_trajectory_point(&self, point: TrajectoryPoint) 
+FN: pub fn get_trajectory_json(&self) -> String 
+FN: pub fn trajectory_len(&self) -> usize 
+FN: fn name(&self) -> &str;
+FN: fn before_step(&self, _ctx: &mut EbbiforgeContext) -> Result<(), String> 
+FN: fn after_step(&self, _ctx: &mut EbbiforgeContext) -> Result<(), String> 
+FN: fn on_error(&self, _ctx: &mut EbbiforgeContext, _error: &str) -> Result<(), String> 
+STRUCT: pub struct MiddlewarePipeline 
+IMPL: impl MiddlewarePipeline 
+FN: pub fn new() -> Self 
+FN: pub fn add(&mut self, middleware: Box<dyn Middleware>) 
+FN: pub fn run_before(&self, ctx: &mut EbbiforgeContext) -> Result<(), String> 
+FN: pub fn run_after(&self, ctx: &mut EbbiforgeContext) -> Result<(), String> 
+FN: pub fn run_error(&self, ctx: &mut EbbiforgeContext, error: &str) -> Result<(), String> 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\core\mod.rs
+--- Snippet (First 10 lines) ---
+pub mod agent;
+pub mod config;
+pub mod graph;
+pub mod middleware;
+pub mod runner;
+pub mod security;
+pub mod shared_memory;
+pub mod storage;
+pub mod tools;
+pub mod workflow;
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\core\runner.rs
+--- Snippet (First 10 lines) ---
+use crate::core::agent::{Agent, AgentRegistry};
+use crate::core::config::EbbiforgeConfig;
+use crate::core::middleware::{EbbiforgeContext, Middleware, MiddlewarePipeline};
+use crate::core::tools::{execute_tool, get_tool_definitions, ToolResult};
+use crate::{HistoryBuffer, TrajectoryPoint};
+use pyo3::prelude::*;
+use serde_json::json;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::collections::HashMap;
+use tokio::runtime::Runtime;
+FN: fn get_shared_runtime() -> Arc<Runtime> 
+FN: fn get_shared_client() -> reqwest::Client 
+STRUCT: pub struct AgentGraph 
+IMPL: impl AgentGraph 
+FN: pub fn new() -> Self 
+FN: pub fn with_config(config: EbbiforgeConfig) -> Self 
+FN: pub fn register_agent(&mut self, agent: Agent) 
+FN: pub fn use_middleware(&mut self, middleware: Box<dyn Middleware>) 
+STRUCT: pub struct AgentGraphPy 
+IMPL: impl AgentGraphPy 
+FN: pub fn new(config: Option<EbbiforgeConfig>) -> Self 
+FN: pub fn register_agent(&mut self, agent: Agent) 
+FN: pub fn run_task(
+FN: pub fn spawn_task(
+FN: pub fn kill_task(&self, task_id: String) -> PyResult<bool> 
+FN: pub fn active_task_count(&self) -> usize 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\core\security.rs
+--- Snippet (First 10 lines) ---
+//! Security and Trust layer for Ebbiforge
+//!
+//! Provides cryptographic identity and signing for agents to prevent
+//! manipulation and poisoning attacks.
+
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use parking_lot::RwLock;
+use pyo3::prelude::*;
+use rand::rngs::OsRng;
+use rand::RngCore;
+STRUCT: pub struct AgentIdentity 
+IMPL: impl AgentIdentity 
+FN: pub fn generate() -> Self 
+FN: pub fn from_hex(hex_key: String) -> PyResult<Self> 
+FN: pub fn __repr__(&self) -> String 
+IMPL: impl AgentIdentity 
+FN: pub fn get_keys(&self) -> (SigningKey, VerifyingKey) 
+STRUCT: pub struct TrustStore 
+IMPL: impl TrustStore 
+FN: pub fn new() -> Self 
+FN: pub fn add_trusted_agent(&self, agent_id: String, pubkey_hex: String) -> PyResult<()> 
+FN: pub fn is_trusted(&self, agent_id: &str, pubkey_hex: &str) -> bool 
+FN: pub fn remove_trusted_agent(&self, agent_id: &str) 
+IMPL: impl Default for TrustStore 
+FN: fn default() -> Self 
+FN: pub fn sign_data(identity: &AgentIdentity, data: &[u8]) -> Vec<u8> 
+FN: pub fn verify_signature(pubkey_hex: &str, data: &[u8], signature_bytes: &[u8]) -> bool 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\core\shared_memory.rs
+--- Snippet (First 10 lines) ---
+use parking_lot::RwLock;
+use pyo3::prelude::*;
+use std::sync::Arc;
+use tracing::info;
+
+/// A Zero-Copy memory store for sharing embeddings between agents.
+/// Follows memory-safe views over raw bytes principles.
+#[pyclass]
+pub struct SharedMemoryStore {
+    buffer: Arc<RwLock<Vec<f32>>>,
+STRUCT: pub struct SharedMemoryStore 
+IMPL: impl SharedMemoryStore 
+FN: pub fn new(capacity: usize, vector_size: usize) -> Self 
+FN: pub fn default() -> Self 
+FN: pub fn write(&self, index: usize, vector: Vec<f32>) -> PyResult<()> 
+FN: pub fn read(&self, index: usize) -> PyResult<Vec<f32>> 
+FN: pub fn get_capacity(&self) -> usize 
+FN: pub fn get_vector_size(&self) -> usize 
+FN: pub fn fork(&self) -> Self 
+FN: pub fn cosine_similarity(&self, index_a: usize, index_b: usize) -> PyResult<f64> 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\core\tools.rs
+--- Snippet (First 10 lines) ---
+//! Ebbiforge Tool Registry - Real tool implementations for agentic workflows
+//!
+//! This module provides actual tool execution capabilities:
+//! - web_search: Search the web using Google Custom Search API
+//! - fetch_url: Fetch content from a URL
+//! - calculate: Evaluate mathematical expressions
+//! - finish: Signal task completion with final answer
+
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+ENUM: pub enum ToolResult 
+FN: pub fn get_tool_definitions() -> serde_json::Value 
+FN: pub fn calculate(expression: &str) -> ToolResult 
+FN: fn eval_expr(expr: &str) -> Result<f64, String> 
+FN: pub fn finish(answer: &str) -> ToolResult 
+FN: fn test_calculate() 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\core\workflow.rs
+--- Snippet (First 10 lines) ---
+use crate::{HistoryBuffer, TrajectoryPoint};
+use pyo3::prelude::*;
+use tracing::info;
+
+/// A specialized agent that executes a list of sub-agents in a linear sequence.
+///
+/// The output and state of each agent in the chain are passed incrementally
+/// to the next, forming a deterministic pipeline.
+#[pyclass]
+pub struct SequentialAgent {
+STRUCT: pub struct SequentialAgent 
+IMPL: impl SequentialAgent 
+FN: pub fn new(name: String, sub_agents: Vec<String>) -> Self 
+FN: pub fn add_agent(&mut self, agent_name: String) 
+FN: pub fn run(
+STRUCT: pub struct ParallelAgent 
+IMPL: impl ParallelAgent 
+FN: pub fn new(name: String, sub_agents: Vec<String>) -> Self 
+FN: pub fn add_agent(&mut self, agent_name: String) 
+FN: pub fn run(
+STRUCT: pub struct LoopAgent 
+IMPL: impl LoopAgent 
+FN: pub fn new(name: String, agent_name: String, max_iterations: usize) -> Self 
+FN: pub fn run(
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\core\storage\dragonfly.rs
+--- Snippet (First 10 lines) ---
+//! DragonflyDB/Redis storage backend
+//!
+//! Uses the redis crate which is compatible with DragonflyDB.
+//! DragonflyDB is 25x faster than Redis with multi-threaded architecture.
+
+use async_trait::async_trait;
+use pyo3::prelude::*;
+use redis::aio::ConnectionManager;
+use redis::AsyncCommands;
+use std::sync::Arc;
+STRUCT: pub struct DragonflyClient 
+IMPL: impl DragonflyClient 
+FN: pub fn new(url: &str) -> Self 
+IMPL: impl KeyValueStore for DragonflyClient 
+STRUCT: pub struct DragonflyStore 
+IMPL: impl DragonflyStore 
+FN: pub fn new(url: String) -> PyResult<Self> 
+FN: pub fn save(&self, key: String, value: String) -> PyResult<()> 
+FN: pub fn load(&self, key: String) -> PyResult<String> 
+FN: pub fn delete(&self, key: String) -> PyResult<()> 
+FN: pub fn exists(&self, key: String) -> PyResult<bool> 
+FN: pub fn save_with_ttl(&self, key: String, value: String, ttl_secs: u64) -> PyResult<()> 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\core\storage\mod.rs
+--- Snippet (First 10 lines) ---
+//! Storage backends for CogOps persistence
+//!
+//! Provides pluggable storage for:
+//! - DragonflyDB (session cache, Redis-compatible)
+//! - Vector Database (vector embeddings)
+
+pub mod dragonfly;
+pub mod remote_vector;
+
+use async_trait::async_trait;
+ENUM: pub enum StorageError 
+IMPL: impl std::fmt::Display for StorageError 
+FN: fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result 
+IMPL: impl std::error::Error for StorageError 
+STRUCT: pub struct SearchResult 
+IMPL: impl SearchResult 
+FN: pub fn new(id: String, score: f32, payload: Option<String>) -> Self 
+STRUCT: pub struct StorageConfig 
+IMPL: impl StorageConfig 
+FN: pub fn new(
+FN: pub fn __repr__(&self) -> String 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\core\storage\remote_vector.rs
+--- Snippet (First 10 lines) ---
+//! Remote vector database backend
+//!
+//! This module provides a client for remote vector databases with sub-millisecond latency.
+//! Perfect for storing embeddings and similarity search for AI agents.
+
+use async_trait::async_trait;
+use pyo3::prelude::*;
+use qdrant_client::qdrant::{
+    CreateCollectionBuilder, DeletePointsBuilder, Distance, PointId, PointStruct,
+    SearchPointsBuilder, UpsertPointsBuilder, VectorParamsBuilder,
+STRUCT: pub struct VectorDbClient 
+IMPL: impl VectorDbClient 
+FN: pub fn new(url: &str, collection: &str, vector_size: usize) -> Self 
+IMPL: impl VectorStore for VectorDbClient 
+STRUCT: pub struct RemoteVectorStore 
+IMPL: impl RemoteVectorStore 
+FN: pub fn new(url: String, collection: String, vector_size: usize) -> PyResult<Self> 
+FN: pub fn upsert(&self, id: String, vector: Vec<f32>, payload: Option<String>) -> PyResult<()> 
+FN: pub fn search(&self, vector: Vec<f32>, limit: usize) -> PyResult<Vec<SearchResult>> 
+FN: pub fn delete(&self, id: String) -> PyResult<()> 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\evolution\curiosity.rs
+--- Snippet (First 10 lines) ---
+//! Curiosity Module (AgentEvolver)
+//!
+//! Generates self-directed goals to drive exploration.
+
+use pyo3::prelude::*;
+use rand::prelude::*;
+use tracing::info;
+
+/// Curiosity Generator
+#[pyclass]
+STRUCT: pub struct CuriosityModule 
+IMPL: impl CuriosityModule 
+FN: pub fn new() -> Self 
+FN: pub fn learn_skill(&mut self, skill: String) 
+FN: pub fn propose_challenge(&self) -> String 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\evolution\metacognition.rs
+--- Snippet (First 10 lines) ---
+//! Implements Intrinsic Metacognition (State-of-the-art research).
+//! Agents reflect on failures/successes to update knowledge.
+
+use pyo3::prelude::*;
+use serde::{Deserialize, Serialize};
+use tracing::info;
+
+/// Reflection insight
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[pyclass]
+STRUCT: pub struct Insight 
+IMPL: impl Insight 
+FN: pub fn __repr__(&self) -> String 
+STRUCT: pub struct MetaCognition 
+IMPL: impl MetaCognition 
+FN: pub fn new() -> Self 
+FN: pub fn reflect(&mut self, task_goal: String, success: bool, trace_summary: String) -> Insight 
+FN: pub fn get_insights(&self) -> Vec<Insight> 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\evolution\mod.rs
+--- Snippet (First 10 lines) ---
+//! Evolution Layer for Self-Improving Agents
+//!
+//! Enables agents to:
+//! 1. Synthesize new tools on the fly (MetaAgent)
+//! 2. Execute tools safely in a sandbox (Top-tier safety)
+//! 3. Register tools dynamically for immediate use
+
+pub mod curiosity;
+pub mod metacognition;
+pub mod population;
+STRUCT: pub struct EvolutionConfig 
+IMPL: impl EvolutionConfig 
+FN: pub fn new(
+IMPL: impl Default for EvolutionConfig 
+FN: fn default() -> Self 
+STRUCT: pub struct GeneratedTool 
+IMPL: impl GeneratedTool 
+FN: pub fn __repr__(&self) -> String 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\evolution\population.rs
+--- Snippet (First 10 lines) ---
+//! Population Engine (Darwin Godel Machine)
+//!
+//! Manages a population of "Agent Genomes" that evolve over time.
+//! Selects fittest variants based on benchmark performance.
+
+use super::EvolutionConfig;
+use pyo3::prelude::*;
+use rand::prelude::*;
+use serde::{Deserialize, Serialize};
+use tracing::info;
+STRUCT: pub struct AgentGenome 
+IMPL: impl AgentGenome 
+FN: pub fn new(id: String, system_prompt: String, tools: Vec<String>) -> Self 
+FN: pub fn __repr__(&self) -> String 
+STRUCT: pub struct PopulationEngine 
+IMPL: impl PopulationEngine 
+FN: pub fn new(config: Option<EvolutionConfig>) -> Self 
+FN: pub fn init_population(&mut self, base_genome: &AgentGenome) 
+FN: pub fn evolve_generation(&mut self) -> AgentGenome 
+FN: pub fn update_fitness(&mut self, genome_id: String, score: f32) 
+FN: pub fn get_population(&self) -> Vec<AgentGenome> 
+IMPL: impl PopulationEngine 
+FN: fn mutate(&self, genome: &mut AgentGenome) 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\evolution\registry.rs
+--- Snippet (First 10 lines) ---
+//! Dynamic Registry
+//!
+//! Manages hot-loaded tools available to the agent.
+
+use super::GeneratedTool;
+use parking_lot::RwLock;
+use pyo3::prelude::*;
+use std::collections::HashMap;
+use tracing::info;
+STRUCT: pub struct DynamicRegistry 
+IMPL: impl DynamicRegistry 
+FN: pub fn new() -> Self 
+FN: pub fn register(&self, tool: GeneratedTool) -> PyResult<()> 
+FN: pub fn get_tool_code(&self, name: String) -> Option<String> 
+FN: pub fn list_tools(&self) -> Vec<String> 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\evolution\sandbox.rs
+--- Snippet (First 10 lines) ---
+//! Safety Sandbox
+//!
+//! Verifies generated code to prevent dangerous operations.
+
+use super::{EvolutionConfig, GeneratedTool};
+use pyo3::prelude::*;
+use tracing::{info, warn};
+
+/// Sandbox for verifying tool safety
+#[pyclass]
+STRUCT: pub struct SafetySandbox 
+IMPL: impl SafetySandbox 
+FN: pub fn new(config: Option<EvolutionConfig>) -> Self 
+FN: pub fn verify(&self, tool: &GeneratedTool) -> bool 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\evolution\synthesizer.rs
+--- Snippet (First 10 lines) ---
+//! Tool Synthesizer
+//!
+//! Generates code for new tools based on agent requirements.
+
+use super::GeneratedTool;
+use pyo3::prelude::*;
+use tracing::info;
+
+/// Synthesizes new tools from descriptions
+#[pyclass]
+STRUCT: pub struct ToolSynthesizer 
+IMPL: impl ToolSynthesizer 
+FN: pub fn new(model_name: &str) -> Self 
+FN: pub fn synthesize(
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\intel\introspection.rs
+--- Snippet (First 10 lines) ---
+use crate::core::runner::AgentGraphPy;
+use crate::{HistoryBuffer, TrajectoryPoint};
+use pyo3::prelude::*;
+use tracing::{info, warn};
+
+/// Implements a self-correction pattern (Academic research).
+/// Wraps a Generator Agent and a Critic Agent in a self-correction loop.
+#[pyclass]
+pub struct IntrospectionEngine {
+    #[pyo3(get, set)]
+STRUCT: pub struct IntrospectionEngine 
+IMPL: impl IntrospectionEngine 
+FN: pub fn new(max_attempts: usize) -> Self 
+FN: pub fn run_with_self_correction(
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\intel\mod.rs
+--- Snippet (First 10 lines) ---
+pub mod introspection;
+pub mod pollination;
+pub mod pruning;
+pub mod reviewer;
+pub mod safety;
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\intel\pollination.rs
+--- Snippet (First 10 lines) ---
+use crate::core::security::{sign_data, verify_signature, AgentIdentity, TrustStore};
+use crate::TrajectoryPoint;
+use pyo3::prelude::*;
+use serde::{Deserialize, Serialize};
+use tracing::info;
+
+/// Failure context for cross-pollination
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[pyclass]
+pub struct FailureContext {
+STRUCT: pub struct FailureContext 
+IMPL: impl FailureContext 
+FN: pub fn new(trace_id: String, input: String, output: String) -> Self 
+FN: pub fn to_json(&self) -> String 
+STRUCT: pub struct ExperiencePack 
+IMPL: impl ExperiencePack 
+FN: pub fn new(source: String) -> Self 
+FN: pub fn add_lesson(&mut self, lesson: FailureContext) 
+FN: pub fn lesson_count(&self) -> usize 
+FN: pub fn to_json(&self) -> String 
+STRUCT: pub struct CrossPollination 
+IMPL: impl CrossPollination 
+FN: pub fn new(identity: Option<AgentIdentity>, trust_store: Option<Py<TrustStore>>) -> Self 
+FN: pub fn export_experience(&self, source_id: String, lessons_json: String) -> ExperiencePack 
+FN: pub fn pollinate(&self, py: Python, pack_json: String) -> PyResult<Vec<String>> 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\intel\pruning.rs
+--- Snippet (First 10 lines) ---
+use crate::core::middleware::{EbbiforgeContext, Middleware};
+use pyo3::prelude::*;
+use serde::{Deserialize, Serialize};
+use tracing::info;
+
+/// Features for context scoring
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[pyclass]
+pub struct ContextFeatures {
+    #[pyo3(get, set)]
+STRUCT: pub struct ContextFeatures 
+IMPL: impl ContextFeatures 
+FN: pub fn new(recency: f64, relevance: f64, historical_success: f64, complexity: f64) -> Self 
+STRUCT: pub struct ContextFragment 
+IMPL: impl ContextFragment 
+FN: pub fn new(
+FN: pub fn get_features(&self) -> ContextFeatures 
+STRUCT: pub struct PruningPolicy 
+IMPL: impl Default for PruningPolicy 
+FN: fn default() -> Self 
+STRUCT: pub struct AdaptivePruner 
+IMPL: impl AdaptivePruner 
+FN: pub fn new() -> Self 
+FN: pub fn score_fragment(
+FN: pub fn prune(&self, fragments_json: String, target_length: usize) -> String 
+FN: pub fn update_policy(
+IMPL: impl Middleware for AdaptivePruner 
+FN: fn name(&self) -> &str 
+FN: fn before_step(&self, _ctx: &mut EbbiforgeContext) -> Result<(), String> 
+FN: fn after_step(&self, _ctx: &mut EbbiforgeContext) -> Result<(), String> 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\intel\reviewer.rs
+--- Snippet (First 10 lines) ---
+use crate::core::middleware::{EbbiforgeContext, Middleware};
+use pyo3::prelude::*;
+use regex::Regex;
+use tracing::info;
+
+/// Code Quality Guard - Reviews code for secrets, TODOs, and console spam.
+#[pyclass]
+pub struct CodeQualityGuard {}
+
+#[pymethods]
+STRUCT: pub struct CodeQualityGuard 
+IMPL: impl CodeQualityGuard 
+FN: pub fn new() -> Self 
+FN: pub fn review_code(&self, content: String, filename: String) -> Vec<String> 
+IMPL: impl Middleware for CodeQualityGuard 
+FN: fn name(&self) -> &str 
+FN: fn before_step(&self, _ctx: &mut EbbiforgeContext) -> Result<(), String> 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\intel\safety.rs
+--- Snippet (First 10 lines) ---
+use crate::core::middleware::{EbbiforgeContext, Middleware};
+use crate::TrajectoryPoint;
+use parking_lot::RwLock;
+use pyo3::prelude::*;
+use std::collections::HashMap;
+use tracing::warn;
+
+/// A predictive safety mechanism that evaluates agent intentions against
+/// historical failure patterns.
+///
+STRUCT: pub struct PredictiveSafetyShield 
+IMPL: impl PredictiveSafetyShield 
+FN: pub fn new(risk_threshold: f64) -> Self 
+FN: pub fn add_failure_pattern(&self, id: String, trajectory_json: String) 
+FN: pub fn pattern_count(&self) -> usize 
+FN: pub fn analyze_risk(&self, trajectory_json: String) -> (f64, Option<String>) 
+FN: fn calculate_similarity(current: &[TrajectoryPoint], historical: &[TrajectoryPoint]) -> f64 
+IMPL: impl Middleware for PredictiveSafetyShield 
+FN: fn name(&self) -> &str 
+FN: fn before_step(&self, ctx: &mut EbbiforgeContext) -> Result<(), String> 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\memory\consolidation.rs
+--- Snippet (First 10 lines) ---
+//! Sleep-Replay Consolidation
+//!
+//! Implements the core CLS (Complementary Learning Systems) consolidation
+//! algorithm: replay hippocampal episodes, identify which have earned
+//! permanent status, and migrate them to the neocortex (Kanerva SDM).
+
+use super::episode::Episode;
+use super::kanerva::KanervaSDM;
+
+/// Thresholds governing the consolidation process.
+STRUCT: pub struct ConsolidationConfig 
+IMPL: impl Default for ConsolidationConfig 
+FN: fn default() -> Self 
+STRUCT: pub struct ConsolidationReport 
+FN: pub fn consolidate(
+FN: fn make_episode(id: u64, salience: f32, created_at: f64, recall_count: u32) -> Episode 
+FN: fn test_eviction() 
+FN: fn test_consolidation() 
+FN: fn test_surviving_without_consolidation() 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\memory\disk.rs
+--- Snippet (First 10 lines) ---
+//! Disk-backed episode storage via memory-mapped files.
+//!
+//! Uses two files:
+//! - **Records file**: Fixed-size 208-byte records, memory-mapped for random access.
+//! - **Strings file**: Append-only arena for variable-length content and source strings.
+//!
+//! This allows 10 GB of disk to hold ~44 million episodes with ~200 MB RAM footprint
+//! (only the OS-cached hot pages live in RAM).
+//!
+//! The record layout is `#[repr(C)]` for zero-copy access through the mmap.
+STRUCT: pub struct DiskRecord 
+IMPL: impl DiskRecord 
+FN: pub fn is_alive(&self) -> bool 
+FN: pub fn is_consolidated(&self) -> bool 
+FN: pub fn set_alive(&mut self, alive: bool) 
+FN: pub fn set_consolidated(&mut self, consolidated: bool) 
+ENUM: pub enum StorageMode 
+STRUCT: pub struct MemoryBankConfig 
+IMPL: impl MemoryBankConfig 
+FN: pub fn new(storage_mode: String, disk_quota_gb: f64, storage_path: String) -> PyResult<Self> 
+FN: fn __repr__(&self) -> String 
+FN: pub fn describe() -> String 
+FN: pub fn current_disk_usage(&self) -> u64 
+FN: pub fn disk_usage_str(&self) -> String 
+IMPL: impl MemoryBankConfig 
+FN: pub fn storage_mode(&self) -> StorageMode 
+FN: fn default_storage_path() -> String 
+FN: fn dir_size(path: &Path) -> io::Result<u64> 
+FN: pub fn is_over_quota(&self) -> bool 
+STRUCT: pub struct DiskStore 
+IMPL: impl DiskStore 
+FN: pub fn open<P: AsRef<Path>>(prefix: P, initial_capacity: usize) -> io::Result<Self> 
+FN: pub fn open_with_quota<P: AsRef<Path>>(
+FN: pub fn append(&mut self, record: &mut DiskRecord, content: &str, source: &str) -> io::Result<usize> 
+FN: pub fn get_record(&self, index: usize) -> Option<DiskRecord> 
+FN: pub fn update_record(&mut self, index: usize, record: &DiskRecord) 
+FN: pub fn read_content(&self, record: &DiskRecord) -> io::Result<String> 
+FN: pub fn read_source(&self, record: &DiskRecord) -> io::Result<String> 
+FN: fn read_string(&self, offset: u64, len: usize) -> io::Result<String> 
+FN: pub fn len(&self) -> usize 
+FN: pub fn flush(&self) -> io::Result<()> 
+FN: fn grow(&mut self) -> io::Result<()> 
+FN: pub fn disk_usage(&self) -> u64 
+FN: fn enforce_quota(&mut self) 
+FN: pub fn compact(&mut self) -> io::Result<usize> 
+FN: pub fn disk_path(&self) -> &str 
+FN: fn test_disk_store_roundtrip() 
+FN: fn test_record_size() 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\memory\episode.rs
+--- Snippet (First 10 lines) ---
+//! Episode — a single memory trace with Ebbinghaus-governed retention.
+//!
+//! Each episode carries content, a quantised embedding for similarity search,
+//! and a salience score that controls how long it survives.
+
+use pyo3::prelude::*;
+
+/// Emotional tag controlling base salience multiplier.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+ENUM: pub enum EmotionalTag 
+IMPL: impl From<u8> for EmotionalTag 
+FN: fn from(v: u8) -> Self 
+STRUCT: pub struct Episode 
+IMPL: impl Episode 
+FN: pub fn retention(&self, current_tick: f64) -> f32 
+FN: pub fn reinforce(&mut self, current_tick: f64, factor: f32) 
+FN: pub fn simhash_embedding(embedding: &[u16]) -> [u64; 16] 
+FN: pub fn hamming_distance(a: &[u64; 16], b: &[u64; 16]) -> u32 
+FN: pub fn quantise_embedding(float_vec: &[f32]) -> Vec<u16> 
+FN: fn test_retention_decay() 
+FN: fn test_reinforcement() 
+FN: fn test_hamming_identical() 
+FN: fn test_hamming_opposite() 
+FN: fn test_quantise() 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\memory\hippocampus.rs
+--- Snippet (First 10 lines) ---
+//! HippocampusEngine — the user-facing memory system.
+//!
+//! Combines hippocampal ring buffer (fast episodic write) with Kanerva SDM
+//! (persistent semantic recall) via background sleep-replay consolidation.
+//!
+//! # Python API
+//!
+//! ```python
+//! from ebbiforge_core import HippocampusEngine
+//!
+STRUCT: pub struct RecallResult 
+IMPL: impl RecallResult 
+FN: fn __repr__(&self) -> String 
+STRUCT: pub struct HippocampusStats 
+IMPL: impl HippocampusStats 
+FN: fn __repr__(&self) -> String 
+STRUCT: pub struct HippocampusEngine 
+IMPL: impl HippocampusEngine 
+FN: pub fn new(
+FN: pub fn remember(
+FN: pub fn recall(
+FN: pub fn tick(&mut self) 
+FN: pub fn advance(&mut self, n: u64) 
+FN: pub fn consolidate_now(&mut self) -> PyResult<String> 
+FN: pub fn stats(&self) -> HippocampusStats 
+FN: pub fn current_tick(&self) -> f64 
+FN: pub fn episode_count(&self) -> usize 
+FN: pub fn is_persistent(&self) -> bool 
+FN: pub fn disk_path(&self) -> String 
+FN: pub fn flush(&self) -> PyResult<()> 
+FN: pub fn relate(&mut self, from_id: u64, to_id: u64) -> bool 
+FN: pub fn recall_related(&mut self, episode_id: u64, depth: usize) -> Vec<RecallResult> 
+FN: pub fn recall_between(
+IMPL: impl HippocampusEngine 
+FN: fn episode_to_disk_record(ep: &Episode) -> DiskRecord 
+FN: fn load_from_disk(&mut self, store: &DiskStore) 
+FN: fn run_consolidation(&mut self) -> ConsolidationReport 
+FN: fn evict_weakest(&mut self) 
+FN: fn rebuild_index(&mut self) 
+FN: fn collect_related(
+FN: fn trigram_embedding(&self, text: &str) -> Vec<u16> 
+FN: fn fnv1a(data: &[u8]) -> u64 
+FN: fn test_remember_and_recall() 
+FN: fn test_decay_eviction() 
+FN: fn test_reinforcement_prevents_eviction() 
+FN: fn test_capacity_eviction() 
+FN: fn test_stats() 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\memory\kanerva.rs
+--- Snippet (First 10 lines) ---
+//! Kanerva Sparse Distributed Memory (SDM)
+//!
+//! A biologically-inspired associative memory that stores patterns in
+//! high-dimensional binary space and retrieves them via Hamming distance.
+//!
+//! # How it works
+//!
+//! 1. **Hard locations**: Fixed set of 1024-bit binary addresses, randomly
+//!    initialised at construction time.
+//! 2. **Write**: For a given binary address, all hard locations within
+STRUCT: struct HardLocation 
+STRUCT: pub struct KanervaSDM 
+STRUCT: pub struct SDMRecallResult 
+IMPL: impl KanervaSDM 
+FN: pub fn new(n_locations: usize, activation_radius: u32) -> Self 
+FN: pub fn write(&mut self, address: &[u64; 16], content: &[f32]) 
+FN: pub fn read(&self, address: &[u64; 16]) -> SDMRecallResult 
+FN: pub fn has_content(&self, address: &[u64; 16]) -> bool 
+FN: pub fn occupied_count(&self) -> usize 
+FN: pub fn capacity(&self) -> usize 
+FN: fn test_write_and_read_back() 
+FN: fn test_empty_read() 
+FN: fn test_occupied_count() 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\memory\lsh.rs
+--- Snippet (First 10 lines) ---
+//! Multi-Probe Locality-Sensitive Hashing (LSH) Index.
+//!
+//! Converts the O(N) brute-force Hamming distance scan into O(L×k) sub-linear
+//! lookup by pre-indexing 1024-bit SimHash addresses into L hash tables.
+//!
+//! # How it works
+//!
+//! 1. **Build**: For each of L tables, we select a random subset of `b` bits
+//!    from the 1024-bit address. We use these bits as a hash key to map
+//!    the episode into a bucket.
+STRUCT: struct LSHTable 
+IMPL: impl LSHTable 
+FN: fn new(table_index: usize) -> Self 
+FN: fn hash_key(&self, address: &[u64; 16]) -> u32 
+FN: fn insert(&mut self, address: &[u64; 16], episode_idx: usize) 
+FN: fn query(&self, address: &[u64; 16]) -> &[usize] 
+FN: fn query_multiprobe(&self, address: &[u64; 16], max_probes: usize) -> Vec<usize> 
+FN: fn remove(&mut self, address: &[u64; 16], episode_idx: usize) 
+STRUCT: pub struct LSHIndex 
+IMPL: impl LSHIndex 
+FN: pub fn new() -> Self 
+FN: pub fn insert(&mut self, address: &[u64; 16], episode_idx: usize) 
+FN: pub fn remove(&mut self, address: &[u64; 16], episode_idx: usize) 
+FN: pub fn query(&self, address: &[u64; 16]) -> Vec<usize> 
+FN: pub fn query_exact(&self, address: &[u64; 16]) -> Vec<usize> 
+FN: pub fn clear(&mut self) 
+FN: pub fn total_entries(&self) -> usize 
+FN: pub fn occupied_buckets(&self) -> usize 
+STRUCT: pub struct ContextScorer 
+IMPL: impl Default for ContextScorer 
+FN: fn default() -> Self 
+IMPL: impl ContextScorer 
+FN: pub fn score(
+FN: fn make_address(seed: u64) -> [u64; 16] 
+FN: fn test_insert_and_query() 
+FN: fn test_similar_addresses_found() 
+FN: fn test_remove() 
+FN: fn test_deduplication() 
+FN: fn test_context_scorer() 
+FN: fn test_scale_10k_insert_query() 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\memory\mod.rs
+--- Snippet (First 10 lines) ---
+//! HippocampusEngine — Brain-Inspired Memory for AI Agents
+//!
+//! Combines four scientific foundations into a novel memory system:
+//!
+//! 1. **Complementary Learning Systems** (McClelland et al., 1995)
+//!    - Hippocampus: fast episodic storage (ring buffer)
+//!    - Neocortex:   slow semantic patterns (Kanerva SDM)
+//!
+//! 2. **Ebbinghaus Forgetting Curve** (1885)
+//!    - Retention = e^(-t / Salience)
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\security\aes.rs
+--- Snippet (First 10 lines) ---
+use aes_gcm::{
+    aead::{Aead, KeyInit},
+    Aes256Gcm, Key, Nonce,
+};
+use hex;
+use pyo3::prelude::*;
+use rand::RngCore;
+
+#[pyclass]
+pub struct SecureVault {
+STRUCT: pub struct SecureVault 
+IMPL: impl SecureVault 
+FN: pub fn new(key_hex: Option<String>) -> PyResult<Self> 
+FN: pub fn generate_key() -> String 
+FN: pub fn encrypt(&self, plaintext: &str) -> PyResult<String> 
+FN: pub fn decrypt(&self, encrypted_data: &str) -> PyResult<String> 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\security\mod.rs
+--- Snippet (First 10 lines) ---
+pub mod aes;
+pub use self::aes::SecureVault;
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\swarm\criticality_test.rs
+--- Snippet (First 10 lines) ---
+//! Criticality analysis: Does surprise cascade, stabilize, or collapse?
+//!
+//! SIRS model with refractory dynamics and pheromone feedback.
+//! Run: cargo test --release criticality_analysis -- --nocapture --ignored
+
+#[cfg(test)]
+mod tests {
+    use crate::swarm::master_pipeline::SwarmEngineMaster;
+    use std::time::Instant;
+FN: fn criticality_analysis() 
+FN: fn evolution_analysis() 
+STRUCT: struct SurpriseState 
+FN: fn measure_surprise_state(engine: &SwarmEngineMaster, origin: (f32, f32)) -> SurpriseState 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\swarm\evolution_test.rs
+--- Snippet (First 10 lines) ---
+//! Production-grade adversarial tests for v4.0.0 self-evolving agent genomes.
+//!
+//! Tests cover:
+//! - Memory integrity: genome arrays survive spatial sort
+//! - Numerical stability: extreme gene values don't produce NaN/Inf
+//! - Evolution edge cases: mass extinction, no parents, boundary genes
+//! - Backwards compatibility: evolution disabled = identical behavior
+//! - Scale: evolution under load with 1M agents
+//! - Invariants: health/surprise/refractory bounds, gene clamping
+//!
+FN: fn genome_initialization_defaults() 
+FN: fn genome_survives_spatial_sort() 
+FN: fn evolution_disabled_is_noop() 
+FN: fn evolution_replaces_dead_agents() 
+FN: fn mass_extinction_no_panic() 
+FN: fn gene_clamping_after_mutation() 
+FN: fn numerical_stability_extreme_genes() 
+FN: fn numerical_stability_minimal_genes() 
+FN: fn health_reward_conditional() 
+FN: fn per_agent_speed_clamping() 
+FN: fn agents_stay_in_bounds() 
+FN: fn generation_counter_increments() 
+FN: fn mixed_gene_populations() 
+FN: fn evolution_stress_1m() 
+FN: fn evolution_rapid_cycles_stress() 
+FN: fn evolution_creates_diversity() 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\swarm\grid.rs
+--- Snippet (First 10 lines) ---
+// grid.rs — Spatial hash grid.
+//
+// Cell size = perception radius → agents only need to check 3×3 = 9 cells.
+// Hash: Fibonacci hashing (Knuth).  Near-zero collision rate for spatial keys.
+// Rebuild: one O(N) pass, no sort, no tree.
+
+use super::swarm_engine::SwarmPool;
+
+/// Spatial hash grid.  Rebuild every tick before neighborhood queries.
+pub struct SpatialHashGrid {
+STRUCT: pub struct SpatialHashGrid 
+IMPL: impl SpatialHashGrid 
+FN: pub fn new(table_size: usize, cell_size: f32, world_min: [f32; 2]) -> Self 
+FN: fn hash(&self, cx: i32, cy: i32) -> usize 
+FN: pub fn world_to_cell(&self, x: f32, y: f32) -> (i32, i32) 
+FN: pub fn rebuild(&mut self, pool: &SwarmPool) 
+FN: pub fn counts_reset(&mut self) 
+FN: pub fn count_agent(&mut self, cx: i32, cy: i32) 
+FN: pub fn compute_offsets(&mut self) 
+FN: pub fn scatter_agent(&mut self, cx: i32, cy: i32, agent_idx: u32) 
+FN: pub fn query_radius<F>(&self, qx: f32, qy: f32, r: f32, mut callback: F)
+FN: pub fn query_neighbors<F>(
+FN: fn make_pool_circle(n: usize, radius: f32) -> SwarmPool 
+FN: fn rebuild_query_counts_match() 
+FN: fn no_self_in_neighbors() 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\swarm\lod.rs
+--- Snippet (First 10 lines) ---
+//! Level of Detail (LOD) Scale Architecture
+//!
+//! Handles a massive 10M agent population across 4 compute tiers to prevent CPU melting.
+//! Tiers: Dormant (bitflag), Simplified (cache-friendly SIMD), Full Fidelity (TensorSwarm), Heavy (LLM).
+
+use crate::swarm::tensor_engine::TensorSwarm;
+use pyo3::prelude::*;
+
+/// Tier 1: Dormant Agent
+/// Represents an agent that is far from interesting events.
+STRUCT: pub struct DormantAgent 
+IMPL: impl DormantAgent 
+FN: pub fn new(id: u32, predicted_state: u8, wakeup_conditions: u64) -> Self 
+STRUCT: pub struct SimplifiedPool 
+IMPL: impl SimplifiedPool 
+FN: pub fn new() -> Self 
+FN: pub fn update_batch(&mut self) 
+STRUCT: pub struct ProductionTensorSwarm 
+IMPL: impl ProductionTensorSwarm 
+FN: pub fn new(
+FN: pub fn add_dormant_agents(&mut self, agents: Vec<DormantAgent>) 
+FN: pub fn set_global_triggers(&mut self, triggers: u64) 
+FN: pub fn tick(&mut self) 
+FN: fn check_dormant_wakeups(&mut self) 
+FN: fn promote_to_simplified(&mut self, dormant: DormantAgent) 
+FN: fn check_simplify_conditions(&mut self) 
+FN: pub fn pop_promotions(&mut self) -> Vec<u32> 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\swarm\master_pipeline.rs
+--- Snippet (First 10 lines) ---
+use super::mmap_pool::MmapSwarmPool;
+use super::pheromone::PheromoneField;
+use super::grid::SpatialHashGrid;
+use rand::Rng;
+use std::time::Instant;
+
+/// Runtime-tunable SIRS propagation parameters.
+///
+/// R₀_base = transfer / (1 - decay). Default: 0.08 / 0.08 = 1.0 (critical).
+/// Refractory negative feedback drives R₀_eff below R₀_base when many agents
+STRUCT: pub struct PropagationConfig 
+IMPL: impl Default for PropagationConfig 
+FN: fn default() -> Self 
+IMPL: impl PropagationConfig 
+FN: pub fn r0_base(&self) -> f32 
+FN: pub fn r0_effective(&self, mean_refractory: f32) -> f32 
+STRUCT: pub struct SwarmEvolutionConfig 
+IMPL: impl Default for SwarmEvolutionConfig 
+FN: fn default() -> Self 
+STRUCT: pub struct SwarmEngineMaster 
+IMPL: impl SwarmEngineMaster 
+FN: pub fn new(n_agents: usize, width: f32, height: f32) -> Self 
+FN: pub fn tick(&mut self) 
+FN: fn rebuild_grid(&mut self) 
+FN: fn run_neighbor_physics(&mut self) 
+FN: fn run_evolution(&mut self) 
+FN: fn deposit_agent_pheromones(&mut self) 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\swarm\mmap_pool.rs
+--- Snippet (First 10 lines) ---
+//! Memory-Mapped Swarm Pool
+//!
+//! Backs all SoA agent arrays with anonymous mmap regions instead of heap Vec.
+//! This allows the OS to page in/out agent data on demand, enabling 100M agents
+//! on machines with 16GB RAM. The kernel's virtual memory subsystem handles
+//! the pressure — we never allocate 37GB of physical RAM.
+
+use memmap2::MmapMut;
+use rayon::prelude::*;
+use std::mem;
+STRUCT: pub struct MmapArray<T: Copy + Default + Send + Sync> 
+IMPL: impl<T: Copy + Default + Send + Sync> MmapArray<T> 
+FN: pub fn new(len: usize) -> Self 
+FN: pub fn as_slice(&self) -> &[T] 
+FN: pub fn as_mut_slice(&mut self) -> &mut [T] 
+FN: pub fn fill(&mut self, value: T) 
+FN: pub fn par_fill(&mut self, value: T) 
+FN: pub fn len(&self) -> usize 
+STRUCT: pub struct MmapSwarmPool 
+IMPL: impl MmapSwarmPool 
+FN: pub fn new(n_agents: usize) -> Self 
+FN: pub fn randomize_positions(&mut self, width: f32, height: f32) 
+FN: pub fn update_spatial_hashes(&mut self, world_width: f32) 
+FN: pub fn sort_by_spatial_hash(&mut self) 
+FN: pub fn estimated_virtual_mb(&self) -> f64 
+FN: fn mmap_pool_basic() 
+FN: fn mmap_pool_large_allocation() 
+FN: fn spatial_sort_preserves_data() 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\swarm\mod.rs
+--- Snippet (First 10 lines) ---
+//! Swarm Engine
+//!
+//! Handles massive-scale agent simulation using tensor-based state (SoA).
+//! Inspired by modern simulation frameworks.
+
+pub mod promoter;
+pub mod spatial;
+pub mod pollination;
+pub mod tensor_engine;
+pub mod lod;
+STRUCT: pub struct SwarmConfig 
+IMPL: impl SwarmConfig 
+FN: pub fn new(
+IMPL: impl Default for SwarmConfig 
+FN: fn default() -> Self 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\swarm\pheromone.rs
+--- Snippet (First 10 lines) ---
+use std::f32;
+
+/// Multi-channel pheromone field.
+/// Each channel represents a different "chemical" for emergent stigmergic coordination.
+/// CH_0: Resource Abundance
+/// CH_1: Danger Signal
+/// CH_2: Trail Marker
+/// CH_3: Hoarding Suppressor
+/// CH_4: Novelty Beacon
+/// CH_5: Alliance Signal
+STRUCT: pub struct PheromoneField 
+IMPL: impl PheromoneField 
+FN: pub fn new(width: usize, height: usize, cell_size: f32) -> Self 
+FN: fn bilinear_coords(&self, x: f32, y: f32) -> (usize, usize, f32, f32) 
+FN: pub fn deposit(&mut self, x: f32, y: f32, channel: usize, amount: f32) 
+FN: pub fn sample(&self, x: f32, y: f32, channel: usize) -> f32 
+FN: pub fn gradient(&self, x: f32, y: f32, channel: usize) -> (f32, f32) 
+FN: pub fn tick(&mut self) 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\swarm\pollination.rs
+--- Snippet (First 10 lines) ---
+//! Swarm Pollination (RL-Tuned Information Brokerage)
+//!
+//! Handles peer-to-peer context sharing and behavioral RL tuning
+//! driven by temporal difference expected value updates.
+
+use pyo3::prelude::*;
+use std::collections::HashMap;
+
+/// RL state for an agent's information sharing behavior
+#[derive(Clone, Debug)]
+STRUCT: pub struct PollinatorState 
+IMPL: impl PollinatorState 
+FN: pub fn new(recency_window: u64, surprise_broadcast_weight: f32, sigmoid_temperature: f32, alpha: f32, gamma: f32) -> Self 
+FN: pub fn should_pollinate(&self, random_val: f32, current_surprise: f32) -> bool 
+FN: pub fn register_share(&mut self, target_agent_id: u32, current_step: u64) 
+FN: pub fn apply_feedback(&mut self, target_agent_id: u32, reward_delta: f32, current_step: u64) 
+FN: pub fn active_shares_keys(&self) -> Vec<u32> 
+FN: fn update_probability(&mut self, _surprise_proxy: f32) 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\swarm\promoter.rs
+--- Snippet (First 10 lines) ---
+//! Promotion Logic
+//!
+//! Logic to "promote" a Light Agent (swarm) to a Heavy Agent (LLM).
+//! Triggered by conflict or complexity thresholds.
+
+use super::tensor_engine::TensorSwarm;
+use pyo3::prelude::*;
+use tracing::info;
+
+/// Logic for promoting agents
+STRUCT: pub struct PromotionLogic 
+IMPL: impl PromotionLogic 
+FN: pub fn new() -> Self 
+FN: pub fn find_promotion_candidates(
+FN: pub fn inflate_context(&self, agent_id: u32, state: (f32, f32, f32)) -> String 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\swarm\py_api.rs
+--- Snippet (First 10 lines) ---
+use super::master_pipeline::SwarmEngineMaster;
+use pyo3::prelude::*;
+use pyo3::types::PyDict;
+
+#[pyclass]
+pub struct PySwarmEngine {
+    engine: SwarmEngineMaster,
+}
+
+#[pymethods]
+STRUCT: pub struct PySwarmEngine 
+IMPL: impl PySwarmEngine 
+FN: pub fn new(n_agents: usize, width: f32, height: f32) -> Self 
+FN: pub fn tick(&mut self) 
+FN: pub fn deposit_pheromone(&mut self, x: f32, y: f32, channel: usize, amount: f32) 
+FN: pub fn get_macro_state(&self) -> PyObject 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\swarm\scale_test.rs
+--- Snippet (First 10 lines) ---
+//! Real-world scale tests for Ebbiforge v4.0.0
+//!
+//! These tests allocate real memory-mapped arrays, run real spatial hash queries,
+//! compute real neighbor interactions (cohesion, separation, surprise propagation),
+//! and measure actual RSS from /proc/self/status.
+//!
+//! Run: cargo test --release -- --nocapture --ignored
+
+#[cfg(test)]
+mod tests {
+FN: fn get_rss_mb() -> f64 
+FN: fn scale_100m_mmap_allocation() 
+FN: fn scale_1m_full_pipeline() 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\swarm\spatial.rs
+--- Snippet (First 10 lines) ---
+//! Spatial Grid
+//!
+//! Spatial hashing grid for fast neighbor lookups in the swarm.
+
+use super::SwarmConfig;
+use pyo3::prelude::*;
+use std::collections::HashMap;
+
+/// Spatial indexing for the swarm
+#[pyclass]
+STRUCT: pub struct GridMap 
+IMPL: impl GridMap 
+FN: pub fn new(config: Option<SwarmConfig>, cell_size: usize) -> Self 
+FN: pub fn update(&mut self, x_coords: Vec<f32>, y_coords: Vec<f32>) 
+FN: pub fn get_density(&self, x: f32, y: f32) -> usize 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\swarm\swarm_engine.rs
+--- Snippet (First 10 lines) ---
+use super::pheromone::PheromoneField;
+use rayon::prelude::*;
+use std::mem::swap;
+
+/// Constants for Spatial Hashing and Rayon Partitioning
+pub const CELL_SIZE: f32 = 10.0; // 10x10 units per spatial cell
+
+/// Struct of Arrays (SoA) memory layout meticulously aligned for pure AVX2 Processing.
+/// All "tier" and GPU logic has been removed. We sort this struct in-place to guarantee
+/// L1/L2 cache locality during neighbor queries.
+STRUCT: pub struct SwarmPool 
+IMPL: impl SwarmPool 
+FN: pub fn new(n_agents: usize) -> Self 
+FN: pub fn update_spatial_hashes(&mut self, world_width: f32) 
+FN: pub fn sort_memory_by_spatial_hash(&mut self) 
+FN: fn apply_permutation(&mut self, indices: &[usize]) 
+STRUCT: pub struct UnifiedKernel 
+IMPL: impl Default for UnifiedKernel 
+FN: fn default() -> Self 
+FN: pub fn run_unified_simd_physics(pool: &mut SwarmPool, kernel: &UnifiedKernel, pheromones: &PheromoneField, width: f32, height: f32) 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\swarm\tensor_engine.rs
+--- Snippet (First 10 lines) ---
+//! Tensor-Based Swarm Engine
+//!
+//! Uses Struct-of-Arrays (SoA) layout for cache-friendly updates of millions of agents.
+//! Simulates GPU-like batch processing on CPU using Rayon.
+
+use super::SwarmConfig;
+use crate::swarm::pollination::PollinatorState;
+use crate::worldmodel::{LatentState, WorldModelConfig};
+use pyo3::prelude::*;
+use pyo3::types::PyDict;
+STRUCT: pub struct TensorSwarm 
+IMPL: impl TensorSwarm 
+FN: pub fn new(agent_count: usize, world_config: Option<WorldModelConfig>, config: Option<SwarmConfig>) -> Self 
+FN: pub fn randomize_positions(&mut self) 
+FN: pub fn step(&mut self) 
+FN: pub fn tick(&mut self) 
+FN: pub fn get_agent_state(&self, id: usize) -> Option<(f32, f32, f32)> 
+FN: pub fn pop_promotions(&mut self) -> Vec<u32> 
+FN: pub fn register_locations(
+FN: pub fn apply_environmental_shock(&mut self, location: (f32, f32), radius: f32, intensity: f32) 
+FN: pub fn sample_population_metrics(&self) -> PyObject 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\swarm\watcher.rs
+--- Snippet (First 10 lines) ---
+//! Ebbiforge 'Subconscious' Watcher
+//! 
+//! Ingests real-world signals into agent states at scale.
+//! Triggers "Surprise" ripples for OpenClaw alerts.
+
+use crate::swarm::ProductionTensorSwarm;
+use pyo3::prelude::*;
+
+/// A specific data signal (e.g., Price, Log, Metric)
+#[pyclass]
+STRUCT: pub struct Signal 
+IMPL: impl Signal 
+FN: pub fn new(source_id: String, value: f32, surprise_weight: f32) -> Self 
+STRUCT: pub struct SwarmWatcher 
+IMPL: impl SwarmWatcher 
+FN: pub fn new(swarm: Py<ProductionTensorSwarm>, alert_threshold: f32) -> Self 
+FN: pub fn ingest_signals(&self, py: Python<'_>, signals: Vec<Signal>) 
+FN: pub fn check_for_alerts(&self, py: Python<'_>) -> Vec<String> 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\utils\benchmark.rs
+--- Snippet (First 10 lines) ---
+use crate::intel::safety::PredictiveSafetyShield;
+use crate::TrajectoryPoint;
+use pyo3::prelude::*;
+use serde::Deserialize;
+use tracing::info;
+
+/// Evaluation task for benchmarking (internal use only)
+#[derive(Clone, Debug, Deserialize)]
+struct EvalTask {
+    task_id: String,
+STRUCT: struct EvalTask 
+STRUCT: pub struct AgentBenchmark 
+IMPL: impl AgentBenchmark 
+FN: pub fn new() -> Self 
+FN: pub fn run_eval(&self, dataset_json: String, limit: usize) -> (usize, usize) 
+FN: fn evaluate_single_task(task: &EvalTask) -> (bool, String) 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\utils\mod.rs
+--- Snippet (First 10 lines) ---
+pub mod benchmark;
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\worldmodel\consolidator.rs
+--- Snippet (First 10 lines) ---
+//! Memory Consolidator
+//!
+//! Compresses old trajectories into summary latent states for long-term memory.
+
+use super::{LatentEncoder, LatentState, WorldModelConfig};
+use parking_lot::RwLock;
+use pyo3::prelude::*;
+use std::collections::HashMap;
+use tracing::info;
+STRUCT: pub struct ConsolidatedMemory 
+IMPL: impl ConsolidatedMemory 
+FN: pub fn __repr__(&self) -> String 
+STRUCT: pub struct MemoryConsolidator 
+IMPL: impl MemoryConsolidator 
+FN: pub fn new(config: Option<WorldModelConfig>) -> Self 
+FN: pub fn consolidate(
+FN: pub fn get_memories(&self, agent_id: String) -> Vec<ConsolidatedMemory> 
+FN: pub fn merge_all(&self, agent_id: String) -> LatentState 
+FN: pub fn total_trajectories(&self, agent_id: String) -> usize 
+IMPL: impl MemoryConsolidator 
+FN: fn compress_weakest_pair(memories: &mut Vec<ConsolidatedMemory>, latent_dim: usize) 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\worldmodel\diffusion.rs
+--- Snippet (First 10 lines) ---
+//! Latent Diffusion dynamics
+//!
+//! Predicts future states by denoising random predictions.
+
+use super::{LatentState, Prediction, WorldModelConfig};
+use pyo3::prelude::*;
+use rand::thread_rng;
+use rand_distr::{Distribution, Normal};
+use tracing::info;
+STRUCT: pub struct DiffusionPredictor 
+IMPL: impl DiffusionPredictor 
+FN: pub fn new(config: Option<WorldModelConfig>) -> Self 
+FN: pub fn diffuse_predict(
+FN: pub fn rollout(&self, current: &LatentState, action_encoding: Vec<f32>) -> Prediction 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\worldmodel\dynamics.rs
+--- Snippet (First 10 lines) ---
+//! Production Autoregressive Dynamics Model
+//!
+//! Learns causal structure from agent trajectories via predictive learning:
+//!   latent_t+1_pred = dynamics(latent_t, action_t)
+//!   loss = MSE(latent_t+1_pred, latent_t+1_real)
+//!
+//! Architecture: 3-layer residual MLP with GELU activations
+//!   Input: [state_t; action_t]  (2 × D)
+//!     → Linear(2D, D) + GELU
+//!     → Linear(D, D) + GELU + Residual skip
+STRUCT: pub struct TrainingSample 
+STRUCT: pub struct TrainStats 
+IMPL: impl TrainStats 
+FN: pub fn __repr__(&self) -> String 
+STRUCT: pub struct AutoregressivePredictor 
+IMPL: impl AutoregressivePredictor 
+FN: pub fn new(config: Option<WorldModelConfig>) -> pyo3::PyResult<Self> 
+FN: pub fn predict_next(&self, current: &LatentState, action_encoding: Vec<f32>) -> LatentState 
+FN: pub fn train_on_batch(
+FN: pub fn train(
+FN: pub fn get_training_loss(&self) -> f32 
+FN: pub fn get_validation_loss(&self) -> f32 
+FN: pub fn get_best_val_loss(&self) -> f32 
+FN: pub fn get_total_train_steps(&self) -> u64 
+FN: pub fn save_weights(&self, path: String) -> pyo3::PyResult<()> 
+FN: pub fn load_weights(&mut self, path: String) -> pyo3::PyResult<()> 
+FN: pub fn predict_sequence(&self, initial: &LatentState, actions: Vec<Vec<f32>>) -> Prediction 
+FN: pub fn rollout(&self, s: &LatentState, a: Vec<f32>, n: usize) -> Prediction 
+IMPL: impl AutoregressivePredictor 
+FN: fn forward_tensor(&self, x: &Tensor) -> candle_core::Result<Tensor> 
+FN: fn forward_vec(&self, s: &[f32], a: &[f32]) -> candle_core::Result<Vec<f32>> 
+FN: fn compute_loss(&self, samples: &[TrainingSample]) -> candle_core::Result<f32> 
+FN: fn train_step(
+FN: fn build_tensors(&self, samples: &[TrainingSample]) -> candle_core::Result<(Tensor, Tensor)> 
+FN: fn make_optimizer(&self, lr: f64) -> candle_core::Result<AdamW> 
+FN: fn l2_normalize(v: &mut Vec<f32>) 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\worldmodel\encoder.rs
+--- Snippet (First 10 lines) ---
+//! Latent Encoder for compressing context to fixed-size vectors
+//!
+//! Converts trajectory context AND goals into compact latent representations.
+//! Updated for context-aware language conditioning with native ONNX semantic embeddings.
+
+use super::{LatentState, WorldModelConfig};
+use crate::TrajectoryPoint;
+use pyo3::prelude::*;
+use tracing::info;
+use fastembed::{TextEmbedding, InitOptions, EmbeddingModel};
+STRUCT: pub struct LatentEncoder 
+IMPL: impl LatentEncoder 
+FN: pub fn new(config: Option<WorldModelConfig>) -> pyo3::PyResult<Self> 
+FN: pub fn encode_context(
+FN: pub fn encode(&self, trajectory_json: String, agent_id: String) -> LatentState 
+FN: pub fn encode_action(&self, action: String) -> Vec<f32> 
+FN: pub fn decode(&self, state: &LatentState) -> String 
+IMPL: impl LatentEncoder 
+FN: fn normalize(&self, vector: &mut Vec<f32>) 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\worldmodel\geometric.rs
+--- Snippet (First 10 lines) ---
+//! Topological Manifold Regularization
+//!
+//! Implements topological constraints for latent consistency.
+//! Enforces temporal consistency: similar states must be close in latent space.
+
+use super::{LatentEncoder, LatentState, WorldModelConfig};
+use pyo3::prelude::*;
+use tracing::info;
+
+/// Geometric Encoder with temporal regularization
+STRUCT: pub struct GeometricEncoder 
+IMPL: impl GeometricEncoder 
+FN: pub fn new(config: Option<WorldModelConfig>) -> Self 
+FN: pub fn encode(&self, context: String, goal: String, agent_id: String) -> LatentState 
+FN: pub fn encode_action(&self, action: String) -> Vec<f32> 
+IMPL: impl GeometricEncoder 
+FN: fn regularize(&self, vector: &mut Vec<f32>) 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\worldmodel\mod.rs
+--- Snippet (First 10 lines) ---
+//! Latent World Model for Ebbiforge
+//!
+//! Provides predictive capabilities for agent planning:
+//! - Latent encoding (compress context to fixed-size vector)
+//! - Autoregressive dynamics (predict next state)
+//! - Planning engine (rollout futures, pick best action)
+//! - Memory consolidation (compress old trajectories)
+//!
+//! Based on:
+//! - "Latent-Space Predictive dynamics"
+STRUCT: pub struct LatentState 
+IMPL: impl LatentState 
+FN: pub fn new(vector: Vec<f32>, agent_id: String, step: u32) -> Self 
+FN: pub fn similarity(&self, other: &LatentState) -> f32 
+FN: pub fn __repr__(&self) -> String 
+FN: pub fn compute_surprise(&mut self, predicted_prior: &LatentState) 
+FN: pub fn to_json(&self) -> String 
+STRUCT: pub struct WorldModelConfig 
+IMPL: impl WorldModelConfig 
+FN: pub fn new(
+FN: pub fn __repr__(&self) -> String 
+IMPL: impl Default for WorldModelConfig 
+FN: fn default() -> Self 
+STRUCT: pub struct Prediction 
+IMPL: impl Prediction 
+FN: pub fn new(
+FN: pub fn __repr__(&self) -> String 
+STRUCT: pub struct ActionScore 
+IMPL: impl ActionScore 
+FN: pub fn __repr__(&self) -> String 
+STRUCT: pub struct PollinatorConfig 
+IMPL: impl PollinatorConfig 
+FN: pub fn new(recency_window: usize, sigmoid_temperature: f32, surprise_broadcast_weight: f32) -> Self 
+STRUCT: pub struct PromoterConfig 
+IMPL: impl PromoterConfig 
+FN: pub fn new(density_threshold: usize, promotion_context: String) -> Self 
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\worldmodel\planner.rs
+--- Snippet (First 10 lines) ---
+use super::{ActionScore, AutoregressivePredictor, LatentEncoder, LatentState, WorldModelConfig};
+use pyo3::prelude::*;
+use tracing::info;
+
+/// Planning engine for action selection via mental simulation
+#[pyclass]
+pub struct PlanningEngine {
+    config: WorldModelConfig,
+    encoder: LatentEncoder,
+    predictor: AutoregressivePredictor,
+STRUCT: pub struct PlanningEngine 
+IMPL: impl PlanningEngine 
+FN: pub fn new(config: Option<WorldModelConfig>) -> Self 
+FN: pub fn plan(
+FN: pub fn evaluate_actions(
+
+=======================
+FILE: C:\Users\abhis\cogops\ebbiforge-core\src\worldmodel\trainer.rs
+--- Snippet (First 10 lines) ---
+//! Production Trajectory Buffer for World Model Training
+//!
+//! Global ring buffer that accumulates (state, action, next_state) samples
+//! from ALL agents across the swarm. One dataset, shuffled across agents,
+//! feeds one global dynamics model.
+//!
+//! Production features:
+//!   - Fixed-capacity ring buffer (no unbounded growth)
+//!   - Per-recording stats (total recorded, overwrites, fill ratio)
+//!   - Efficient random mini-batch sampling via Fisher-Yates
+STRUCT: pub struct TrajectoryBuffer 
+IMPL: impl TrajectoryBuffer 
+FN: pub fn new(capacity: usize) -> Self 
+FN: pub fn record(
+FN: pub fn record_batch(&mut self, json: String) -> pyo3::PyResult<usize> 
+FN: pub fn sample_batch(&self, batch_size: usize) -> String 
+FN: pub fn to_json(&self) -> String 
+FN: pub fn len(&self) -> usize 
+FN: pub fn total_recorded(&self) -> u64 
+FN: pub fn total_overwrites(&self) -> u64 
+FN: pub fn fill_ratio(&self) -> f32 
+FN: pub fn clear(&mut self) 
+FN: pub fn __repr__(&self) -> String 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\.gitignore
+Skipped full parse, generic file.
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\build_log.txt
+Skipped full parse, generic file.
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\Cargo.lock
+Skipped full parse, generic file.
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\Cargo.toml
+[package]
+name = "agentOS-kernel"
+version = "0.1.0"
+edition = "2021"
+description = "Agent OS Kernel — Nash-KKT resource equilibrium, SimHash IPC, and SIRS capability-space task routing"
+
+[lib]
+name = "agentOS_kernel"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Python bindings (same pattern as ebbiforge-core + entroly-core)
+pyo3 = { version = "0.23", features = ["extension-module", "auto-initialize"] }
+
+# Parallelism
+rayon = "1.8"
+
+# Concurrency primitives (same as ebbiforge-core: Arc<RwLock>)
+parking_lot = "0.12"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Tracing (same as ebbiforge-core)
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Random (same as ebbiforge-core)
+rand = "0.8"
+
+# Hashing — for SimHash fingerprinting in SCHIPC
+siphasher = "1.0"
+
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\pyproject.toml
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "agentOS-kernel"
+version = "0.1.0"
+description = "Agent OS Kernel — Nash-KKT resource equilibrium, SimHash IPC, and SIRS task routing"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+
+[tool.maturin]
+# Same structure as ebbiforge-core pyproject.toml
+features = ["pyo3/extension-module"]
+module-name = "agentOS_kernel"
+
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\README.md
+# AgentOS Kernel
+
+Rust-native Agent OS kernel with PyO3 bindings — Nash-KKT resource equilibrium, SIRS capability-space routing, and PRISM spectral optimization.
+
+## Modules
+
+| Module | Description |
+|--------|-------------|
+| `NkbeAllocator` | Nash-KKT Budgetary Equilibrium — Walrasian market for token budgets |
+| `ScsrScheduler` | SIRS Capability-Space Routing — epidemiological task dispatch |
+| `IpcBus` | SimHash Conditional-Entropy IPC filter |
+| `PrismOptimizer` | Anisotropic spectral weight optimizer (Jacobi eigendecomp) |
+| `TaskDepGraph` | Task dependency graph with topological sort |
+| `ComplianceGate` | PII detection + injection guard |
+| `LodManager` | Level-of-Detail lifecycle |
+
+## Quick Start
+
+```bash
+maturin develop --release
+python -c "from agentOS import demo; demo()"
+```
+
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\test_full.txt
+Skipped full parse, generic file.
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\test_log.txt
+Skipped full parse, generic file.
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\test_production.py
+--- Snippet (First 10 lines) ---
+import os
+import time
+import math
+import sys
+import threading
+import concurrent.futures
+from agentOS import AgentOS
+
+# Ensure we have the Rust kernel
+os_instance = AgentOS(total_budget=1000)
+CLASS: TestReporter - 
+FUNC: test_edge_cases - 
+FUNC: test_scale - 
+FUNC: test_ipc_dedup - 
+FUNC: test_concurrency - 
+FUNC: __init__ - 
+FUNC: verify - 
+FUNC: report - 
+FUNC: worker_thread - 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\agentOS\__init__.py
+--- Snippet (First 10 lines) ---
+"""
+agentOS — Python shell for the Agent OS Kernel.
+
+Architecture mirrors ebbiforge's Python layer over ebbiforge_core:
+  Python (shell) ↔ agentOS_kernel (Rust PyO3 extension)
+    ├── NkbeAllocator     — Nash-KKT resource equilibrium
+    ├── IpcBus            — SimHash conditional-entropy IPC
+    ├── ScsrScheduler     — SIRS capability-space routing
+    ├── PrismOptimizer    — Anisotropic spectral weight optimizer
+    ├── TaskDepGraph      — Task dependency graph + topological sort
+CLASS: AgentOS - The Agent OS — orchestrates resource allocation, IPC, and task routing.  Components:   - NkbeAllocat
+FUNC: demo - Interactive demo of all AgentOS subsystems.
+FUNC: __init__ - 
+FUNC: spawn_agent - Spawn a new managed agent and register it with all subsystems.  Returns the agent ID as a string.
+FUNC: remove_agent - Remove a managed agent from all subsystems.
+FUNC: add_fragment - Queue a context fragment for the next NKBE allocation round.
+FUNC: allocate - Run NKBE allocation over all queued fragments.  Returns the allocation result dict (agent_id → budge
+FUNC: send_message - Send an inter-agent message through the SCHIPC IPC bus.  Returns delivery result (delivered, hamming
+FUNC: broadcast_message - Broadcast a message to all receivers (SCHIPC filtered).
+FUNC: ipc_stats - Return IPC bus statistics.
+FUNC: route_task - Route a task to the best-fit agent using SCSR.  Args:   task_type: semantic category (e.g. "code_rev
+FUNC: complete_task - Signal task completion → triggers SIRS I→R transition.
+FUNC: tick - Advance the scheduler by one tick.  Progresses SIRS refractory countdowns and applies Ebbinghaus dec
+FUNC: swarm_stats - Return SIRS population statistics (mirrors ebbiforge Overmind.compute_genius_score).
+FUNC: status - Full Agent OS status snapshot.
+FUNC: create_prism - Create a PRISM anisotropic spectral optimizer.
+FUNC: prism_update - Compute PRISM natural-gradient step.
+FUNC: prism_stats - Return PRISM optimizer diagnostics.
+FUNC: score_entropy - Shannon entropy of text (bits/char).
+FUNC: score_information - Composite information score [0, 1].
+FUNC: score_boilerplate - Boilerplate ratio [0, 1].
+FUNC: skeleton - Extract skeleton from code. Returns (skeleton_text, token_count).
+FUNC: reference - Extract reference summary. Returns (reference_text, token_count).
+FUNC: create_dep_graph - Create a task dependency graph.
+FUNC: add_task_prereq - Add a hard prerequisite: task depends on prereq.
+FUNC: task_order - Get topological execution order (None if cycle).
+FUNC: __repr__ - 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\agent.rs
+--- Snippet (First 10 lines) ---
+//! Agent — the atomic managed unit of the Agent OS Kernel.
+//!
+//! Mirrors the ebbiforge-core `Agent` struct but extended with:
+//!  - A fixed-size capability vector (matches SCSR routing)
+//!  - A load counter (used by NKBE allocator and SCSR scheduler)
+//!  - A token budget (managed by NKBE allocator)
+//!  - Unique u64 ID (xorshift-mixed, same scheme as entroly-core fragment IDs)
+
+use pyo3::prelude::*;
+use serde::{Deserialize, Serialize};
+STRUCT: pub struct AgentRecord 
+IMPL: impl AgentRecord 
+FN: pub fn new(name: String, capability: Option<Vec<f32>>, token_budget: u32) -> Self 
+FN: pub fn load_factor(&self) -> f32 
+FN: pub fn capability_match(&self, task_req: Vec<f32>) -> f32 
+FN: pub fn __repr__(&self) -> String 
+IMPL: impl AgentRecord 
+FN: pub fn assign_task(&mut self) 
+FN: pub fn complete_task(&mut self) 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\allocator.rs
+--- Snippet (First 10 lines) ---
+//! Nash-KKT Budgetary Equilibrium (NKBE) Allocator
+//!
+//! Allocates a shared token budget B_total across N AI agents at Nash equilibrium,
+//! treating context tokens as a priced cognitive resource in a Walrasian market.
+//!
+//! ═══════════════════════════════════════════════════════════════════════════════
+//! MATHEMATICAL FOUNDATION
+//! ═══════════════════════════════════════════════════════════════════════════════
+//!
+//! ## 1. Arrow-Debreu Walrasian Equilibrium (Arrow & Debreu, 1954)
+STRUCT: pub struct Fragment 
+IMPL: impl Fragment 
+FN: pub fn new(id: String, relevance: f32, token_cost: u32) -> Self 
+STRUCT: pub struct AgentAllocation 
+STRUCT: pub struct NkbeAllocator 
+IMPL: impl NkbeAllocator 
+FN: pub fn new(tau: f32, epsilon: f32, max_iter: u32) -> Self 
+FN: pub fn register_agent(&mut self, agent: AgentRecord) 
+FN: pub fn remove_agent(&mut self, agent_id: u64) 
+FN: pub fn allocate(&self, total_budget: u32, agent_fragments_json: String) -> PyResult<PyObject> 
+FN: pub fn get_agent(&self, agent_id: u64) -> Option<AgentRecord> 
+FN: pub fn agent_count(&self) -> usize 
+FN: pub fn memory_mb(&self) -> f32 
+FN: pub fn max_agents_for_ram(ram_gb: f64) -> u64 
+IMPL: impl NkbeAllocator 
+FN: fn agent_utility(&self, frags: &[Fragment], lambda: f32) -> f32 
+FN: fn kkt_bisect(&self, frags: &[Fragment], budget: u32) -> f32 
+FN: fn sigmoid(x: f32) -> f32 
+STRUCT: pub struct ScoredFragment 
+FN: pub fn reinforce_gradient(
+FN: pub fn compute_dual_gap(
+FN: fn nkbe_clears_market() 
+FN: fn sigmoid_bounds() 
+FN: fn reinforce_gradient_zero_reward() 
+FN: fn reinforce_gradient_boundary_fragments_dominate() 
+FN: fn dual_gap_converged() 
+FN: fn dual_gap_increases_with_uncertainty() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\amp_channel.rs
+--- Snippet (First 10 lines) ---
+//! AMP Channel — Wire Protocol for Intent Packets
+//!
+//! Serialization, signing, and channel abstraction for AMP mesh networking.
+//!
+//! This module handles the "last mile" between the AMP kernel's math
+//! (7D intent vectors, RIMC negotiation in Hilbert space) and the wire:
+//!
+//!   IntentVector (math) ──→ IntentPacket (wire) ──→ bytes + HMAC
+//!
+//! Wire format:
+ENUM: pub enum PacketType 
+IMPL: impl PacketType 
+FN: fn from_u8(v: u8) -> Self 
+FN: fn as_str(&self) -> &'static str 
+STRUCT: struct IntentPacket 
+IMPL: impl IntentPacket 
+FN: fn serialize_body(&self) -> Vec<u8> 
+FN: fn deserialize(data: &[u8]) -> Option<Self> 
+FN: fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] 
+FN: fn simple_sha256(data: &[u8]) -> [u8; 32] 
+FN: fn constant_time_eq(a: &[u8; 32], b: &[u8; 32]) -> bool 
+STRUCT: pub struct AmpChannel 
+IMPL: impl AmpChannel 
+FN: pub fn new() -> Self 
+FN: pub fn register_agent(&mut self, agent_id: String, key: Vec<u8>) 
+FN: pub fn send(
+FN: pub fn receive(&mut self, data: Vec<u8>) -> PyResult<PyObject> 
+FN: pub fn drain_outbound(&mut self) -> Vec<Vec<u8>> 
+FN: pub fn stats(&self) -> PyObject 
+FN: fn test_sha256_empty() 
+FN: fn test_sha256_hello() 
+FN: fn test_hmac_roundtrip() 
+FN: fn test_hmac_different_key() 
+FN: fn test_packet_serialize_deserialize() 
+FN: fn test_amp_channel_send_receive() 
+FN: fn test_tamper_detection() 
+FN: fn test_replay_prevention() 
+FN: fn hex(bytes: &[u8]) -> String 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\amp_kernel.rs
+--- Snippet (First 10 lines) ---
+//! AMP Kernel — Agent Mesh Protocol: Intent Hilbert Space + RIMC Negotiation
+//!
+//! Mathematical inter-agent communication without LLM:
+//!   1. 7D IntentVector — request, offer, query, inform, delegate, escalate, acknowledge
+//!   2. 12D RelationshipVector — trust, reciprocity, shared history, etc.
+//!   3. MetricTensor — relationship curvature for negotiation cost
+//!   4. RIMC Negotiation — geodesic search in curved intent space
+//!   5. Topology Void Detection — H₂ homology deadlock prevention
+//!
+//! Sources:
+STRUCT: pub struct IntentVector 
+IMPL: impl IntentVector 
+FN: pub fn new(dims: [f32; INTENT_DIM]) -> Self 
+FN: pub fn from_dominant(idx: usize, strength: f32) -> Self 
+FN: pub fn request(strength: f32) -> Self 
+FN: pub fn offer(strength: f32) -> Self 
+FN: pub fn query(strength: f32) -> Self 
+FN: pub fn inform(strength: f32) -> Self 
+FN: pub fn delegate(strength: f32) -> Self 
+FN: pub fn escalate(strength: f32) -> Self 
+FN: pub fn norm(&self) -> f32 
+FN: pub fn inner(&self, other: &Self) -> f32 
+FN: pub fn compatibility(&self, other: &Self) -> f32 
+FN: pub fn normalize(&mut self) 
+FN: pub fn dominant(&self) -> &'static str 
+STRUCT: pub struct RelationshipVector 
+IMPL: impl RelationshipVector 
+FN: pub fn neutral() -> Self 
+FN: pub fn trust(&self) -> f32 
+FN: pub fn reciprocity(&self) -> f32 
+FN: pub fn reliability(&self) -> f32 
+FN: pub fn health(&self) -> f32 
+FN: pub fn update_from_interaction(&mut self, success: bool, alpha: f32) 
+STRUCT: pub struct MetricTensor 
+IMPL: impl MetricTensor 
+FN: pub fn from_relationship(rel: &RelationshipVector) -> Self 
+FN: pub fn distance(&self, a: &IntentVector, b: &IntentVector) -> f32 
+ENUM: pub enum NegotiationOutcome 
+STRUCT: pub struct NegotiationEngine 
+IMPL: impl NegotiationEngine 
+FN: pub fn new() -> Self 
+FN: pub fn negotiate(
+FN: fn geodesic_step(&self, a: &mut IntentVector, b: &mut IntentVector,
+STRUCT: pub struct AmpKernel 
+IMPL: impl AmpKernel 
+FN: pub fn new() -> Self 
+FN: pub fn register_agent(&mut self, agent_id: String, intent: Vec<f32>) 
+FN: pub fn compatibility(&self, agent_a: &str, agent_b: &str) -> f32 
+FN: pub fn negotiate(&mut self, agent_a: &str, agent_b: &str) -> String 
+FN: pub fn record_interaction(&mut self, agent_a: &str, agent_b: &str, success: bool) 
+FN: pub fn relationship_health(&self, agent_a: &str, agent_b: &str) -> f32 
+FN: pub fn stats(&self) -> PyObject 
+FN: fn test_intent_compatibility_identical() 
+FN: fn test_intent_compatibility_orthogonal() 
+FN: fn test_instant_agreement() 
+FN: fn test_negotiation_resolves() 
+FN: fn test_escalation() 
+FN: fn test_relationship_update() 
+FN: fn test_metric_tensor() 
+FN: fn test_intent_dominant() 
+FN: fn test_amp_kernel_basic() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\autotune.rs
+--- Snippet (First 10 lines) ---
+//! Autotune Engine — EMA Blending + Polyak Averaging + Drift Penalty
+//!
+//! Ported from entroly/autotune.py to Rust for the Agent OS kernel.
+//!
+//! Three mechanisms for cautious parameter updates:
+//!
+//! 1. **EMA Blending**: Instead of full replacement, blend the winning
+//!    config with the current best:
+//!      p_new = (1 - α) · p_old + α · p_candidate
+//!    where α scales with improvement magnitude.
+STRUCT: pub struct TunableParam 
+IMPL: impl TunableParam 
+FN: pub fn new(name: &str, lo: f64, hi: f64, default: f64) -> Self 
+FN: pub fn mutate(&self, sigma_frac: f64) -> f64 
+FN: pub fn drift_sq(&self) -> f64 
+STRUCT: pub struct AutotuneEngine 
+IMPL: impl AutotuneEngine 
+FN: pub fn new(ema_alpha: f64, drift_weight: f64) -> Self 
+FN: pub fn get_params(&self) -> PyObject 
+FN: pub fn get_polyak_params(&self) -> PyObject 
+FN: pub fn propose_candidate(&mut self) -> PyObject 
+FN: pub fn report_score(&mut self, candidate_values: Vec<f64>, score: f64) -> bool 
+FN: pub fn get_param(&self, name: &str) -> f64 
+FN: pub fn set_param(&mut self, name: &str, value: f64) 
+FN: pub fn stats(&self) -> PyObject 
+FN: fn test_param_mutation_in_range() 
+FN: fn test_drift_penalty() 
+FN: fn test_ema_improvement() 
+FN: fn test_ema_blending() 
+FN: fn test_polyak_averaging() 
+FN: fn test_discard_on_regression() 
+FN: fn test_propose_candidate() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\cognitive_bus.rs
+--- Snippet (First 10 lines) ---
+//! ISA-Bus — Information-Surprise-Adaptive Cognitive Bus
+//!
+//! A truly novel event routing system grounded in information theory.
+//! Instead of hand-tuned priority weights, every subscriber maintains an
+//! **online Poisson rate model** for each event type. Routing priority is the
+//! **KL divergence** between the subscriber's *expected* event rate and the
+//! *observed* rate — making each subscriber's attention a learned quantity.
+//!
+//! ═══════════════════════════════════════════════════════════════════════════════
+//! MATHEMATICAL FOUNDATION
+ENUM: pub enum EventKind 
+IMPL: impl EventKind 
+FN: pub fn from_str(s: &str) -> Option<Self> 
+FN: pub fn as_str(self) -> &'static str 
+FN: pub fn index(self) -> usize 
+FN: pub fn all() -> [EventKind; N_EVENT_TYPES] 
+STRUCT: struct RateCell 
+IMPL: impl RateCell 
+FN: fn new() -> Self 
+FN: fn observe(&mut self) 
+FN: fn flush_window(&mut self, alpha: f64) 
+FN: fn variance(&self) -> f64 
+FN: fn std_dev(&self) -> f64 
+FN: fn is_spike(&self) -> bool 
+FN: fn poisson_kl(lambda_obs: f64, lambda_exp: f64) -> f64 
+STRUCT: pub struct BusEvent 
+STRUCT: struct InboxEvent 
+IMPL: impl PartialEq for InboxEvent 
+FN: fn eq(&self, o: &Self) -> bool 
+IMPL: impl Eq for InboxEvent 
+IMPL: impl PartialOrd for InboxEvent 
+FN: fn partial_cmp(&self, o: &Self) -> Option<Ordering> 
+IMPL: impl Ord for InboxEvent 
+FN: fn cmp(&self, o: &Self) -> Ordering 
+STRUCT: struct Subscriber 
+IMPL: impl Subscriber 
+FN: fn new(name: String, filters: Vec<EventKind>,
+FN: fn accepts(&self, kind: EventKind) -> bool 
+FN: fn receive(&mut self, event: BusEvent, current_tick: u64) 
+FN: fn tick(&mut self) 
+FN: fn drain(&mut self) -> Vec<(BusEvent, f64)> 
+FN: fn calibration_score(&self) -> f64 
+STRUCT: pub struct CognitiveBus 
+IMPL: impl CognitiveBus 
+FN: pub fn new(history_capacity: usize, global_alpha: f64) -> Self 
+FN: pub fn subscribe(&mut self, name: &str, event_types: Vec<String>,
+FN: pub fn publish(&mut self, source: &str, event_type: &str,
+FN: pub fn tick(&mut self) 
+FN: pub fn drain(&mut self, subscriber_name: &str) -> PyObject 
+FN: pub fn peek(&self, subscriber_name: &str) -> usize 
+FN: pub fn stats(&self) -> PyObject 
+FN: pub fn subscriber_rate(&self, sub_name: &str, event_type: &str) -> PyObject 
+FN: pub fn query_kl(&self, sub_name: &str, event_type: &str) -> f64 
+FN: pub fn calibration_ranking(&self) -> Vec<String> 
+FN: fn empty_bus() -> CognitiveBus 
+FN: fn test_poisson_kl_zero_at_equality() 
+FN: fn test_poisson_kl_nonnegative() 
+FN: fn test_poisson_kl_flood_higher_than_silence() 
+FN: fn test_kl_asymmetry() 
+FN: fn test_rate_model_converges() 
+FN: fn test_welford_variance() 
+FN: fn test_spike_detection() 
+FN: fn test_no_spike_at_baseline() 
+FN: fn test_publish_delivers_to_matching_subscribers() 
+FN: fn test_kl_priority_ordering() 
+FN: fn test_invalid_event_type_rejected() 
+FN: fn test_inbox_bounded_keeps_high_kl() 
+FN: fn test_calibration_score_decreases_over_time() 
+FN: fn test_all_event_kinds_roundtrip() 
+FN: fn test_query_kl_increases_with_surprise() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\compliance.rs
+--- Snippet (First 10 lines) ---
+//! Kernel Compliance Gate — middleware wrapper over ebbiforge ComplianceEngine patterns
+//!
+//! Provides:
+//!   1. PII detection in IPC messages before delivery (mirrors ComplianceEngine.check_action)
+//!   2. Rate limiting per sender (mirrors RateLimiter: token bucket)
+//!   3. Prompt injection detection (mirrors InputSanitizer)
+//!   4. Audit log of all kernel-level decisions
+//!
+//! Design principle: compliance checks are INLINED into the kernel hot path,
+//! not an external call — same as ebbiforge's Arc<ComplianceEngine> approach.
+FN: pub fn detect_pii_fast(text: &str) -> Vec<&'static str> 
+FN: pub fn detect_injection(text: &str) -> bool 
+STRUCT: pub struct AuditEntry 
+STRUCT: struct TokenBucket 
+IMPL: impl TokenBucket 
+FN: fn new(capacity: f32, refill_per_second: f32) -> Self 
+FN: fn try_consume(&mut self, cost: f32) -> bool 
+FN: fn now_ns() -> u64 
+STRUCT: pub struct ComplianceGate 
+IMPL: impl ComplianceGate 
+FN: pub fn new(
+FN: pub fn check_message(&mut self, sender_id: u64, receiver_id: u64, content: &str) -> PyObject 
+FN: pub fn stats(&self) -> PyObject 
+FN: pub fn export_audit(&self) -> String 
+FN: pub fn delete_sender_audit(&mut self, sender_id: u64) 
+IMPL: impl ComplianceGate 
+FN: fn append_audit(&mut self, entry: AuditEntry) 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\context.rs
+--- Snippet (First 10 lines) ---
+//! Hierarchical Context Compression (HCC) + Unified Context Pipeline
+//!
+//! This is the V4 context orchestration layer that chains all 6 existing
+//! modules into a single pipeline and adds the novel HCC 3-level compression.
+//!
+//! ═══════════════════════════════════════════════════════════════════════════════
+//! MATHEMATICAL FOUNDATION — Rate-Distortion Context Compression
+//! ═══════════════════════════════════════════════════════════════════════════════
+//!
+//! ## 1. Three Compression Levels
+ENUM: pub enum CompressionLevel 
+IMPL: impl CompressionLevel 
+FN: pub fn retention(self) -> f64 
+FN: pub fn as_str(self) -> &'static str 
+STRUCT: struct ContextFragment 
+IMPL: impl ContextFragment 
+FN: fn new(id: String, source_path: String, language: String,
+FN: fn information_at(&self, level: CompressionLevel) -> f64 
+FN: fn tokens_at(&self, level: CompressionLevel) -> u32 
+FN: fn content(&self) -> &str 
+FN: fn marginal_gain(&self, target_level: CompressionLevel) -> (f64, i32, f64) 
+STRUCT: struct UpgradeCandidate 
+IMPL: impl PartialEq for UpgradeCandidate 
+FN: fn eq(&self, o: &Self) -> bool 
+IMPL: impl Eq for UpgradeCandidate 
+IMPL: impl PartialOrd for UpgradeCandidate 
+FN: fn partial_cmp(&self, o: &Self) -> Option<Ordering> 
+IMPL: impl Ord for UpgradeCandidate 
+FN: fn cmp(&self, o: &Self) -> Ordering 
+STRUCT: struct HccEngine;
+IMPL: impl HccEngine 
+FN: fn assign_levels(fragments: &mut [ContextFragment], budget: u32) -> (f64, u32) 
+STRUCT: pub struct ContextPipeline 
+IMPL: impl ContextPipeline 
+FN: pub fn new(budget: u32, dedup_threshold: u32) -> Self 
+FN: pub fn add(&mut self, source_path: &str, language: &str,
+FN: pub fn pack(&mut self) -> PyObject 
+FN: pub fn stats(&self) -> PyObject 
+FN: pub fn clear(&mut self) 
+FN: pub fn set_budget(&mut self, budget: u32) 
+FN: pub fn query_level(&self, fragment_id: &str) -> &str 
+FN: fn test_level_retention_monotonic() 
+FN: fn test_information_increases_with_level() 
+FN: fn test_tokens_decrease_with_compression() 
+FN: fn test_marginal_gain_positive_for_upgrade() 
+FN: fn test_hcc_respects_budget() 
+FN: fn test_hcc_prefers_high_relevance() 
+FN: fn test_hcc_all_full_when_budget_large() 
+FN: fn test_hcc_all_reference_when_budget_tight() 
+FN: fn test_pipeline_dedup() 
+FN: fn test_pipeline_budget_respected() 
+FN: fn test_pipeline_mixed_levels() 
+FN: fn test_pipeline_clear() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\dedup.rs
+--- Snippet (First 10 lines) ---
+//! SimHash Deduplication Index — ported from entroly-core/src/dedup.rs
+//!
+//! O(1) near-duplicate detection using:
+//!   1. 64-bit SimHash fingerprinting (word trigram features)
+//!   2. LSH banding (4 bands × 16 bits) for candidate retrieval
+//!   3. Hamming distance verification
+//!
+//! Used by SCHIPC (ipc.rs) for message dedup and by the NKBE allocator
+//! for fragment dedup before scoring.
+//!
+FN: fn hash_token(token: &str) -> u64 
+FN: pub fn simhash(text: &str) -> u64 
+FN: pub fn hamming_distance(a: u64, b: u64) -> u32 
+STRUCT: pub struct DedupIndex 
+IMPL: impl DedupIndex 
+FN: pub fn new(hamming_threshold: u32) -> Self 
+FN: fn extract_bands(&self, fp: u64) -> Vec<u64> 
+FN: pub fn insert(&mut self, item_id: &str, text: &str) -> Option<String> 
+FN: pub fn remove(&mut self, item_id: &str) 
+FN: pub fn size(&self) -> usize 
+FN: pub fn get_fingerprint(&self, item_id: &str) -> Option<u64> 
+FN: fn test_identical_texts() 
+FN: fn test_similar_texts_low_distance() 
+FN: fn test_different_texts_high_distance() 
+FN: fn test_dedup_catches_exact() 
+FN: fn test_dedup_allows_different() 
+FN: fn test_remove_then_no_dup() 
+FN: fn test_hamming_popcnt() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\depgraph.rs
+--- Snippet (First 10 lines) ---
+//! Task Dependency Graph — ported from entroly-core/src/depgraph.rs
+//!
+//! Addresses the core weakness in agent task scheduling:
+//!   value(A ∪ B) ≠ value(A) + value(B)
+//!
+//! Tasks have dependencies. Running task B without the output of task A
+//! is wasteful. Completing task A without scheduling task B wastes A's output.
+//!
+//! This module implements:
+//!   1. **Dependency tracking** — directed graph of task → task prerequisites
+ENUM: pub enum DepType 
+IMPL: impl DepType 
+FN: fn default_strength(&self) -> f64 
+STRUCT: pub struct TaskDep 
+STRUCT: pub struct TaskDepGraph 
+IMPL: impl TaskDepGraph 
+FN: pub fn new() -> Self 
+FN: pub fn register_task(&mut self, task_id: String) 
+FN: pub fn add_hard_prereq(&mut self, source: String, target: String) 
+FN: pub fn add_soft_prereq(&mut self, source: String, target: String, strength: f64) 
+FN: pub fn add_data_flow(&mut self, producer: String, consumer: String) 
+FN: pub fn prerequisites(&self, task_id: &str) -> Vec<String> 
+FN: pub fn dependents(&self, task_id: &str) -> Vec<String> 
+FN: pub fn transitive_prereqs(&self, task_id: &str, max_depth: usize) -> Vec<String> 
+FN: pub fn compute_priority_boost(&self, task_priorities: HashMap<String, f64>) -> PyObject 
+FN: pub fn topological_order(&self) -> Option<Vec<String>> 
+FN: pub fn edge_count(&self) -> usize 
+FN: pub fn task_count(&self) -> usize 
+FN: pub fn would_create_cycle(&self, source: &str, target: &str) -> bool 
+IMPL: impl TaskDepGraph 
+FN: fn add_dep_internal(&mut self, source: String, target: String, dep_type: DepType, strength: f64) 
+FN: fn test_basic_dependency() 
+FN: fn test_transitive_deps() 
+FN: fn test_topological_order() 
+FN: fn test_cycle_detection() 
+FN: fn test_priority_boost() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\entropy.rs
+--- Snippet (First 10 lines) ---
+//! Shannon Entropy Scoring — ported from entroly-core/src/entropy.rs
+//!
+//! Measures information density of context fragments and agent messages using:
+//!   1. Character-level Shannon entropy: H(X) = −Σ p(xᵢ) · log₂(p(xᵢ))
+//!   2. Bits-Per-Byte (BPB): H(X)/8 — normalized to [0, 1]
+//!   3. Boilerplate ratio: fraction of lines matching common low-value patterns
+//!   4. Cross-fragment n-gram redundancy (adaptive multi-scale: bigram + trigram + 4-gram)
+//!   5. Composite information score: 40% entropy + 30% (1−boilerplate) + 30% uniqueness
+//!
+//! Used by the NKBE allocator to score fragment relevance (the w_e·entropy_i term
+FN: pub fn shannon_entropy(text: &str) -> f64 
+FN: pub fn normalized_entropy(text: &str) -> f64 
+FN: pub fn bits_per_byte(text: &str) -> f64 
+FN: pub fn bpb_quality(text: &str, redundancy: f64) -> f64 
+FN: pub fn boilerplate_ratio(text: &str) -> f64 
+FN: fn is_boilerplate(trimmed: &str) -> bool 
+FN: pub fn cross_fragment_redundancy(fragment: &str, others: &[&str]) -> f64 
+FN: fn ngram_overlap(words: &[&str], others: &[&str], size: usize) -> f64 
+FN: pub fn information_score(text: &str, other_fragments: &[&str]) -> f64 
+FN: fn test_entropy_identical_chars() 
+FN: fn test_entropy_increases_with_diversity() 
+FN: fn test_boilerplate_detection() 
+FN: fn test_boilerplate_real_code_low() 
+FN: fn test_redundancy_identical() 
+FN: fn test_redundancy_different() 
+FN: fn test_bpb_range() 
+FN: fn test_information_score_high_for_real_code() 
+FN: fn test_information_score_low_for_boilerplate() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\evolution.rs
+--- Snippet (First 10 lines) ---
+//! Evolution Engine — Darwinian 6-Gene Genomes + TD(0) Pollination + Curiosity
+//!
+//! Self-evolving agent capabilities through:
+//!   1. 6-Gene Genome — decay, transfer, refractory, danger_sense, novelty_drive, speed
+//!   2. Gaussian Mutation with clamped gene ranges
+//!   3. Fitness selection (proportional to success rate × surprise handling)
+//!   4. TD(0) Knowledge-Sharing RL (from pollination.rs)
+//!   5. Curiosity-Driven Exploration (from curiosity.rs)
+//!
+//! Sources:
+STRUCT: pub struct AgentGenome 
+IMPL: impl AgentGenome 
+FN: pub fn default_genome() -> Self 
+FN: pub fn random() -> Self 
+FN: pub fn mutate(&self, sigma: f32) -> Self 
+FN: pub fn crossover(parent_a: &Self, parent_b: &Self) -> Self 
+FN: pub fn update_fitness(&mut self, success: bool, surprise: f32) 
+FN: pub fn decay(&self) -> f32 
+FN: pub fn transfer(&self) -> f32 
+FN: pub fn refractory(&self) -> f32 
+FN: pub fn danger_sense(&self) -> f32 
+FN: pub fn novelty_drive(&self) -> f32 
+FN: pub fn speed(&self) -> f32 
+STRUCT: pub struct PollinatorState 
+IMPL: impl PollinatorState 
+FN: pub fn new() -> Self 
+FN: fn sigmoid(x: f32) -> f32 
+FN: pub fn td_update(&mut self, reward: f32, next_value: f32) 
+FN: pub fn should_share(&self) -> bool 
+FN: pub fn record_share(&mut self) 
+FN: pub fn record_receive(&mut self) 
+STRUCT: pub struct CuriosityState 
+IMPL: impl CuriosityState 
+FN: pub fn new(scale: f32) -> Self 
+FN: pub fn curiosity_reward(&mut self, prediction_error: f32) -> f32 
+FN: pub fn avg_bonus(&self) -> f32 
+STRUCT: pub struct EvolutionEngine 
+IMPL: impl EvolutionEngine 
+FN: pub fn new(mutation_sigma: f32, elite_fraction: f32, min_population: usize) -> Self 
+FN: pub fn register_agent(&mut self, agent_id: String, random: bool) 
+FN: pub fn update_fitness(&mut self, agent_id: &str, success: bool, surprise: f32) 
+FN: pub fn share_knowledge(&mut self, from_id: &str, to_id: &str, reward: f32) 
+FN: pub fn evolve(&mut self) -> String 
+FN: pub fn get_genome(&self, agent_id: &str) -> PyObject 
+FN: pub fn stats(&self) -> PyObject 
+FN: fn test_genome_mutation_stays_in_range() 
+FN: fn test_crossover() 
+FN: fn test_fitness_update() 
+FN: fn test_td0_pollination() 
+FN: fn test_curiosity_reward() 
+FN: fn test_evolution_engine() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\ipc.rs
+--- Snippet (First 10 lines) ---
+//! SimHash Conditional-Entropy IPC (SCHIPC)
+//!
+//! An O(1) inference-time inter-agent message filter grounded in information theory,
+//! preventing "token explosion" in multi-agent systems by suppressing redundant messages.
+//!
+//! ═══════════════════════════════════════════════════════════════════════════════
+//! MATHEMATICAL FOUNDATION — see research_findings.md §SCHIPC
+//! ═══════════════════════════════════════════════════════════════════════════════
+//!
+//! ## 1. Shannon Conditional Entropy (Shannon, 1948)
+STRUCT: struct U64IdentityHasher(u64);
+IMPL: impl Hasher for U64IdentityHasher 
+FN: fn finish(&self) -> u64 
+FN: fn write_u64(&mut self, i: u64) 
+FN: fn write(&mut self, bytes: &[u8]) 
+STRUCT: struct AgentSketch<const W: usize> 
+IMPL: impl<const W: usize> AgentSketch<W> 
+FN: fn new(agent_id: u64) -> Self 
+FN: fn push(&mut self, fp: u64) 
+FN: fn min_hamming(&self, fp: u64) -> u32 
+FN: fn clear(&mut self) 
+STRUCT: pub struct IpcBus 
+IMPL: impl IpcBus 
+FN: pub fn new(novelty_threshold: u32, window_size: usize) -> Self 
+FN: pub fn register_receiver(&mut self, agent_id: u64) 
+FN: pub fn deregister(&mut self, agent_id: u64) 
+FN: pub fn send(&mut self, sender_id: u64, receiver_id: u64, content: &str) -> PyObject 
+FN: pub fn broadcast(&mut self, sender_id: u64, content: &str) -> PyObject 
+FN: pub fn flush_sketch(&mut self, agent_id: u64) 
+FN: pub fn delivery_rate(&self) -> f32 
+FN: pub fn suppression_rate(&self) -> f32 
+FN: pub fn stats(&self) -> PyObject 
+FN: pub fn receiver_count(&self) -> usize 
+FN: pub fn memory_mb(&self) -> f64 
+FN: pub fn simhash(content: &[u8]) -> u64 
+FN: pub fn simhash_str(content: &str) -> u64 
+FN: pub fn hamming_distance(a: u64, b: u64) -> u32 
+FN: pub fn max_agents_for_ram(ram_bytes: usize, window: usize) -> usize 
+FN: fn simhash_deterministic() 
+FN: fn hamming_self_zero() 
+FN: fn ring_eviction_correct() 
+FN: fn identical_message_suppressed() 
+FN: fn distinct_messages_delivered() 
+FN: fn deregister_swap_remove_correct() 
+FN: fn memory_estimate_sane() 
+FN: fn atomic_stats_lock_free() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\lib.rs
+--- Snippet (First 10 lines) ---
+//! Agent OS Kernel — Rust Engine + PyO3 Bindings
+//!
+//! Exposes core subsystems to Python:
+//!   1. NkbeAllocator  — Nash-KKT Budgetary Equilibrium resource allocator
+//!   2. IpcBus         — SimHash Conditional-Entropy IPC filter
+//!   3. ScsrScheduler  — SIRS Capability-Space Routing scheduler
+//!   4. PrismOptimizer — Anisotropic spectral weight optimizer
+//!   5. AgentRecord    — The atomic managed agent unit
+//!   6. Entropy scoring — Shannon, BPB, boilerplate, n-gram redundancy
+//!   7. PersonaManifold — Dynamic persona generation (PSM algorithm)
+FN: fn agentOS_kernel(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> 
+FN: fn shannon_entropy(_py: Python, text: &str) -> f64 
+FN: fn normalized_entropy(_py: Python, text: &str) -> f64 
+FN: fn bits_per_byte(_py: Python, text: &str) -> f64 
+FN: fn boilerplate_ratio(_py: Python, text: &str) -> f64 
+FN: fn information_score(_py: Python, text: &str) -> f64 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\lod.rs
+--- Snippet (First 10 lines) ---
+//! LOD Tier Lifecycle Module
+//!
+//! Implements a 3-tier (not 4 — we skip Dormant for simplicity) agent lifecycle
+//! mirroring ebbiforge-core ProductionTensorSwarm + LOD architecture.
+//!
+//! Tiers:
+//!   LOD_0 (Dormant): agent is registered but has no active tasks.
+//!              - Salience decays, no routing, no IPC
+//!   LOD_1 (Active):  agent is available and responsive.
+//!              - Full SCSR routing, full SCHIPC, NKBE budget allocation
+ENUM: pub enum LodTier 
+IMPL: impl LodTier 
+FN: pub fn as_str(&self) -> &'static str 
+STRUCT: pub struct AgentLodState 
+STRUCT: pub struct LodManager 
+IMPL: impl LodManager 
+FN: pub fn new(
+FN: pub fn register(&mut self, agent_id: u64) 
+FN: pub fn deregister(&mut self, agent_id: u64) 
+FN: pub fn on_task_assigned(&mut self, agent_id: u64, load_factor: f32) 
+FN: pub fn on_task_completed(&mut self, agent_id: u64, load_factor: f32) 
+FN: pub fn tick(&mut self) 
+FN: pub fn get_tier(&self, agent_id: u64) -> Option<String> 
+FN: pub fn is_active(&self, agent_id: u64) -> bool 
+FN: pub fn drain_alerts(&mut self) -> Vec<String> 
+FN: pub fn population_stats(&self) -> PyObject 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\persona.rs
+--- Snippet (First 10 lines) ---
+//! Persona Engine — Dynamic Agent Personality Assignment
+//!
+//! Instead of picking from a fixed list, personas **emerge** from the task:
+//!   1. Commander classifies intent → rough persona type
+//!   2. Persona engine generates a tailored system prompt
+//!   3. Sets temperature, model tier, tool permissions, memory budget
+//!
+//! Design grounded in:
+//!   - MetaGPT (Hong et al. 2024): SOPs as persona templates
+//!   - LeCun JEPA (2022): Configurator module modulates all subsystems
+ENUM: pub enum ModelTier 
+IMPL: impl ModelTier 
+FN: pub fn as_str(&self) -> &'static str 
+FN: pub fn from_str(s: &str) -> Self 
+ENUM: pub enum PersonaType 
+IMPL: impl PersonaType 
+FN: pub fn as_str(&self) -> &str 
+FN: pub fn from_str(s: &str) -> Self 
+STRUCT: pub struct Persona 
+IMPL: impl Persona 
+FN: pub fn persona_type_str(&self) -> String 
+FN: pub fn model_tier_str(&self) -> String 
+FN: pub fn capability_vec(&self) -> Vec<f32> 
+FN: pub fn to_dict(&self) -> PyObject 
+STRUCT: pub struct PersonaEngine 
+IMPL: impl PersonaEngine 
+FN: pub fn new(default_context_budget: u32) -> Self 
+FN: pub fn create(
+FN: pub fn infer_type(&self, task_description: &str) -> String 
+IMPL: impl PersonaEngine 
+FN: fn build_architect(&self, task: &str, budget: u32) -> Persona 
+FN: fn build_coder(&self, task: &str, budget: u32) -> Persona 
+FN: fn build_researcher(&self, task: &str, budget: u32) -> Persona 
+FN: fn build_reviewer(&self, task: &str, budget: u32) -> Persona 
+FN: fn build_writer(&self, task: &str, budget: u32) -> Persona 
+FN: fn build_debugger(&self, task: &str, budget: u32) -> Persona 
+FN: fn build_optimizer(&self, task: &str, budget: u32) -> Persona 
+FN: fn build_security(&self, task: &str, budget: u32) -> Persona 
+FN: fn build_planner(&self, task: &str, budget: u32) -> Persona 
+FN: fn build_custom(&self, name: &str, task: &str, budget: u32) -> Persona 
+FN: fn test_infer_coder() 
+FN: fn test_infer_researcher() 
+FN: fn test_infer_debugger() 
+FN: fn test_infer_security() 
+FN: fn test_create_coder_persona() 
+FN: fn test_create_with_custom_budget() 
+FN: fn test_security_uses_cloud() 
+FN: fn test_custom_persona() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\persona_manifold.rs
+--- Snippet (First 10 lines) ---
+//! Persona Spectral Manifold — RKHS Kernel Mean Embedding Approach
+//!
+//! # Mathematical Framework
+//!
+//! A persona IS a probability measure μ_p ∈ M(H).
+//!
+//! We represent μ_p via its **kernel mean embedding** in a Reproducing
+//! Kernel Hilbert Space (RKHS) H_k:
+//!
+//!   μ̂_p = (1/n) Σᵢ k(xᵢ, ·)   where xᵢ ~ μ_p
+STRUCT: pub struct RbfKernel 
+IMPL: impl RbfKernel 
+FN: pub fn new(sigma: f32) -> Self 
+FN: pub fn silverman(particles: &[Vec<f32>]) -> Self 
+FN: pub fn eval(&self, x: &[f32], y: &[f32]) -> f32 
+FN: pub fn self_eval(&self) -> f32 
+STRUCT: pub struct ParticleCloud 
+IMPL: impl ParticleCloud 
+FN: pub fn new(dim: usize, max_particles: usize) -> Self 
+FN: pub fn add_particle(&mut self, x: &[f32]) 
+FN: pub fn adaptive_kernel(&self) -> RbfKernel 
+FN: pub fn affinity(&self, t: &[f32], kernel: &RbfKernel) -> f32 
+FN: pub fn log_kde(&self, t: &[f32], kernel: &RbfKernel) -> f32 
+FN: pub fn mmd_squared(&self, other: &ParticleCloud, kernel: &RbfKernel) -> f32 
+FN: pub fn effective_support(&self, kernel: &RbfKernel) -> f32 
+FN: pub fn merge(&mut self, other: &ParticleCloud) 
+STRUCT: pub struct PersonaGenome 
+IMPL: impl PersonaGenome 
+FN: pub fn default_genome() -> Self 
+FN: pub fn random() -> Self 
+FN: pub fn mutate(&self) -> Self 
+FN: pub fn kernel_bandwidth(&self) -> f32 
+FN: pub fn particle_retention(&self) -> f32 
+FN: pub fn mutation_rate(&self) -> f32 
+FN: pub fn crossover_affinity(&self) -> f32 
+FN: pub fn autonomy_prior(&self) -> f32 
+FN: pub fn financial_sensitivity(&self) -> f32 
+STRUCT: pub struct Persona 
+IMPL: impl Persona 
+FN: pub fn new(id: String, dim: usize, tick: u64) -> Self 
+FN: pub fn affinity(&self, task_embedding: &[f32]) -> f32 
+FN: pub fn log_density(&self, task_embedding: &[f32]) -> f32 
+FN: pub fn observe(&mut self, embedding: &[f32], success: bool) 
+STRUCT: pub struct PitmanYorProcess 
+IMPL: impl PitmanYorProcess 
+FN: pub fn new(alpha: f32, discount: f32) -> Self 
+FN: pub fn new_persona_prob(&self, n_existing: usize) -> f32 
+FN: pub fn existing_weight(&self, n_k: u64) -> f32 
+FN: pub fn update_weights(&self, personas: &mut [Persona]) 
+STRUCT: pub struct UserProfile 
+IMPL: impl UserProfile 
+FN: pub fn new() -> Self 
+FN: pub fn observe(&mut self, caution: Option<f32>, autonomy: Option<f32>, confidence: f32) 
+STRUCT: pub struct PersonaManifold 
+IMPL: impl PersonaManifold 
+FN: pub fn new(dim: usize, alpha: f32, discount: f32, fusion_threshold: f32) -> Self 
+FN: pub fn population(&self) -> usize 
+FN: pub fn assign(&mut self, task_embedding: Vec<f32>) -> (String, f32, bool) 
+FN: pub fn record_result(&mut self, persona_id: &str, success: bool,
+FN: pub fn set_system_prompt(&mut self, persona_id: &str, prompt: String) 
+FN: pub fn get_system_prompt(&self, persona_id: &str) -> String 
+FN: pub fn distributional_description(&self, persona_id: &str) -> String 
+FN: pub fn observe_user(&mut self, caution: Option<f32>, autonomy: Option<f32>,
+FN: pub fn lifecycle_tick(&mut self) -> String 
+FN: pub fn stats(&self) -> PyObject 
+FN: pub fn persona_info(&self, persona_id: &str) -> PyObject 
+FN: pub fn persona_ids(&self) -> Vec<String> 
+IMPL: impl PersonaManifold 
+FN: fn birth_persona(&mut self, task_embedding: &[f32]) -> String 
+FN: fn check_fusion_mmd(&mut self, events: &mut Vec<String>) 
+FN: fn make_embedding(primary: usize) -> Vec<f32> 
+FN: fn test_rbf_kernel_self() 
+FN: fn test_rbf_kernel_distance() 
+FN: fn test_distinguishes_bimodal_vs_gaussian() 
+FN: fn test_mmd_identical_clouds() 
+FN: fn test_pitman_yor() 
+FN: fn test_birth_on_empty() 
+FN: fn test_death_by_decay() 
+FN: fn test_genome_gene_separation() 
+FN: fn test_genome_mutation_in_range() 
+FN: fn test_affinity_no_energy_bias() 
+FN: fn test_user_profile_ema() 
+FN: fn test_kde_log_density() 
+FN: fn test_fusion_via_mmd() 
+FN: fn test_killer_robustness() 
+FN: fn test_kernel_herding_diversity() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\pollination.rs
+--- Snippet (First 10 lines) ---
+//! Pollination Engine — TD(0) RL Knowledge-Sharing + Experience Packs
+//!
+//! Combines two ebbiforge patterns:
+//!   1. `swarm/pollination.rs` — TD(0) value function + sigmoid share probability
+//!   2. `intel/pollination.rs` — Experience packs + cross-pollination
+//!
+//! Each agent maintains a V(share) value learned via temporal-difference RL.
+//! Share probability = σ(V(share) / temperature).
+//! High surprise temporarily boosts willingness to broadcast (emergency override).
+//!
+STRUCT: struct Lesson 
+STRUCT: struct ExperiencePack 
+STRUCT: struct PollinatorState 
+IMPL: impl PollinatorState 
+FN: fn new(alpha: f32, gamma: f32, temperature: f32) -> Self 
+FN: fn should_share(&self, random_val: f32, current_surprise: f32) -> bool 
+FN: fn register_share(&mut self, target: String, tick: u64) 
+FN: fn apply_feedback(&mut self, target: &str, reward: f32, current_tick: u64) 
+FN: fn update_probability(&mut self) 
+STRUCT: pub struct PollinationEngine 
+IMPL: impl PollinationEngine 
+FN: pub fn new(alpha: f32, gamma: f32, temperature: f32) -> Self 
+FN: pub fn register_agent(&mut self, agent_id: String) 
+FN: pub fn should_share(&self, agent_id: &str, current_surprise: f32) -> bool 
+FN: pub fn record_lesson(
+FN: pub fn share(&mut self, from_agent: &str, to_agent: &str) -> u32 
+FN: pub fn reward(&mut self, sharer_id: &str, receiver_id: &str, reward: f32) 
+FN: pub fn tick(&mut self) 
+FN: pub fn share_probability(&self, agent_id: &str) -> f32 
+FN: pub fn value(&self, agent_id: &str) -> f32 
+FN: pub fn stats(&self) -> PyObject 
+FN: fn simple_hash(id: &str, tick: u64) -> u64 
+FN: fn test_td_convergence() 
+FN: fn test_negative_reward_suppresses() 
+FN: fn test_surprise_boosts_sharing() 
+FN: fn test_recency_window() 
+FN: fn test_share_lessons_count() 
+FN: fn test_stats() 
+FN: fn test_amp_bridge_reciprocity() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\prism.rs
+--- Snippet (First 10 lines) ---
+//! PRISM — Anisotropic Spectral Weight Optimizer for Agent OS
+//!
+//! Ported and extended from entroly-core/src/prism.rs.
+//!
+//! ═══════════════════════════════════════════════════════════════════════════════
+//! MATHEMATICAL FOUNDATION
+//! ═══════════════════════════════════════════════════════════════════════════════
+//!
+//! Standard RL weight updates (SGD, Adam) use isotropic learning rates:
+//!   w_{t+1} = w_t − α g_t
+STRUCT: struct SymMatrix4 
+IMPL: impl SymMatrix4 
+FN: fn zero() -> Self 
+FN: fn identity() -> Self 
+FN: fn update_ema(&mut self, g: &[f64; WEIGHT_DIM], beta: f64) 
+FN: fn jacobi_eigendecomposition(&self) -> (SymMatrix4, [f64; WEIGHT_DIM]) 
+STRUCT: pub struct PrismOptimizer 
+IMPL: impl PrismOptimizer 
+FN: pub fn new(learning_rate: f64, beta: f64, epsilon: f64) -> Self 
+FN: pub fn compute_update(&mut self, g: [f64; WEIGHT_DIM]) -> [f64; WEIGHT_DIM] 
+FN: pub fn condition_number(&self) -> f64 
+FN: pub fn pcnt_temperature(&self, tau_base: f64) -> f64 
+FN: pub fn set_dual_gap(&mut self, gap: f64) 
+FN: pub fn adgt_temperature(&self, tau_base: f64, n_agents: usize, tau_floor: f64) -> f64 
+FN: pub fn eigenvalues(&self) -> [f64; WEIGHT_DIM] 
+FN: pub fn update_count(&self) -> u64 
+FN: pub fn memory_bytes(&self) -> u64 
+FN: pub fn stats(&self) -> PyObject 
+FN: fn test_jacobi_diagonal_matrix() 
+FN: fn test_anisotropic_dampens_noisy_dimension() 
+FN: fn test_condition_number_isotropic() 
+FN: fn test_pcnt_temperature_scaling() 
+FN: fn test_adgt_temperature_converged() 
+FN: fn test_adgt_temperature_uncertain() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\protocol_bridge.rs
+--- Snippet (First 10 lines) ---
+//! Protocol Bridge — A2A + MCP Unified Routing
+//!
+//! ═══════════════════════════════════════════════════════════════════════════════
+//! DESIGN: Capability Spectral Matching
+//! ═══════════════════════════════════════════════════════════════════════════════
+//!
+//! The conventional approach to multi-protocol bridging is manual mapping:
+//!   A2A.Task → MCP.ToolCall, MCP.Resource → A2A.Message, etc.
+//!
+//! That's O(P²) in the number of protocols and breaks on every spec update.
+ENUM: pub enum Protocol 
+IMPL: impl Protocol 
+FN: pub fn as_str(self) -> &'static str 
+FN: pub fn from_str(s: &str) -> Option<Self> 
+FN: pub fn is_mcp(self) -> bool 
+ENUM: pub enum AuthLevel 
+IMPL: impl AuthLevel 
+FN: pub fn as_str(self) -> &'static str 
+FN: pub fn from_str(s: &str) -> Self 
+STRUCT: pub struct CapabilityVec 
+IMPL: impl CapabilityVec 
+FN: pub fn embed(protocol: Protocol, name: &str, description: &str,
+FN: pub fn cosine_similarity(&self, other: &Self) -> f32 
+FN: pub fn l2_distance(&self, other: &Self) -> f32 
+FN: fn siphash_64(text: &str) -> u64 
+STRUCT: struct Capability 
+STRUCT: pub struct BridgeEnvelope 
+STRUCT: struct MatchResult 
+STRUCT: pub struct ProtocolBridge 
+IMPL: impl ProtocolBridge 
+FN: pub fn new(match_threshold: f32) -> Self 
+FN: pub fn register_a2a_agent(&mut self, name: &str, description: &str,
+FN: pub fn register_mcp_tool(&mut self, name: &str, description: &str,
+FN: pub fn register_mcp_resource(&mut self, name: &str, description: &str,
+FN: pub fn register_mcp_prompt(&mut self, name: &str, description: &str,
+FN: pub fn route(&mut self, query: &str, source_protocol: &str,
+FN: pub fn create_envelope(&mut self, from_agent: &str, query: &str,
+FN: pub fn list_capabilities(&self, protocol: &str) -> PyObject 
+FN: pub fn find_similar(&self, query: &str, k: usize,
+FN: pub fn capability_count(&self) -> PyObject 
+FN: pub fn stats(&self) -> PyObject 
+FN: pub fn remove_capability(&mut self, capability_id: &str) -> bool 
+FN: pub fn set_threshold(&mut self, threshold: f32) 
+FN: fn test_cosine_self_similarity() 
+FN: fn test_cosine_range() 
+FN: fn test_same_name_different_protocol_similar() 
+FN: fn test_different_capabilities_lower_similarity() 
+FN: fn test_basic_routing() 
+FN: fn test_cross_protocol_routing() 
+FN: fn test_auth_filtering() 
+FN: fn test_no_match_below_threshold() 
+FN: fn test_envelope_creation() 
+FN: fn test_find_similar_top_k() 
+FN: fn test_remove_capability() 
+FN: fn test_stats() 
+FN: fn test_all_protocol_types_registered() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\scale_tests.rs
+--- Snippet (First 10 lines) ---
+//! Scale Tests — V4 §13 Verification Plan
+//!
+//! 5 stress tests that validate the kernel at scale.
+//! All tests use `#[ignore]` — run explicitly with:
+//!
+//!   cargo test scale_tests -- --ignored --test-threads=1
+//!
+//! NO FALSE POSITIVES: Every assertion is a mathematical invariant that MUST hold.
+
+#[cfg(test)]
+FN: fn scale_evolution_10k_agents() 
+FN: fn scale_memory_10k_fragments() 
+FN: fn scale_amp_100_pairs() 
+FN: fn scale_autotune_convergence_500() 
+FN: fn scale_psm_population_500() 
+FN: fn scale_isa_bus_10k_events() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\scheduler.rs
+--- Snippet (First 10 lines) ---
+//! SIRS Capability-Space Routing (SCSR) Scheduler
+//!
+//! Routes incoming tasks to agents using the SIRS epidemiological model
+//! (Kermack-McKendrick, 1927) over an abstract capability-space metric.
+//!
+//! ═══════════════════════════════════════════════════════════════════════════════
+//! MATHEMATICAL FOUNDATION
+//! ═══════════════════════════════════════════════════════════════════════════════
+//!
+//! ## 1. Kermack-McKendrick SIR ODE (1927)
+ENUM: pub enum SirsState 
+IMPL: impl SirsState 
+FN: pub fn susceptibility(&self) -> f32 
+FN: pub fn can_accept(&self, task_type: &str) -> bool 
+STRUCT: struct AgentSchedulerState 
+STRUCT: pub struct ScsrScheduler 
+IMPL: impl ScsrScheduler 
+FN: pub fn new(refractory_ticks: u32, search_radius: f32) -> Self 
+FN: pub fn register_agent(&mut self, agent: AgentRecord) 
+FN: pub fn remove_agent(&mut self, agent_id: u64) 
+FN: pub fn tick(&mut self) 
+FN: pub fn route_task(
+FN: pub fn complete_task(&mut self, agent_id: u64, success: bool) -> PyObject 
+FN: pub fn population_stats(&self) -> PyObject 
+FN: pub fn agent_count(&self) -> usize 
+FN: pub fn agent_state(&self, agent_id: u64) -> Option<String> 
+FN: fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 
+FN: fn normalize_vec(mut v: Vec<f32>) -> Vec<f32> 
+FN: fn make_agent(name: &str, cap: Vec<f32>) -> AgentRecord 
+FN: fn route_to_best_match() 
+FN: fn refractory_prevents_same_type() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\security.rs
+--- Snippet (First 10 lines) ---
+//! Security Gate — Action Classification + Money Gate + Risk Scoring
+//!
+//! Every agent action is classified before execution:
+//!
+//! | Class          | Example                     | Gate          |
+//! |----------------|-----------------------------|---------------|
+//! | ReadOnly       | "Check account balance"     | Auto-approve  |
+//! | Reversible     | "Create draft email"        | Log only      |
+//! | MoneyOut       | "Pay $156 to PG&E"          | Preview+Confirm |
+//! | Irreversible   | "Delete repository"         | Explicit confirm |
+ENUM: pub enum ActionClass 
+IMPL: impl ActionClass 
+FN: pub fn as_str(&self) -> &'static str 
+FN: pub fn base_risk(&self) -> f64 
+FN: pub fn requires_confirmation(&self) -> bool 
+FN: pub fn is_blocked(&self) -> bool 
+FN: pub fn requires_preview(&self) -> bool 
+STRUCT: pub struct ActionProposal 
+STRUCT: pub struct SecurityGate 
+STRUCT: struct AuditEntry 
+IMPL: impl SecurityGate 
+FN: pub fn new(financial_sensitivity: f64, auto_approve_limit: f64) -> Self 
+FN: pub fn evaluate(
+FN: pub fn confirm_action(&mut self, agent_id: &str) 
+FN: pub fn set_financial_sensitivity(&mut self, sensitivity: f64) 
+FN: pub fn stats(&self) -> PyObject 
+IMPL: impl SecurityGate 
+FN: fn compute_risk(&self, class: ActionClass, amount: Option<f64>,
+FN: fn test_readonly_auto_approved() 
+FN: fn test_money_requires_preview() 
+FN: fn test_impossible_blocked() 
+FN: fn test_risk_scaling_with_amount() 
+FN: fn test_low_confidence_raises_risk() 
+FN: fn test_auto_approve_small_money() 
+FN: fn test_audit_log_grows() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\skeleton.rs
+--- Snippet (First 10 lines) ---
+//! Skeleton Extraction — AST-lite code summarizer
+//!
+//! Ported from entroly-core/src/skeleton.rs.
+//!
+//! Extracts structural signatures from source code, stripping function/method
+//! bodies while preserving:
+//!   - Function/method signatures
+//!   - Class/struct/enum/trait declarations
+//!   - Import statements
+//!   - Type annotations
+FN: pub fn extract_skeleton(code: &str, language: &str) -> (String, u32) 
+FN: pub fn extract_reference(code: &str, source_path: &str) -> (String, u32) 
+FN: fn is_python_declaration(trimmed: &str) -> bool 
+FN: fn is_python_keep(trimmed: &str) -> bool 
+FN: fn is_rust_declaration(trimmed: &str) -> bool 
+FN: fn is_rust_keep(trimmed: &str) -> bool 
+FN: fn is_js_declaration(trimmed: &str) -> bool 
+FN: fn is_js_keep(trimmed: &str) -> bool 
+FN: fn is_generic_declaration(trimmed: &str) -> bool 
+FN: fn extract_function_name(trimmed: &str) -> Option<String> 
+FN: fn extract_class_name(trimmed: &str) -> Option<String> 
+FN: fn test_python_skeleton() 
+FN: fn test_rust_skeleton() 
+FN: pub fn merge_sort(arr: &mut [i32]) 
+STRUCT: pub struct SortResult 
+FN: fn test_reference_extraction() 
+FN: fn test_empty_code() 
+FN: fn test_token_reduction() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\worldmodel.rs
+--- Snippet (First 10 lines) ---
+//! World Model — Latent Dynamics, Surprise Detection, Mental Simulation
+//!
+//! Implements a Dreamer-style world model for Agent OS:
+//!   1. Encoder:   raw observation → latent state z ∈ ℝ^D (fastembed BGE-Base)
+//!   2. Dynamics:  z_{t+1} = f(z_t, a_t) — MLP predicts next state
+//!   3. Surprise:  S = (1 - cos(predicted, actual)) / 2 — prediction error
+//!   4. Planner:   mental simulation — rollout N actions, pick best
+//!   5. SIRS:      surprise propagation across agents (epidemiological model)
+//!
+//! Sources:
+STRUCT: pub struct LatentState 
+IMPL: impl LatentState 
+FN: pub fn zeros() -> Self 
+FN: pub fn from_vec(z: Vec<f32>, tick: u64) -> Self 
+FN: pub fn cosine_sim(&self, other: &Self) -> f32 
+STRUCT: pub struct DynamicsMLP 
+IMPL: impl DynamicsMLP 
+FN: pub fn new(action_dim: usize) -> Self 
+FN: pub fn predict(&self, state: &[f32], action: &[f32]) -> Vec<f32> 
+FN: pub fn train_step(&mut self, predicted: &[f32], actual: &[f32], lr: f32) 
+STRUCT: pub struct Transition 
+STRUCT: pub struct TrajectoryBuffer 
+IMPL: impl TrajectoryBuffer 
+FN: pub fn new(capacity: usize) -> Self 
+FN: pub fn push(&mut self, t: Transition) 
+FN: pub fn len(&self) -> usize 
+FN: pub fn sample_batch(&self, batch_size: usize) -> Vec<&Transition> 
+STRUCT: pub struct SirsState 
+IMPL: impl SirsState 
+FN: pub fn new() -> Self 
+FN: pub fn r_naught(&self) -> f32 
+FN: pub fn propagate(&mut self, neighbor_surprises: &[f32], distance_weights: &[f32],
+FN: pub fn decay(&mut self) 
+STRUCT: pub struct WorldModel 
+IMPL: impl WorldModel 
+FN: pub fn new(action_dim: usize, trajectory_capacity: usize, learning_rate: f32) -> Self 
+FN: pub fn encode(&mut self, observation: Vec<f32>, tick: u64) -> Vec<f32> 
+FN: pub fn predict(&mut self, action: Vec<f32>) -> (Vec<f32>, f32) 
+FN: pub fn observe(&mut self, predicted: Vec<f32>, actual_observation: Vec<f32>,
+FN: pub fn simulate(&self, candidate_actions: Vec<Vec<f32>>,
+FN: pub fn init_sirs(&mut self, n_agents: usize) 
+FN: pub fn sirs_step(&mut self, pheromone_danger: f32) -> Vec<f32> 
+FN: pub fn inject_surprise(&mut self, agent_idx: usize, surprise: f32) 
+FN: pub fn avg_surprise(&self) -> f32 
+FN: pub fn train(&mut self, batch_size: usize) 
+FN: pub fn stats(&self) -> PyObject 
+FN: fn test_latent_state_cosine() 
+FN: fn test_dynamics_forward_shape() 
+FN: fn test_trajectory_ring_buffer() 
+FN: fn test_sirs_propagation() 
+FN: fn test_sirs_r_naught() 
+FN: fn test_surprise_detection() 
+FN: fn test_world_model_encode_predict() 
+FN: fn test_mental_simulation() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\memory\consolidation.rs
+--- Snippet (First 10 lines) ---
+//! Sleep-Replay Consolidation — CLS (Complementary Learning Systems)
+//!
+//! Replays hippocampal episodes, identifies which earned permanent status,
+//! and migrates them to the neocortex (Kanerva SDM).
+//!
+//! Ported from ebbiforge-core/src/memory/consolidation.rs.
+
+use super::episode::{Episode, MemoryTier};
+use super::kanerva::KanervaSDM;
+STRUCT: pub struct ConsolidationConfig 
+IMPL: impl Default for ConsolidationConfig 
+FN: fn default() -> Self 
+STRUCT: pub struct ConsolidationReport 
+FN: pub fn consolidate(
+FN: fn make_episode(id: u64, salience: f32, created_at: f64,
+FN: fn test_eviction() 
+FN: fn test_semantic_never_evicted() 
+FN: fn test_consolidation_promotes() 
+FN: fn test_post_consolidation_salience_reduction() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\memory\episode.rs
+--- Snippet (First 10 lines) ---
+//! Episode — a single memory trace with Ebbinghaus-governed retention.
+//!
+//! Ported from ebbiforge-core/src/memory/episode.rs with adaptations
+//! for agentOS multi-agent context.
+
+/// Emotional tag controlling base salience multiplier.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum EmotionalTag {
+    Neutral  = 0,
+ENUM: pub enum EmotionalTag 
+IMPL: impl EmotionalTag 
+FN: pub fn multiplier(self) -> f32 
+FN: pub fn as_str(self) -> &'static str 
+IMPL: impl From<u8> for EmotionalTag 
+FN: fn from(v: u8) -> Self 
+ENUM: pub enum MemoryTier 
+IMPL: impl MemoryTier 
+FN: pub fn as_str(self) -> &'static str 
+FN: pub fn from_str(s: &str) -> Self 
+STRUCT: pub struct Episode 
+IMPL: impl Episode 
+FN: pub fn retention(&self, current_tick: f64) -> f32 
+FN: pub fn reinforce(&mut self, current_tick: f64, factor: f32) 
+FN: pub fn score(&self, current_tick: f64) -> f64 
+FN: pub fn simhash_embedding(embedding: &[u16]) -> [u64; 16] 
+FN: pub fn hamming_distance(a: &[u64; 16], b: &[u64; 16]) -> u32 
+FN: pub fn quantize_embedding(float_vec: &[f32]) -> Vec<u16> 
+FN: pub fn trigram_embedding(content: &str) -> Vec<u16> 
+FN: fn test_retention_decay() 
+FN: fn test_reinforcement() 
+FN: fn test_hamming_identical() 
+FN: fn test_hamming_opposite() 
+FN: fn test_quantize_roundtrip() 
+FN: fn test_emotional_multiplier() 
+FN: fn test_simhash_deterministic() 
+FN: fn test_trigram_embedding_length() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\memory\kanerva.rs
+--- Snippet (First 10 lines) ---
+//! Kanerva Sparse Distributed Memory (SDM) — Neocortex
+//!
+//! Biologically-inspired associative memory storing patterns in
+//! high-dimensional binary space. Retrieved via Hamming distance.
+//!
+//! Ported from ebbiforge-core/src/memory/kanerva.rs.
+//!
+//! - Write: O(N) where N = n_locations (fixed, small: 10K-100K)
+//! - Read:  O(N) — same scan
+//! - XOR+POPCNT inner loop: ~15ns per location comparison
+STRUCT: struct HardLocation 
+STRUCT: pub struct KanervaSDM 
+STRUCT: pub struct SDMRecallResult 
+IMPL: impl KanervaSDM 
+FN: pub fn new(n_locations: usize, activation_radius: u32) -> Self 
+FN: pub fn write(&mut self, address: &[u64; 16], content: &[f32]) 
+FN: pub fn read(&self, address: &[u64; 16]) -> SDMRecallResult 
+FN: pub fn occupied(&self) -> usize 
+FN: pub fn capacity(&self) -> usize 
+FN: fn test_sdm_write_read_roundtrip() 
+FN: fn test_sdm_no_activation_outside_radius() 
+FN: fn test_sdm_occupied() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\memory\lsh.rs
+--- Snippet (First 10 lines) ---
+//! Multi-Probe Locality-Sensitive Hashing (LSH) Index
+//!
+//! Converts O(N) brute-force Hamming scan into O(L×k) sub-linear lookup
+//! by pre-indexing 1024-bit SimHash addresses into L hash tables.
+//!
+//! Ported from ebbiforge-core/src/memory/lsh.rs.
+//!
+//! Performance (from ebbiforge benchmarks):
+//!   10K episodes:  200μs → <1μs  (200× speedup)
+//!   1M episodes:   20ms  → ~1μs  (20,000× speedup)
+STRUCT: struct LSHTable 
+IMPL: impl LSHTable 
+FN: fn new(table_index: usize) -> Self 
+FN: fn hash_key(&self, address: &[u64; 16]) -> u32 
+FN: fn insert(&mut self, address: &[u64; 16], episode_idx: usize) 
+FN: fn query_exact(&self, address: &[u64; 16]) -> Vec<usize> 
+FN: fn query_multiprobe(&self, address: &[u64; 16]) -> Vec<usize> 
+STRUCT: pub struct LSHIndex 
+IMPL: impl LSHIndex 
+FN: pub fn new() -> Self 
+FN: pub fn insert(&mut self, address: &[u64; 16], episode_idx: usize) 
+FN: pub fn query_exact(&self, address: &[u64; 16]) -> Vec<usize> 
+FN: pub fn query_multiprobe(&self, address: &[u64; 16]) -> Vec<usize> 
+FN: pub fn clear(&mut self) 
+FN: fn test_lsh_insert_and_query() 
+FN: fn test_lsh_multiprobe_finds_nearby() 
+FN: fn test_lsh_different_addresses_separate() 
+FN: fn test_lsh_clear() 
+
+=======================
+FILE: C:\Users\abhis\AgentOS_temp\src\memory\mod.rs
+--- Snippet (First 10 lines) ---
+//! Hierarchical Memory Manager — Brain-Inspired 3-Tier Cognitive Memory
+//!
+//! Upgraded from simple HashMap to ebbiforge-class architecture:
+//!   - Hippocampal ring buffer (fast episodic write, Ebbinghaus decay)
+//!   - Kanerva SDM neocortex (permanent semantic recall, O(1) via POPCNT)
+//!   - Multi-probe LSH index (O(1) recall instead of O(N) scan)
+//!   - CLS sleep-replay consolidation (hippocampus → neocortex graduation)
+//!   - Spaced-recall reinforcement (each recall strengthens the memory)
+//!   - Emotional tags (Critical = 3× salience multiplier)
+//!   - Quantized embeddings (u16, half memory vs f32)
+STRUCT: pub struct MemoryManager 
+IMPL: impl MemoryManager 
+FN: pub fn new(l1_budget: u32, l2_budget: u32, l3_budget: u32, half_life: f64) -> Self 
+FN: pub fn remember(
+FN: pub fn recall(
+FN: pub fn tick(&mut self) 
+FN: pub fn forget(&mut self, threshold: f64) -> u32 
+FN: pub fn consolidate(&mut self, importance_threshold: f64, min_accesses: u32) -> u32 
+FN: pub fn stats(&self) -> PyObject 
+FN: pub fn len(&self) -> usize 
+IMPL: impl MemoryManager 
+FN: fn evict_weakest(&mut self) 
+FN: fn rebuild_indices(&mut self) 
+FN: fn test_remember_and_recall() 
+FN: fn test_dedup_identical() 
+FN: fn test_ebbinghaus_forget() 
+FN: fn test_semantic_never_forgotten() 
+FN: fn test_consolidation_promotes() 
+FN: fn test_stats() 
+FN: fn test_spaced_recall_reinforcement() 
+FN: fn test_emotional_tag_multiplier() 

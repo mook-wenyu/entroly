@@ -1,0 +1,141 @@
+﻿cargo :    Compiling entroly-core v0.3.3 (C:\Users\abhis\entroly\entroly-core)
+At line:1 char:1
++ cargo build 2>&1 | Out-File -Encoding utf8 C:\Users\abhis\entroly\bui ...
++ ~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   Compiling en...y\entroly-core):String) [], 
+    RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+warning: function `renyi_max` is never used
+   --> src\entropy.rs:170:8
+    |
+170 | pub fn renyi_max(n: usize) -> f64 {
+    |        ^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `created_at` and `recompute_cost` are never read
+  --> src\cache.rs:57:9
+   |
+46 | pub struct CacheEntry {
+   |            ---------- fields in this struct
+...
+57 |     pub created_at: u32,
+   |         ^^^^^^^^^^
+...
+61 |     pub recompute_cost: f64,
+   |         ^^^^^^^^^^^^^^
+   |
+   = note: `CacheEntry` has derived impls for the traits `Debug` and `Clone`, but these 
+are intentionally ignored during dead code analysis
+
+warning: method `reset` is never used
+   --> src\cache.rs:275:12
+    |
+219 | impl FrequencySketch {
+    | -------------------- method in this implementation
+...
+275 |     pub fn reset(&mut self) {
+    |            ^^^^^
+
+warning: method `current_hit_rate` is never used
+   --> src\cache.rs:353:12
+    |
+316 | impl ShiftDetector {
+    | ------------------ method in this implementation
+...
+353 |     pub fn current_hit_rate(&self) -> f64 { self.hit_ema }
+    |            ^^^^^^^^^^^^^^^^
+
+warning: struct `TailStats` is never constructed
+   --> src\cache.rs:366:12
+    |
+366 | pub struct TailStats {
+    |            ^^^^^^^^^
+
+warning: associated items `new`, `record`, `percentile`, and `len` are never used
+   --> src\cache.rs:372:12
+    |
+371 | impl TailStats {
+    | -------------- associated items in this implementation
+372 |     pub fn new() -> Self { TailStats { costs: Vec::new() } }
+    |            ^^^
+373 |
+374 |     pub fn record(&mut self, cost_saved: f64) {
+    |            ^^^^^^
+...
+379 |     pub fn percentile(&mut self, p: f64) -> f64 {
+    |            ^^^^^^^^^^
+...
+386 |     pub fn len(&self) -> usize { self.costs.len() }
+    |            ^^^
+
+warning: field `last_computed_at` is never read
+   --> src\cache.rs:594:5
+    |
+591 | struct LazyHeapEntry {
+    |        ------------- field in this struct
+...
+594 |     last_computed_at: u32, // generation counter
+    |     ^^^^^^^^^^^^^^^^
+    |
+    = note: `LazyHeapEntry` has a derived impl for the trait `Clone`, but this is 
+intentionally ignored during dead code analysis
+
+warning: associated functions `decay_multiplier_weighted` and `invalidate_weighted` are 
+never used
+   --> src\cache.rs:746:12
+    |
+739 | impl CausalInvalidator {
+    | ---------------------- associated functions in this implementation
+...
+746 |     pub fn decay_multiplier_weighted(
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+784 |     pub fn invalidate_weighted(
+    |            ^^^^^^^^^^^^^^^^^^^
+
+warning: multiple fields are never read
+   --> src\cache.rs:974:9
+    |
+960 | pub struct CacheStats {
+    |            ---------- fields in this struct
+...
+974 |     pub avg_quality: f64,
+    |         ^^^^^^^^^^^
+975 |     pub adaptive_alpha: f64,
+    |         ^^^^^^^^^^^^^^
+976 |     pub thompson_alpha: f64,
+    |         ^^^^^^^^^^^^^^
+977 |     pub thompson_beta: f64,
+    |         ^^^^^^^^^^^^^
+978 |     pub predictor_weights: [f64; 5],
+    |         ^^^^^^^^^^^^^^^^^
+979 |     pub freq_admissions: u64,
+    |         ^^^^^^^^^^^^^^^
+980 |     pub freq_rejections: u64,
+    |         ^^^^^^^^^^^^^^^
+    |
+    = note: `CacheStats` has derived impls for the traits `Debug` and `Clone`, but these 
+are intentionally ignored during dead code analysis
+
+warning: methods `invalidate_weighted`, `clear`, `len`, and `is_empty` are never used
+    --> src\cache.rs:1218:12
+     |
+ 984 | impl EgscCache {
+     | -------------- methods in this implementation
+...
+1218 |     pub fn invalidate_weighted(&mut self, stale_closure: &HashSet<String>, 
+depth_weights: &HashMap<String, u32>) -> u32 {
+     |            ^^^^^^^^^^^^^^^^^^^
+...
+1236 |     pub fn clear(&mut self) {
+     |            ^^^^^
+...
+1273 |     pub fn len(&self) -> usize { self.entries.len() }
+     |            ^^^
+1274 |     pub fn is_empty(&self) -> bool { self.entries.is_empty() }
+     |            ^^^^^^^^
+
+warning: `entroly-core` (lib) generated 10 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 16.68s
