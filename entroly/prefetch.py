@@ -36,9 +36,8 @@ from __future__ import annotations
 import os
 import re
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
 
 
 @dataclass
@@ -54,7 +53,7 @@ class PrefetchResult:
     confidence: float
     """Prediction confidence [0, 1]."""
 
-    content: Optional[str] = None
+    content: str | None = None
     """Pre-loaded content (if available)."""
 
 
@@ -88,7 +87,7 @@ _TS_IMPORT_RE = re.compile(
 )
 
 
-def extract_callees(source: str, language: str = "python") -> List[str]:
+def extract_callees(source: str, language: str = "python") -> list[str]:
     """
     Extract function/method names called from a source code fragment.
 
@@ -100,7 +99,7 @@ def extract_callees(source: str, language: str = "python") -> List[str]:
     return []
 
 
-def extract_imports(source: str, language: str = "python") -> List[str]:
+def extract_imports(source: str, language: str = "python") -> list[str]:
     """
     Extract import targets from a source code fragment.
 
@@ -130,7 +129,7 @@ def extract_imports(source: str, language: str = "python") -> List[str]:
     return []
 
 
-def infer_test_files(file_path: str) -> List[str]:
+def infer_test_files(file_path: str) -> list[str]:
     """
     Infer likely test file paths from a source file path.
 
@@ -162,7 +161,7 @@ def module_to_file_candidates(
     module_path: str,
     base_dir: str = "",
     language: str = "python",
-) -> List[str]:
+) -> list[str]:
     """
     Convert a module path (e.g., 'utils.helpers') to candidate file paths.
 
@@ -201,10 +200,10 @@ class PrefetchEngine:
         self.co_access_window = co_access_window
 
         # co_access[file_a][file_b] = count of times accessed together
-        self._co_access: Dict[str, Counter] = defaultdict(Counter)
+        self._co_access: dict[str, Counter] = defaultdict(Counter)
 
         # Recent access history for learning
-        self._recent_accesses: List[Tuple[str, int]] = []  # (path, turn)
+        self._recent_accesses: list[tuple[str, int]] = []  # (path, turn)
 
     def record_access(self, file_path: str, turn: int) -> None:
         """
@@ -231,7 +230,7 @@ class PrefetchEngine:
         source_content: str,
         language: str = "python",
         max_results: int = 10,
-    ) -> List[PrefetchResult]:
+    ) -> list[PrefetchResult]:
         """
         Predict what context fragments will be needed next, given
         that the agent just accessed `file_path` with `source_content`.
@@ -239,8 +238,8 @@ class PrefetchEngine:
         Combines static analysis and learned co-access patterns.
         Results are sorted by confidence (highest first).
         """
-        predictions: List[PrefetchResult] = []
-        seen_paths: Set[str] = set()
+        predictions: list[PrefetchResult] = []
+        seen_paths: set[str] = set()
 
         # 1. Import graph (confidence: 0.7)
         imports = extract_imports(source_content, language)

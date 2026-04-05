@@ -264,7 +264,7 @@ def _detect_project_type() -> dict:
     pkg_path = os.path.join(cwd, "package.json")
     if os.path.isfile(pkg_path):
         try:
-            with open(pkg_path, "r") as f:
+            with open(pkg_path) as f:
                 pkg = json.load(f)
             all_deps = set(pkg.get("dependencies", {}).keys()) | set(pkg.get("devDependencies", {}).keys())
             if "react" in all_deps and "Next.js" not in frameworks and "Remix" not in frameworks:
@@ -364,7 +364,7 @@ def _write_config(tool: dict, dry_run: bool = False) -> str:
     existing = {}
     if os.path.exists(config_path):
         try:
-            with open(config_path, "r") as f:
+            with open(config_path) as f:
                 existing = json.load(f)
         except (json.JSONDecodeError, OSError):
             existing = {}
@@ -459,9 +459,9 @@ def cmd_serve(args):
 
 def cmd_dashboard(args):
     """entroly dashboard — launch live web dashboard at localhost:9378."""
-    from entroly.server import EntrolyEngine
     from entroly.auto_index import auto_index
     from entroly.dashboard import start_dashboard
+    from entroly.server import EntrolyEngine
 
     print(f"\n{C.CYAN}{C.BOLD}  Entroly Value Dashboard{C.RESET}\n")
 
@@ -499,8 +499,9 @@ def cmd_dashboard(args):
 def cmd_health(args):
     """entroly health — analyze codebase health."""
     import json as _json
-    from entroly.server import EntrolyEngine
+
     from entroly.auto_index import auto_index
+    from entroly.server import EntrolyEngine
 
     print(f"\n{C.CYAN}{C.BOLD}  Entroly Health Analysis{C.RESET}\n")
 
@@ -635,10 +636,10 @@ def cmd_proxy(args):
 {C.GRAY}  Invisible intelligence layer for any AI coding tool{C.RESET}
 """)
 
-    from entroly.server import EntrolyEngine
     from entroly.auto_index import auto_index, start_incremental_watcher
     from entroly.proxy import create_proxy_app
     from entroly.proxy_config import ProxyConfig, resolve_quality
+    from entroly.server import EntrolyEngine
 
     # Load config from environment
     config = ProxyConfig.from_env()
@@ -723,8 +724,8 @@ def cmd_benchmark(args):
     """entroly benchmark — run competitive comparison."""
     print(f"\n{C.CYAN}{C.BOLD}  Entroly Competitive Benchmark{C.RESET}\n")
 
-    from entroly.server import EntrolyEngine
     from entroly.auto_index import auto_index
+    from entroly.server import EntrolyEngine
 
     engine = EntrolyEngine()
     auto_index(engine)
@@ -844,7 +845,7 @@ def cmd_status(args):
 
 def cmd_config(args):
     """entroly config show — display current configuration."""
-    from entroly.proxy_config import ProxyConfig, QUALITY_PRESETS
+    from entroly.proxy_config import QUALITY_PRESETS, ProxyConfig
 
     print(f"\n{C.CYAN}{C.BOLD}  Entroly Configuration{C.RESET}\n")
 
@@ -1143,8 +1144,8 @@ def cmd_batch(args):
     """entroly batch — headless/CI mode for batch optimization (Gap #33)."""
     print(f"\n{C.CYAN}{C.BOLD}  Entroly Batch Mode{C.RESET}\n")
 
-    from entroly.server import EntrolyEngine
     from entroly.auto_index import auto_index
+    from entroly.server import EntrolyEngine
 
     engine = EntrolyEngine()
     result = auto_index(engine)
@@ -1163,7 +1164,7 @@ def cmd_batch(args):
         except FileNotFoundError:
             print(f"  {C.RED}File not found: {args.input}{C.RESET}")
             return
-        except (IOError, OSError) as e:
+        except OSError as e:
             print(f"  {C.RED}Cannot read file: {e}{C.RESET}")
             return
     else:
@@ -1245,10 +1246,10 @@ def cmd_go(args):
         print(f"  {C.GRAY}No AI tool detected -- proxy mode works with any tool{C.RESET}")
 
     # Step 3: Initialize engine + auto-index
-    from entroly.server import EntrolyEngine
     from entroly.auto_index import auto_index, start_incremental_watcher
     from entroly.proxy import create_proxy_app
     from entroly.proxy_config import ProxyConfig, resolve_quality
+    from entroly.server import EntrolyEngine
 
     engine = EntrolyEngine()
     result = auto_index(engine, force=getattr(args, "force", False))
@@ -1311,8 +1312,8 @@ def cmd_demo(args):
     """entroly demo — quick-win demo mode: before/after comparison (Gap #41)."""
     print(f"\n{C.CYAN}{C.BOLD}  Entroly Demo{C.RESET} -- see the value in 30 seconds\n")
 
-    from entroly.server import EntrolyEngine
     from entroly.auto_index import auto_index
+    from entroly.server import EntrolyEngine
     from entroly.value_tracker import estimate_cost
 
     engine = EntrolyEngine()
@@ -1412,8 +1413,8 @@ def cmd_share(args):
     """entroly share — generate a shareable Context Report Card."""
     print(f"\n{C.CYAN}{C.BOLD}  Entroly Share{C.RESET} -- generate your Context Report Card\n")
 
-    from entroly.server import EntrolyEngine
     from entroly.auto_index import auto_index
+    from entroly.server import EntrolyEngine
     from entroly.value_tracker import estimate_cost, get_tracker
 
     engine = EntrolyEngine()
@@ -1498,13 +1499,13 @@ def cmd_share(args):
     out_path.write_text(html, encoding="utf-8")
 
     print(f"\n  {C.GREEN}{C.BOLD}Context Report Card{C.RESET}")
-    print(f"  ┌─────────────────────────────────────────────┐")
+    print("  ┌─────────────────────────────────────────────┐")
     print(f"  │  {C.BOLD}PROJECT:{C.RESET}  {project_name:<35s}│")
     print(f"  │  {C.BOLD}CONTEXT SCORE:{C.RESET}  {C.GREEN}{context_score}/100{C.RESET}                     │")
     print(f"  │  {C.BOLD}FILES:{C.RESET}  {files_indexed:,} → AI sees ALL of them        │")
     print(f"  │  {C.BOLD}TOKEN REDUCTION:{C.RESET}  {C.GREEN}{avg_pct}%{C.RESET} average               │")
     print(f"  │  {C.BOLD}MONTHLY SAVINGS:{C.RESET}  {C.GREEN}${monthly_savings:,.0f}{C.RESET} (GPT-4o est.)      │")
-    print(f"  └─────────────────────────────────────────────┘")
+    print("  └─────────────────────────────────────────────┘")
     print(f"\n  {C.GREEN}Report saved:{C.RESET} {out_path.resolve()}")
     print(f"\n  {C.CYAN}Share it!{C.RESET} Post your Context Score on Twitter/LinkedIn.")
     print(f"  {C.GRAY}\"My codebase scores {context_score}/100 on Entroly. What's yours?\"{C.RESET}\n")
@@ -1776,7 +1777,6 @@ def cmd_digest(args):
     """entroly digest — show weekly summary of entroly's value (Gap #44)."""
     print(f"\n{C.CYAN}{C.BOLD}  Entroly Weekly Digest{C.RESET}\n")
 
-    import time as _time
 
     # Try to get stats from running proxy
     port = getattr(args, "port", None) or 9377
@@ -2044,8 +2044,8 @@ def cmd_optimize(args):
     It indexes the codebase, selects the mathematically optimal files
     for the given task, and outputs a structured markdown snapshot.
     """
-    from entroly.server import EntrolyEngine
     from entroly.auto_index import auto_index
+    from entroly.server import EntrolyEngine
 
     task = getattr(args, "task", "") or ""
     budget = getattr(args, "budget", 8192)
@@ -2229,10 +2229,10 @@ def cmd_compile(args):
     dependencies, and writes belief artifacts to the vault. This is the
     foundation of Cross-Session Memory: compile once, start warm forever.
     """
-    from entroly.server import EntrolyEngine, create_mcp_server
-    from entroly.belief_compiler import BeliefCompiler
-    from entroly.vault import VaultManager, VaultConfig
     import os
+
+    from entroly.belief_compiler import BeliefCompiler
+    from entroly.vault import VaultConfig, VaultManager
 
     target = getattr(args, "directory", None) or os.getcwd()
     max_files = getattr(args, "max_files", 200)
@@ -2273,9 +2273,10 @@ def cmd_verify(args):
     verification artifacts to vault/verification/. This promotes beliefs
     from 'inferred' to 'verified' or flags them as 'stale'.
     """
-    from entroly.verification_engine import VerificationEngine
-    from entroly.vault import VaultManager, VaultConfig
     import os
+
+    from entroly.vault import VaultConfig, VaultManager
+    from entroly.verification_engine import VerificationEngine
 
     vault_base = os.environ.get(
         "ENTROLY_VAULT",
@@ -2313,12 +2314,13 @@ def cmd_sync(args):
     beliefs stale, recompiles changed files, and runs verification.
     This is the Change-Driven Pipeline (Flow 4).
     """
-    from entroly.change_listener import WorkspaceChangeListener
-    from entroly.belief_compiler import BeliefCompiler
-    from entroly.verification_engine import VerificationEngine
-    from entroly.change_pipeline import ChangePipeline
-    from entroly.vault import VaultManager, VaultConfig
     import os
+
+    from entroly.belief_compiler import BeliefCompiler
+    from entroly.change_listener import WorkspaceChangeListener
+    from entroly.change_pipeline import ChangePipeline
+    from entroly.vault import VaultConfig, VaultManager
+    from entroly.verification_engine import VerificationEngine
 
     target = getattr(args, "directory", None) or os.getcwd()
     max_files = getattr(args, "max_files", 100)
@@ -2381,8 +2383,9 @@ def cmd_search(args):
         engine_name = "rust"
     except ImportError:
         # Python fallback — simple substring
-        from entroly.vault import VaultManager, VaultConfig, _parse_frontmatter
         from pathlib import Path
+
+        from entroly.vault import VaultConfig, VaultManager, _parse_frontmatter
         vault = VaultManager(VaultConfig(base_path=vault_base))
         vault.ensure_structure()
         beliefs_dir = Path(vault_base) / "beliefs"

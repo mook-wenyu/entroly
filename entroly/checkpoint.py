@@ -50,7 +50,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 try:
     from entroly_core import ContextFragment
@@ -92,23 +92,23 @@ class Checkpoint:
     current_turn: int
     """The turn number at checkpoint time."""
 
-    fragments: List[Dict[str, Any]]
+    fragments: list[dict[str, Any]]
     """Serialized context fragments."""
 
-    dedup_fingerprints: Dict[str, int]
+    dedup_fingerprints: dict[str, int]
     """fragment_id -> SimHash fingerprint mapping."""
 
-    co_access_data: Dict[str, Dict[str, int]]
+    co_access_data: dict[str, dict[str, int]]
     """Pre-fetcher co-access counts."""
 
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
     """Custom metadata (task plan, current step, instance_id, etc.)."""
 
-    stats: Dict[str, Any]
+    stats: dict[str, Any]
     """Performance stats at checkpoint time."""
 
 
-def _fragment_to_dict(frag: ContextFragment, include_content: bool = True) -> Dict[str, Any]:
+def _fragment_to_dict(frag: ContextFragment, include_content: bool = True) -> dict[str, Any]:
     """Serialize a ContextFragment to a JSON-safe dict.
 
     Args:
@@ -118,7 +118,7 @@ def _fragment_to_dict(frag: ContextFragment, include_content: bool = True) -> Di
             restore.  Content can be re-read from the filesystem via
             ``source`` (the file path) when the checkpoint is loaded.
     """
-    d: Dict[str, Any] = {
+    d: dict[str, Any] = {
         "fragment_id": frag.fragment_id,
         "token_count": frag.token_count,
         "source": frag.source,
@@ -142,7 +142,7 @@ def _fragment_to_dict(frag: ContextFragment, include_content: bool = True) -> Di
     return d
 
 
-def _dict_to_fragment(d: Dict[str, Any]) -> ContextFragment:
+def _dict_to_fragment(d: dict[str, Any]) -> ContextFragment:
     """Deserialize a dict back to a ContextFragment."""
     frag = ContextFragment(
         fragment_id=d["fragment_id"],
@@ -163,14 +163,14 @@ def _dict_to_fragment(d: Dict[str, Any]) -> ContextFragment:
 
 
 def _merge_fragments(
-    local: List[Dict[str, Any]], remote: List[Dict[str, Any]]
-) -> List[Dict[str, Any]]:
+    local: list[dict[str, Any]], remote: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
     """Merge fragment lists from different instances.
 
     Conflict resolution: most-recent-writer-wins with access_count tiebreaker.
     Inspired by Pitman-Yor lifecycle management from agentOS/persona_manifold.rs.
     """
-    merged: Dict[str, Dict[str, Any]] = {f["fragment_id"]: f for f in local}
+    merged: dict[str, dict[str, Any]] = {f["fragment_id"]: f for f in local}
 
     for rf in remote:
         fid = rf["fragment_id"]
@@ -320,12 +320,12 @@ class CheckpointManager:
 
     def save(
         self,
-        fragments: List[ContextFragment],
-        dedup_fingerprints: Dict[str, int],
-        co_access_data: Dict[str, Dict[str, int]],
+        fragments: list[ContextFragment],
+        dedup_fingerprints: dict[str, int],
+        co_access_data: dict[str, dict[str, int]],
         current_turn: int,
-        metadata: Optional[Dict[str, Any]] = None,
-        stats: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
+        stats: dict[str, Any] | None = None,
     ) -> str:
         """
         Save a checkpoint to disk with distributed file locking.
@@ -418,7 +418,7 @@ class CheckpointManager:
 
         return str(filepath)
 
-    def load_latest(self) -> Optional[Checkpoint]:
+    def load_latest(self) -> Checkpoint | None:
         """
         Load the most recent checkpoint (from this instance).
 
@@ -437,14 +437,14 @@ class CheckpointManager:
 
         return None
 
-    def load_by_id(self, checkpoint_id: str) -> Optional[Checkpoint]:
+    def load_by_id(self, checkpoint_id: str) -> Checkpoint | None:
         """Load a specific checkpoint by its ID."""
         filepath = self.checkpoint_dir / f"{checkpoint_id}.json.gz"
         if not filepath.exists():
             return None
         return self._load_file(filepath)
 
-    def merge_from_peers(self, local_fragments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def merge_from_peers(self, local_fragments: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Scan for checkpoints from peer instances and merge their fragments.
 
         Returns the merged fragment list combining local + peer knowledge.
@@ -475,8 +475,8 @@ class CheckpointManager:
         return merged
 
     def apply_ebbinghaus_decay(
-        self, fragments: List[Dict[str, Any]], current_tick: int
-    ) -> List[Dict[str, Any]]:
+        self, fragments: list[dict[str, Any]], current_tick: int
+    ) -> list[dict[str, Any]]:
         """Apply Ebbinghaus forgetting curve to fragment health scores.
 
         Ported from agentOS/persona_manifold.rs lifecycle_tick().
@@ -490,7 +490,7 @@ class CheckpointManager:
                 result.append(frag)
         return result
 
-    def list_checkpoints(self) -> List[Dict[str, Any]]:
+    def list_checkpoints(self) -> list[dict[str, Any]]:
         """List all available checkpoints with metadata."""
         checkpoints = sorted(
             self.checkpoint_dir.glob("ckpt_*.json.gz"),
@@ -513,11 +513,11 @@ class CheckpointManager:
 
         return result
 
-    def restore_fragments(self, checkpoint: Checkpoint) -> List[ContextFragment]:
+    def restore_fragments(self, checkpoint: Checkpoint) -> list[ContextFragment]:
         """Extract ContextFragment objects from a checkpoint."""
         return [_dict_to_fragment(d) for d in checkpoint.fragments]
 
-    def _load_file(self, filepath: Path) -> Optional[Checkpoint]:
+    def _load_file(self, filepath: Path) -> Checkpoint | None:
         """Load and parse a checkpoint file with schema migration. Returns None if corrupted."""
         try:
             with gzip.open(filepath, "rt", encoding="utf-8") as f:

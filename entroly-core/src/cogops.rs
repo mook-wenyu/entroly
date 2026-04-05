@@ -1956,7 +1956,7 @@ impl CogOpsEngine {
                     claim_id, entity, rel, now, body
                 );
 
-                let safe_name = entity.replace('/', "_").replace(' ', "_").to_lowercase();
+                let safe_name = entity.replace(['/', ' '], "_").to_lowercase();
                 let out_path = self.vault_path.join("beliefs").join(format!("{}.md", safe_name));
                 if fs::write(&out_path, belief_md).is_ok() {
                     docs_compiled += 1;

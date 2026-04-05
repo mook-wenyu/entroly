@@ -29,17 +29,15 @@ Single-file mutation discipline:
 from __future__ import annotations
 
 import json
+import logging
 import math
-import os
 import random
 import re
 import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-
-import logging
+from typing import Any
 
 logger = logging.getLogger("entroly")
 
@@ -80,10 +78,10 @@ class BenchResult:
     avg_wall_time_ms: float
     total_tokens_used: int
     total_information: float
-    per_case: List[Dict[str, Any]] = field(default_factory=list)
+    per_case: list[dict[str, Any]] = field(default_factory=list)
 
 
-def load_cases() -> List[Dict[str, Any]]:
+def load_cases() -> list[dict[str, Any]]:
     """Load the fixed benchmark cases (read-only val set).
 
     Returns empty list if the file doesn't exist (pip-install mode).
@@ -94,7 +92,7 @@ def load_cases() -> List[Dict[str, Any]]:
         return json.load(f)
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """Load the current tuning config (the file we mutate).
 
     Returns default config if the file doesn't exist (pip-install mode).
@@ -110,7 +108,7 @@ def load_config() -> Dict[str, Any]:
         return json.load(f)
 
 
-def save_config(config: Dict[str, Any]) -> None:
+def save_config(config: dict[str, Any]) -> None:
     """Save tuning config (single-file mutation).
 
     Creates parent directories if they don't exist.
@@ -120,7 +118,7 @@ def save_config(config: Dict[str, Any]) -> None:
         json.dump(config, f, indent=2)
 
 
-def evaluate(config: Dict[str, Any], cases: List[Dict[str, Any]],
+def evaluate(config: dict[str, Any], cases: list[dict[str, Any]],
              time_budget: float = DEFAULT_TIME_BUDGET_SECS) -> BenchResult:
     """
     Run the benchmark suite with a given config.
@@ -138,8 +136,8 @@ def evaluate(config: Dict[str, Any], cases: List[Dict[str, Any]],
     total_tokens_used = 0
     correct_selections = 0
     total_expected = 0
-    wall_times: List[float] = []
-    per_case: List[Dict[str, Any]] = []
+    wall_times: list[float] = []
+    per_case: list[dict[str, Any]] = []
 
     for case in cases:
         engine = EntrolyEngine(
@@ -152,7 +150,7 @@ def evaluate(config: Dict[str, Any], cases: List[Dict[str, Any]],
             exploration_rate=config.get("exploration_rate", 0.1),
         )
 
-        frag_id_map: Dict[str, str] = {}
+        frag_id_map: dict[str, str] = {}
         for frag_data in case["fragments"]:
             result = engine.ingest(
                 frag_data["content"],
@@ -231,7 +229,7 @@ def evaluate(config: Dict[str, Any], cases: List[Dict[str, Any]],
     )
 
 
-def mutate_config(config: Dict[str, Any]) -> Dict[str, Any]:
+def mutate_config(config: dict[str, Any]) -> dict[str, Any]:
     """Mutate one parameter at a time (single-change experiments for interpretability)."""
     new_config = dict(config)
     param = random.choice(list(TUNABLE_PARAMS.keys()))
@@ -259,8 +257,8 @@ def mutate_config(config: Dict[str, Any]) -> Dict[str, Any]:
     return new_config
 
 
-def composite_score(result: BenchResult, config: Optional[Dict[str, Any]] = None,
-                    defaults: Optional[Dict[str, Any]] = None,
+def composite_score(result: BenchResult, config: dict[str, Any] | None = None,
+                    defaults: dict[str, Any] | None = None,
                     drift_weight: float = 0.1) -> float:
     """Single metric: efficiency + recall - config drift penalty.
 
@@ -309,8 +307,8 @@ def composite_score(result: BenchResult, config: Optional[Dict[str, Any]] = None
 #    adversarial parameter regions that overfit the benchmark.
 # ══════════════════════════════════════════════════════════════════════
 
-def _ema_blend(best: Dict[str, Any], candidate: Dict[str, Any],
-               alpha: float) -> Dict[str, Any]:
+def _ema_blend(best: dict[str, Any], candidate: dict[str, Any],
+               alpha: float) -> dict[str, Any]:
     """EMA blend: p = (1-α)·best + α·candidate for numeric params."""
     blended = dict(best)
     for key in TUNABLE_PARAMS:
@@ -327,8 +325,8 @@ def _ema_blend(best: Dict[str, Any], candidate: Dict[str, Any],
     return blended
 
 
-def _polyak_update(avg: Dict[str, Any], config: Dict[str, Any],
-                   count: int) -> Dict[str, Any]:
+def _polyak_update(avg: dict[str, Any], config: dict[str, Any],
+                   count: int) -> dict[str, Any]:
     """Polyak running average: avg = ((n-1)·avg + config) / n."""
     updated = dict(avg)
     for key in TUNABLE_PARAMS:
@@ -345,7 +343,7 @@ def _polyak_update(avg: Dict[str, Any], config: Dict[str, Any],
     return updated
 
 
-def log_result(iteration: int, config: Dict[str, Any], result: BenchResult,
+def log_result(iteration: int, config: dict[str, Any], result: BenchResult,
                status: str, description: str) -> None:
     """Append to results.tsv (structured experiment log)."""
     header = "iteration\tscore\trecall\tefficiency\tavg_ms\tstatus\tdescription\n"
@@ -543,11 +541,11 @@ class FeedbackJournal:
         self.journal_dir = Path(journal_dir)
         self.journal_dir.mkdir(parents=True, exist_ok=True)
         self.journal_path = self.journal_dir / "feedback_journal.jsonl"
-        self._cache: Optional[list] = None
+        self._cache: list | None = None
 
-    def log(self, *, weights: Dict[str, float], reward: float,
+    def log(self, *, weights: dict[str, float], reward: float,
             selected_count: int = 0, query: str = "",
-            selected_sources: Optional[List[str]] = None,
+            selected_sources: list[str] | None = None,
             token_budget: int = 0, turn: int = 0) -> None:
         """Log a feedback episode."""
         entry = {
@@ -567,7 +565,7 @@ class FeedbackJournal:
         except Exception:
             pass
 
-    def load(self, max_age: float = JOURNAL_MAX_AGE_S) -> List[Dict]:
+    def load(self, max_age: float = JOURNAL_MAX_AGE_S) -> list[dict]:
         """Load episodes filtered by max age."""
         if self._cache is not None:
             return self._cache
@@ -605,7 +603,7 @@ class FeedbackJournal:
     def count(self) -> int:
         return len(self.load())
 
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         eps = self.load()
         if not eps:
             return {"episodes": 0, "successes": 0, "failures": 0, "avg_reward": 0}
@@ -620,14 +618,14 @@ class FeedbackJournal:
         }
 
 
-def _normalize_weights(w: Dict[str, float]) -> Dict[str, float]:
+def _normalize_weights(w: dict[str, float]) -> dict[str, float]:
     """Clamp and normalize weights to sum=1."""
     out = {k: max(MIN_WEIGHT, min(MAX_WEIGHT, w.get(k, 0.25))) for k in WEIGHT_KEYS}
     s = sum(out.values())
     return {k: round(v / s, 4) for k, v in out.items()} if s > 0 else out
 
 
-def _extract_weights(w: Dict) -> Dict[str, float]:
+def _extract_weights(w: dict) -> dict[str, float]:
     return {
         "w_r": w.get("w_r", w.get("R", 0.30)),
         "w_f": w.get("w_f", w.get("F", 0.25)),
@@ -637,9 +635,9 @@ def _extract_weights(w: Dict) -> Dict[str, float]:
 
 
 def reward_weighted_optimize(
-    episodes: List[Dict],
-    current_weights: Dict[str, float],
-) -> Optional[Dict[str, Any]]:
+    episodes: list[dict],
+    current_weights: dict[str, float],
+) -> dict[str, Any] | None:
     """
     Reward-weighted regression with:
     - Global advantage normalization (REINFORCE++, 2025)
@@ -790,15 +788,15 @@ class TaskProfileOptimizer:
 
     def __init__(self, journal: FeedbackJournal):
         self.journal = journal
-        self._profiles: Dict[str, Dict] = {}
+        self._profiles: dict[str, dict] = {}
 
-    def optimize_all(self) -> Dict[str, Dict]:
+    def optimize_all(self) -> dict[str, dict]:
         """Classify episodes by task type and optimize each independently."""
         episodes = self.journal.load()
         if len(episodes) < 3:
             return {}
 
-        buckets: Dict[str, list] = {}
+        buckets: dict[str, list] = {}
         for ep in episodes:
             task_type = classify_query(ep.get("q", ""))
             buckets.setdefault(task_type, []).append(ep)
@@ -829,7 +827,7 @@ class TaskProfileOptimizer:
         self._profiles = profiles
         return profiles
 
-    def get_profile_for_query(self, query: str) -> Tuple[Dict[str, float], str, float]:
+    def get_profile_for_query(self, query: str) -> tuple[dict[str, float], str, float]:
         """Get optimal weights for a query. Returns (weights, task_type, confidence)."""
         task_type = classify_query(query)
         profile = self._profiles.get(task_type)
@@ -838,7 +836,7 @@ class TaskProfileOptimizer:
         prior = TASK_PRIORS.get(task_type, TASK_PRIORS["General"])
         return prior, task_type, 0.0
 
-    def apply_to_engine(self, engine, query: str) -> Tuple[str, float]:
+    def apply_to_engine(self, engine, query: str) -> tuple[str, float]:
         """Apply task-conditioned weights to an engine."""
         weights, task_type, confidence = self.get_profile_for_query(query)
         if hasattr(engine, "_use_rust") and engine._use_rust:

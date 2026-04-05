@@ -21,13 +21,13 @@ import json
 import logging
 import threading
 import time
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from typing import Any, Optional
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any
 
 logger = logging.getLogger("entroly.dashboard")
 
 # ── Engine reference (set by start_dashboard) ─────────────────────────────────
-_engine: Optional[Any] = None
+_engine: Any | None = None
 _lock = threading.Lock()
 
 # Per-request tracking (populated by proxy integration)
@@ -206,13 +206,14 @@ def _get_full_snapshot() -> dict:
 
     # 10. CogOps Epistemic Engine stats
     try:
-        from entroly_core import CogOpsEngine
         import os
+
+        from entroly_core import CogOpsEngine
         vault_base = os.environ.get(
             "ENTROLY_VAULT",
             os.path.join(os.environ.get("ENTROLY_DIR", os.path.join(os.getcwd(), ".entroly")), "vault"),
         )
-        cogops = CogOpsEngine(vault_base)
+        _cogops = CogOpsEngine(vault_base)  # noqa: F841 — side-effect: initializes vault
 
         # Read all beliefs for summary stats
         from pathlib import Path
@@ -268,7 +269,7 @@ def _get_full_snapshot() -> dict:
             "entity_count": len(set(entities)),
             "engine": "rust",
         })
-    except Exception as e:
+    except Exception:
         snap["cogops"] = None
 
     return snap

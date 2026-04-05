@@ -19,7 +19,7 @@ What moved to Rust (`entroly-core/src/query.rs`):
 from __future__ import annotations
 
 import logging
-from typing import Callable, List, Optional
+from collections.abc import Callable
 
 try:
     from entroly_core import py_analyze_query, py_refine_heuristic
@@ -51,7 +51,7 @@ class QueryRefiner:
         result = refiner.refine("fix the bug", fragment_summaries=[...])
     """
 
-    def __init__(self, llm_fn: Optional[Callable[[str], str]] = None):
+    def __init__(self, llm_fn: Callable[[str], str] | None = None):
         """
         Args:
             llm_fn: Optional async/sync function that takes a query string and
@@ -60,7 +60,7 @@ class QueryRefiner:
         """
         self._llm_fn = llm_fn
 
-    def analyze(self, query: str, fragment_summaries: List[str] | None = None) -> dict:
+    def analyze(self, query: str, fragment_summaries: list[str] | None = None) -> dict:
         """
         Analyze a query for vagueness and key terms.
 
@@ -80,7 +80,7 @@ class QueryRefiner:
             "reason": reason,
         }
 
-    def refine(self, query: str, fragment_summaries: List[str] | None = None) -> str:
+    def refine(self, query: str, fragment_summaries: list[str] | None = None) -> str:
         """
         Refine a query using:
           1. Rust heuristic (always runs, zero latency)

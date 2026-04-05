@@ -17,15 +17,15 @@ from __future__ import annotations
 import copy
 import hashlib
 import math
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .proxy_config import ProxyConfig, context_window_for_model
 
 
 def detect_provider(
     path: str,
-    headers: Dict[str, str],
-    body: Optional[Dict[str, Any]] = None,
+    headers: dict[str, str],
+    body: dict[str, Any] | None = None,
 ) -> str:
     """Detect the API provider from request path, headers, and body.
 
@@ -59,7 +59,7 @@ def detect_provider(
     return "openai"
 
 
-def extract_user_message(body: Dict[str, Any], provider: str) -> str:
+def extract_user_message(body: dict[str, Any], provider: str) -> str:
     """Extract the latest user message text from the request body."""
     # Gemini uses "contents" with "parts" instead of "messages"
     if provider == "gemini":
@@ -100,7 +100,7 @@ def extract_user_message(body: Dict[str, Any], provider: str) -> str:
     return ""
 
 
-def extract_model(body: Dict[str, Any], path: str = "") -> str:
+def extract_model(body: dict[str, Any], path: str = "") -> str:
     """Extract the model name from the request body or URL path.
 
     Gemini embeds the model in the URL path rather than the body:
@@ -162,7 +162,7 @@ def compute_token_budget(model: str, config: ProxyConfig) -> int:
 
 def compute_dynamic_budget(
     model: str,
-    config: "ProxyConfig",
+    config: ProxyConfig,
     vagueness: float = 0.5,
     total_fragments: int = 0,
 ) -> int:
@@ -221,7 +221,7 @@ def compute_dynamic_budget(
 # Per-language chars-per-token ratios.
 # Measured against cl100k_base (GPT-4/Claude) on real code corpora.
 # Code tokens pack denser than English prose (which averages ~4.0).
-_CHARS_PER_TOKEN: Dict[str, float] = {
+_CHARS_PER_TOKEN: dict[str, float] = {
     "python": 3.0,
     "rust": 3.5,
     "typescript": 3.1,
@@ -267,7 +267,7 @@ def _build_preamble(
     This gives the LLM information it genuinely doesn't have about the
     context selection and any issues found in the code.
     """
-    parts: List[str] = []
+    parts: list[str] = []
 
     # Security findings — information the LLM truly doesn't have
     if security_count > 0:
@@ -293,7 +293,7 @@ def _build_preamble(
         )
 
     # Task-specific hint (only for strong task signals, not Unknown)
-    _TASK_HINTS: Dict[str, str] = {
+    _TASK_HINTS: dict[str, str] = {
         "BugTracing": "Focus on error propagation paths and edge cases.",
         "Refactoring": "Preserve existing behavior exactly; verify call sites.",
         "Testing": "Cover edge cases and error paths, not just happy paths.",
@@ -307,15 +307,15 @@ def _build_preamble(
 
 
 def _deduplicate_fragments(
-    fragments: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    fragments: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """Remove duplicate fragments by content hash.
 
     Saves 10-20% tokens in multi-turn sessions where the same file
     gets re-ingested across turns.
     """
     seen: set = set()
-    unique: List[Dict[str, Any]] = []
+    unique: list[dict[str, Any]] = []
     for frag in fragments:
         content = frag.get("preview", frag.get("content", ""))
         # Hash first 256 chars — enough to identify duplicates, fast
@@ -330,10 +330,10 @@ def _deduplicate_fragments(
 
 
 def format_context_block(
-    fragments: List[Dict[str, Any]],
-    security_issues: List[str],
-    ltm_memories: List[Dict[str, Any]],
-    refinement_info: Optional[Dict[str, Any]],
+    fragments: list[dict[str, Any]],
+    security_issues: list[str],
+    ltm_memories: list[dict[str, Any]],
+    refinement_info: dict[str, Any] | None,
     *,
     task_type: str = "Unknown",
     vagueness: float = 0.0,
@@ -348,7 +348,7 @@ def format_context_block(
     # Deduplicate fragments (saves tokens in multi-turn sessions)
     fragments = _deduplicate_fragments(fragments)
 
-    parts: List[str] = []
+    parts: list[str] = []
     parts.append("--- Relevant Code Context (auto-selected by entroly) ---")
     parts.append("")
 
@@ -428,10 +428,10 @@ def format_context_block(
 
 
 def format_hierarchical_context(
-    hcc_result: Dict[str, Any],
-    security_issues: List[str],
-    ltm_memories: List[Dict[str, Any]],
-    refinement_info: Optional[Dict[str, Any]],
+    hcc_result: dict[str, Any],
+    security_issues: list[str],
+    ltm_memories: list[dict[str, Any]],
+    refinement_info: dict[str, Any] | None,
     *,
     task_type: str = "Unknown",
     vagueness: float = 0.0,
@@ -449,7 +449,7 @@ def format_hierarchical_context(
     if hcc_result.get("status") == "empty":
         return ""
 
-    parts: List[str] = []
+    parts: list[str] = []
     parts.append("--- Relevant Code Context (auto-selected by entroly) ---")
     parts.append("")
 
@@ -524,8 +524,8 @@ def format_hierarchical_context(
 
 
 def inject_context_openai(
-    body: Dict[str, Any], context_text: str
-) -> Dict[str, Any]:
+    body: dict[str, Any], context_text: str
+) -> dict[str, Any]:
     """Inject optimized context into an OpenAI chat completion request.
 
     Inserts a system message at the beginning of the messages array.
@@ -548,8 +548,8 @@ def inject_context_openai(
 
 
 def inject_context_anthropic(
-    body: Dict[str, Any], context_text: str
-) -> Dict[str, Any]:
+    body: dict[str, Any], context_text: str
+) -> dict[str, Any]:
     """Inject optimized context into an Anthropic messages request.
 
     Uses the top-level "system" field. Appends to existing system content.
@@ -572,8 +572,8 @@ def inject_context_anthropic(
 
 
 def inject_context_gemini(
-    body: Dict[str, Any], context_text: str
-) -> Dict[str, Any]:
+    body: dict[str, Any], context_text: str
+) -> dict[str, Any]:
     """Inject optimized context into a Google Gemini generateContent request.
 
     Uses the top-level "systemInstruction" field with a parts array.
@@ -660,7 +660,7 @@ def inject_context_gemini(
 
 # Task type → intrinsic temperature bias (δ_task).
 # Negative = wants lower τ (precision). Positive = wants higher τ (creativity).
-_TASK_TEMPERATURE_BIAS: Dict[str, float] = {
+_TASK_TEMPERATURE_BIAS: dict[str, float] = {
     "BugTracing":      -0.8,   # deterministic: reproduce → locate → fix
     "Refactoring":     -0.4,   # structured: preserve semantics exactly
     "Testing":         -0.3,   # systematic: generate correct assertions
@@ -700,7 +700,7 @@ _TRAJECTORY_LAMBDA = 0.07
 
 def compute_optimal_temperature(
     vagueness: float,
-    fragment_entropies: List[float],
+    fragment_entropies: list[float],
     sufficiency: float,
     task_type: str,
     *,
@@ -797,10 +797,10 @@ def apply_trajectory_convergence(
 
 
 def apply_temperature(
-    body: Dict[str, Any],
+    body: dict[str, Any],
     tau: float,
     provider: str = "openai",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Set the temperature in the request body, respecting user overrides.
 
     If the user explicitly set a temperature, we DON'T override it.

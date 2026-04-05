@@ -25,7 +25,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger("entroly.value_tracker")
 
@@ -73,13 +73,13 @@ def estimate_cost(tokens_saved: int, model: str = "") -> float:
     return (tokens_saved / 1000.0) * cost
 
 
-def _day_key(ts: Optional[float] = None) -> str:
+def _day_key(ts: float | None = None) -> str:
     """Return YYYY-MM-DD for a timestamp (or now)."""
     t = time.gmtime(ts or time.time())
     return f"{t.tm_year:04d}-{t.tm_mon:02d}-{t.tm_mday:02d}"
 
 
-def _week_key(ts: Optional[float] = None) -> str:
+def _week_key(ts: float | None = None) -> str:
     """Return YYYY-WNN for a timestamp (or now)."""
     t = time.gmtime(ts or time.time())
     # ISO week number
@@ -89,7 +89,7 @@ def _week_key(ts: Optional[float] = None) -> str:
     return f"{iso[0]:04d}-W{iso[1]:02d}"
 
 
-def _month_key(ts: Optional[float] = None) -> str:
+def _month_key(ts: float | None = None) -> str:
     """Return YYYY-MM for a timestamp (or now)."""
     t = time.gmtime(ts or time.time())
     return f"{t.tm_year:04d}-{t.tm_mon:02d}"
@@ -107,7 +107,7 @@ class ValueTracker:
     _MAX_WEEKLY_ENTRIES = 52   # ~1 year
     _MAX_MONTHLY_ENTRIES = 24  # ~2 years
 
-    def __init__(self, data_dir: Optional[Path] = None):
+    def __init__(self, data_dir: Path | None = None):
         self._dir = data_dir or (Path.home() / ".entroly")
         self._dir.mkdir(parents=True, exist_ok=True)
         self._path = self._dir / self._FILE_NAME
@@ -121,7 +121,7 @@ class ValueTracker:
         self._session_tokens_saved: int = 0
         self._session_cost_saved: float = 0.0
 
-    def _load(self) -> Dict[str, Any]:
+    def _load(self) -> dict[str, Any]:
         """Load tracker data from disk, or return fresh defaults."""
         if self._path.exists():
             try:
@@ -134,7 +134,7 @@ class ValueTracker:
         return self._defaults()
 
     @staticmethod
-    def _defaults() -> Dict[str, Any]:
+    def _defaults() -> dict[str, Any]:
         return {
             "version": 1,
             "lifetime": {
@@ -252,33 +252,33 @@ class ValueTracker:
             self._trim_history()
             self._save()
 
-    def get_lifetime(self) -> Dict[str, Any]:
+    def get_lifetime(self) -> dict[str, Any]:
         """Return lifetime cumulative stats."""
         with self._lock:
             return dict(self._data.get("lifetime", {}))
 
-    def get_daily(self, last_n: int = 30) -> List[Dict[str, Any]]:
+    def get_daily(self, last_n: int = 30) -> list[dict[str, Any]]:
         """Return last N days of daily stats, sorted ascending."""
         with self._lock:
             d = self._data.get("daily", {})
             keys = sorted(d.keys())[-last_n:]
             return [{"date": k, **d[k]} for k in keys]
 
-    def get_weekly(self, last_n: int = 12) -> List[Dict[str, Any]]:
+    def get_weekly(self, last_n: int = 12) -> list[dict[str, Any]]:
         """Return last N weeks of stats, sorted ascending."""
         with self._lock:
             w = self._data.get("weekly", {})
             keys = sorted(w.keys())[-last_n:]
             return [{"week": k, **w[k]} for k in keys]
 
-    def get_monthly(self, last_n: int = 12) -> List[Dict[str, Any]]:
+    def get_monthly(self, last_n: int = 12) -> list[dict[str, Any]]:
         """Return last N months of stats, sorted ascending."""
         with self._lock:
             m = self._data.get("monthly", {})
             keys = sorted(m.keys())[-last_n:]
             return [{"month": k, **m[k]} for k in keys]
 
-    def get_session(self) -> Dict[str, Any]:
+    def get_session(self) -> dict[str, Any]:
         """Return current session stats (since proxy start)."""
         with self._lock:
             return {
@@ -287,7 +287,7 @@ class ValueTracker:
                 "cost_saved_usd": round(self._session_cost_saved, 4),
             }
 
-    def get_confidence(self) -> Dict[str, Any]:
+    def get_confidence(self) -> dict[str, Any]:
         """Return real-time confidence snapshot for IDE widgets.
 
         This is the single endpoint an IDE status bar polls.
@@ -317,7 +317,7 @@ class ValueTracker:
                 "status": "active" if self._session_requests > 0 else "idle",
             }
 
-    def get_trends(self) -> Dict[str, Any]:
+    def get_trends(self) -> dict[str, Any]:
         """Return all trend data for dashboard charts."""
         return {
             "daily": self.get_daily(30),
@@ -330,7 +330,7 @@ class ValueTracker:
 
 # ── Module-level singleton (lazy-init) ───────────────────────────────────
 
-_tracker: Optional[ValueTracker] = None
+_tracker: ValueTracker | None = None
 _tracker_lock = threading.Lock()
 
 

@@ -29,7 +29,7 @@ import re
 import sys
 import threading
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 import httpx
 from starlette.applications import Starlette
@@ -38,7 +38,6 @@ from starlette.responses import JSONResponse, StreamingResponse
 from starlette.routing import Route
 
 from .proxy_config import ProxyConfig
-from .value_tracker import get_tracker, estimate_cost
 from .proxy_transform import (
     apply_temperature,
     apply_trajectory_convergence,
@@ -54,6 +53,7 @@ from .proxy_transform import (
     inject_context_gemini,
     inject_context_openai,
 )
+from .value_tracker import get_tracker
 
 logger = logging.getLogger("entroly.proxy")
 
@@ -250,8 +250,9 @@ def compress_conversation_messages(
         return messages  # no compression needed
 
     try:
-        from entroly_core import py_progressive_thresholds, py_compress_block
         import json as _json
+
+        from entroly_core import py_compress_block, py_progressive_thresholds
 
         # Build block descriptors for Rust
         blocks = []
@@ -352,7 +353,7 @@ class ImplicitFeedbackTracker:
     def __init__(self):
         self._lock = threading.Lock()
         # Per-client trajectory: client_key -> (query_simhash, selected_ids, timestamp)
-        self._trajectories: Dict[str, tuple] = {}
+        self._trajectories: dict[str, tuple] = {}
         # Stats
         self._confusion_detections = 0
         self._confidence_detections = 0
@@ -396,7 +397,7 @@ class ImplicitFeedbackTracker:
 
     def detect_rephrase(
         self, client_key: str, query_text: str, selected_ids: list
-    ) -> Optional[tuple]:
+    ) -> tuple | None:
         """Check if this query is a rephrase of the previous one.
 
         Returns:
@@ -471,7 +472,7 @@ class ImplicitFeedbackTracker:
         with self._lock:
             return self._drift_detector.trend()
 
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         """Return feedback tracker statistics."""
         with self._lock:
             drift_stats = self._drift_detector.to_dict()
@@ -572,7 +573,7 @@ class _CusumEmaDriftDetector:
         self.count = 0
         self._was_declining = False
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "ema": round(self.ema, 4),
             "cusum_pos": round(self.cusum_pos, 4),
@@ -628,10 +629,10 @@ def _extract_text_from_sse(raw_bytes: bytes) -> str:
 class PromptCompilerProxy:
     """HTTP reverse proxy that optimizes every LLM request with entroly."""
 
-    def __init__(self, engine: Any, config: Optional[ProxyConfig] = None):
+    def __init__(self, engine: Any, config: ProxyConfig | None = None):
         self.engine = engine
         self.config = config or ProxyConfig()
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
         # Thread-safe stats
         self._stats_lock = threading.Lock()
@@ -640,7 +641,7 @@ class PromptCompilerProxy:
         self._requests_bypassed: int = 0
         self._temperature_sum: float = 0.0
         self._temperature_count: int = 0
-        self._last_temperature: Optional[float] = None
+        self._last_temperature: float | None = None
         self._total_original_tokens: int = 0
         self._total_optimized_tokens: int = 0
         # Per-client trajectory isolation: each API key / auth header gets
@@ -671,7 +672,7 @@ class PromptCompilerProxy:
 
         # Rate limiter — default 120 req/min if not set (Gap #39)
         rate_limit = int(os.environ.get("ENTROLY_RATE_LIMIT", "120"))
-        self._rate_limiter: Optional[_TokenBucket] = None
+        self._rate_limiter: _TokenBucket | None = None
         if rate_limit > 0:
             self._rate_limiter = _TokenBucket(
                 capacity=float(rate_limit), refill_per_second=rate_limit / 60.0
@@ -991,7 +992,7 @@ class PromptCompilerProxy:
                 target_url, forward_headers, body, _selected_frag_ids
             )
 
-    def _run_pipeline(self, user_message: str, body: Dict[str, Any], path: str = "") -> Dict[str, Any]:
+    def _run_pipeline(self, user_message: str, body: dict[str, Any], path: str = "") -> dict[str, Any]:
         """Run the synchronous optimization pipeline. Called via asyncio.to_thread.
 
         Returns dict with keys: context, elapsed_ms, temperature.
@@ -1136,7 +1137,7 @@ class PromptCompilerProxy:
             )
 
         # ── Format context block ──
-        apa_kwargs: Dict[str, Any] = {}
+        apa_kwargs: dict[str, Any] = {}
         if self.config.enable_prompt_directives:
             apa_kwargs["task_type"] = task_type
             apa_kwargs["vagueness"] = vagueness
@@ -1193,7 +1194,7 @@ class PromptCompilerProxy:
         }
 
     async def _stream_response(
-        self, url: str, headers: Dict[str, str], body: Dict[str, Any],
+        self, url: str, headers: dict[str, str], body: dict[str, Any],
         selected_frag_ids: list | None = None,
     ) -> StreamingResponse:
         """Forward a streaming request and proxy the SSE response.
@@ -1235,15 +1236,15 @@ class PromptCompilerProxy:
             except httpx.ReadError as e:
                 self._breaker.record_failure()
                 logger.warning(f"Upstream stream interrupted: {e}")
-                yield 'data: {"error": "upstream_connection_lost"}\n\n'.encode()
+                yield b'data: {"error": "upstream_connection_lost"}\n\n'
             except httpx.TimeoutException as e:
                 self._breaker.record_failure()
                 logger.warning(f"Upstream stream timeout: {e}")
-                yield 'data: {"error": "upstream_timeout"}\n\n'.encode()
+                yield b'data: {"error": "upstream_timeout"}\n\n'
             except Exception as e:
                 self._breaker.record_failure()
                 logger.warning(f"Unexpected stream error: {e}")
-                yield 'data: {"error": "stream_error"}\n\n'.encode()
+                yield b'data: {"error": "stream_error"}\n\n'
 
             # ── Signal 1: Assess response after stream completes ──
             # REVOLUTIONARY FIX: Eliminate the dead zone.
@@ -1317,7 +1318,7 @@ class PromptCompilerProxy:
         )
 
     async def _forward_response(
-        self, url: str, headers: Dict[str, str], body: Dict[str, Any],
+        self, url: str, headers: dict[str, str], body: dict[str, Any],
         selected_frag_ids: list | None = None,
     ) -> JSONResponse:
         """Forward a non-streaming request with circuit breaker, retry on 429/5xx, and response validation."""
@@ -1376,7 +1377,7 @@ class PromptCompilerProxy:
             # Success — break out of retry loop
             break
 
-        resp_headers: Dict[str, str] = {"X-Entroly-Optimized": "true"}
+        resp_headers: dict[str, str] = {"X-Entroly-Optimized": "true"}
         with self._stats_lock:
             if self._last_temperature is not None:
                 resp_headers["X-Entroly-Temperature"] = f"{self._last_temperature:.4f}"
@@ -1509,10 +1510,10 @@ class PromptCompilerProxy:
         return f"{self.config.openai_base_url}{path}"
 
     def _build_headers(
-        self, original: Dict[str, str], provider: str
-    ) -> Dict[str, str]:
+        self, original: dict[str, str], provider: str
+    ) -> dict[str, str]:
         """Build headers for the forwarded request. Pass through auth."""
-        forward: Dict[str, str] = {"Content-Type": "application/json"}
+        forward: dict[str, str] = {"Content-Type": "application/json"}
         if "authorization" in original:
             forward["Authorization"] = original["authorization"]
         if "x-api-key" in original:
@@ -1848,7 +1849,7 @@ async def _catch_all(request: Request) -> StreamingResponse | JSONResponse:
 async def _proxy_stats(request: Request) -> JSONResponse:
     proxy = request.app.state.proxy
     with proxy._stats_lock:
-        stats: Dict[str, Any] = {
+        stats: dict[str, Any] = {
             "requests_total": proxy._requests_total,
             "requests_optimized": proxy._requests_optimized,
             "requests_bypassed": proxy._requests_bypassed,
@@ -1893,7 +1894,7 @@ async def _proxy_stats(request: Request) -> JSONResponse:
 
 
 def create_proxy_app(
-    engine: Any, config: Optional[ProxyConfig] = None
+    engine: Any, config: ProxyConfig | None = None
 ) -> Starlette:
     """Create the Starlette ASGI app for the prompt compiler proxy."""
     proxy = PromptCompilerProxy(engine, config)

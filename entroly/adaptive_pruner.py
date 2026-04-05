@@ -15,13 +15,14 @@ Falls back to no-op if ebbiforge_core is not installed.
 """
 
 from __future__ import annotations
+
 import logging
-from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
 try:
-    from ebbiforge_core import AdaptivePruner as _RustPruner, ContextFragment
+    from ebbiforge_core import AdaptivePruner as _RustPruner
+    from ebbiforge_core import ContextFragment
     _PRUNER_AVAILABLE = True
 except ImportError:
     _PRUNER_AVAILABLE = False
@@ -48,7 +49,7 @@ class EntrolyPruner:
 
     def __init__(self):
         self._pruner = _RustPruner() if _PRUNER_AVAILABLE else None
-        self._fragment_features: Dict[str, Dict[str, float]] = {}
+        self._fragment_features: dict[str, dict[str, float]] = {}
         if _PRUNER_AVAILABLE:
             logger.info("AdaptivePruner: ebbiforge_core available -- RL weight learning active")
         else:
@@ -114,7 +115,7 @@ class EntrolyPruner:
         relevance: float,
         historical_success: float,
         complexity: float,
-    ) -> Optional[float]:
+    ) -> float | None:
         """
         Score a fragment using current learned RL weights.
         Returns None if pruner unavailable (use entroly's own scoring).

@@ -22,18 +22,12 @@ Design principles:
 
 from __future__ import annotations
 
-import ast
 import base64
-import difflib
-import hashlib
 import io
-import json
 import os
 import re
-import sys
-import textwrap
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Core Data Type
@@ -53,7 +47,7 @@ class ModalContent:
     source: str               # Original file path or identifier
     confidence: float         # [0.0, 1.0] — quality of extraction
     token_estimate: int       # Rough token count of `text`
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.token_estimate = max(1, len(self.text) // 4)
@@ -79,7 +73,7 @@ def ingest_image(
     image_data: str,
     source: str,
     description: str = "",
-    region_hints: Optional[List[str]] = None,
+    region_hints: list[str] | None = None,
 ) -> ModalContent:
     """
     Convert an image (path, base64 string, or pre-written description) into
@@ -141,10 +135,10 @@ def ingest_image(
     )
 
 
-def _ocr_file(path: str) -> Tuple[str, float]:
+def _ocr_file(path: str) -> tuple[str, float]:
     try:
+        import pytesseract  # type: ignore
         from PIL import Image  # type: ignore
-        import pytesseract     # type: ignore
         img = Image.open(path)
         text = pytesseract.image_to_string(img)
         conf = 0.90 if text.strip() else 0.20
@@ -155,10 +149,10 @@ def _ocr_file(path: str) -> Tuple[str, float]:
         return "", 0.20
 
 
-def _ocr_bytes(img_bytes: bytes) -> Tuple[str, float]:
+def _ocr_bytes(img_bytes: bytes) -> tuple[str, float]:
     try:
+        import pytesseract  # type: ignore
         from PIL import Image  # type: ignore
-        import pytesseract     # type: ignore
         img = Image.open(io.BytesIO(img_bytes))
         text = pytesseract.image_to_string(img)
         conf = 0.85 if text.strip() else 0.20
@@ -179,7 +173,7 @@ def _is_base64(s: str) -> bool:
         return False
 
 
-def _infer_ui_regions(text: str) -> List[str]:
+def _infer_ui_regions(text: str) -> list[str]:
     """Infer UI regions from text content heuristics."""
     regions = []
     lower = text.lower()
@@ -201,7 +195,7 @@ def _infer_ui_regions(text: str) -> List[str]:
 def _format_image_content(
     source: str,
     text: str,
-    regions: List[str],
+    regions: list[str],
     method: str,
     confidence: float,
 ) -> str:
@@ -297,16 +291,16 @@ def _detect_diagram_type(text: str) -> str:
     return "text"
 
 
-def _parse_mermaid(text: str) -> Tuple[List[str], List[Tuple[str, str, str]], Dict]:
+def _parse_mermaid(text: str) -> tuple[list[str], list[tuple[str, str, str]], dict]:
     """
     Parse Mermaid diagram text into nodes + edges.
 
     Handles: flowchart, sequenceDiagram, classDiagram, erDiagram.
     Uses line-by-line pattern matching (no full parser — resilient to variations).
     """
-    nodes: List[str] = []
-    edges: List[Tuple[str, str, str]] = []  # (from, to, label)
-    metadata: Dict[str, Any] = {}
+    nodes: list[str] = []
+    edges: list[tuple[str, str, str]] = []  # (from, to, label)
+    metadata: dict[str, Any] = {}
 
     lines = text.strip().splitlines()
     diagram_kind = "unknown"
@@ -390,10 +384,10 @@ def _parse_mermaid(text: str) -> Tuple[List[str], List[Tuple[str, str, str]], Di
     return nodes, edges, metadata
 
 
-def _parse_plantuml(text: str) -> Tuple[List[str], List[Tuple[str, str, str]], Dict]:
-    nodes: List[str] = []
-    edges: List[Tuple[str, str, str]] = []
-    metadata: Dict = {"format": "plantuml"}
+def _parse_plantuml(text: str) -> tuple[list[str], list[tuple[str, str, str]], dict]:
+    nodes: list[str] = []
+    edges: list[tuple[str, str, str]] = []
+    metadata: dict = {"format": "plantuml"}
 
     arrow_re = re.compile(r'(\w[\w\s]*?)\s*(?:->|-->|<-|<--|->>|<<--)\s*(\w[\w\s]*?)\s*(?::\s*(.+))?$')
     for line in text.splitlines():
@@ -420,10 +414,10 @@ def _parse_plantuml(text: str) -> Tuple[List[str], List[Tuple[str, str, str]], D
     return nodes, edges, metadata
 
 
-def _parse_dot(text: str) -> Tuple[List[str], List[Tuple[str, str, str]], Dict]:
-    nodes: List[str] = []
-    edges: List[Tuple[str, str, str]] = []
-    metadata: Dict = {"format": "graphviz"}
+def _parse_dot(text: str) -> tuple[list[str], list[tuple[str, str, str]], dict]:
+    nodes: list[str] = []
+    edges: list[tuple[str, str, str]] = []
+    metadata: dict = {"format": "graphviz"}
 
     node_re = re.compile(r'^\s*"?(\w+)"?\s*\[.*?label\s*=\s*"([^"]*)"')
     edge_re = re.compile(r'^\s*"?(\w+)"?\s*-[->]\s*"?(\w+)"?(?:\s*\[.*?label\s*=\s*"([^"]*)")?')
@@ -448,13 +442,13 @@ def _parse_dot(text: str) -> Tuple[List[str], List[Tuple[str, str, str]], Dict]:
     return nodes, edges, metadata
 
 
-def _parse_text_diagram(text: str) -> Tuple[List[str], List[Tuple[str, str, str]], Dict]:
+def _parse_text_diagram(text: str) -> tuple[list[str], list[tuple[str, str, str]], dict]:
     """
     Heuristic extraction from informal diagram descriptions.
     Looks for: arrow-like patterns (→, ->, =>), component names in boxes/brackets.
     """
-    nodes: List[str] = []
-    edges: List[Tuple[str, str, str]] = []
+    nodes: list[str] = []
+    edges: list[tuple[str, str, str]] = []
 
     arrow_re = re.compile(r'(\w[\w\s\-_]*?)\s*(?:→|->|=>|⟶|──>)\s*(\w[\w\s\-_]*?)(?:\s*:\s*(.+))?$')
     box_re = re.compile(r'[\[\(<%]\s*(.+?)\s*[\]\)>%]')
@@ -481,9 +475,9 @@ def _parse_text_diagram(text: str) -> Tuple[List[str], List[Tuple[str, str, str]
 def _format_diagram_content(
     source: str,
     diagram_type: str,
-    nodes: List[str],
-    edges: List[Tuple[str, str, str]],
-    metadata: Dict,
+    nodes: list[str],
+    edges: list[tuple[str, str, str]],
+    metadata: dict,
 ) -> str:
     lines = [
         f"# Architecture Diagram: {source}",
@@ -542,7 +536,7 @@ _TECH_TERMS = frozenset([
 def ingest_voice(
     transcript: str,
     source: str,
-    speaker_labels: Optional[Dict[str, str]] = None,
+    speaker_labels: dict[str, str] | None = None,
 ) -> ModalContent:
     """
     Convert a voice transcript (pre-transcribed text) into a structured
@@ -589,7 +583,7 @@ def ingest_voice(
     )
 
 
-def _split_sentences(text: str) -> List[str]:
+def _split_sentences(text: str) -> list[str]:
     """Split transcript into sentences, handling common transcript patterns."""
     # Split on sentence boundaries and newlines
     raw = re.split(r'(?<=[.!?])\s+|\n+', text)
@@ -625,8 +619,8 @@ _QUESTION_PATTERNS = re.compile(
 
 
 def _extract_speech_elements(
-    sentences: List[str],
-) -> Tuple[List[str], List[str], List[str], List[str]]:
+    sentences: list[str],
+) -> tuple[list[str], list[str], list[str], list[str]]:
     decisions, actions, tech_mentions, questions = [], [], [], []
 
     for s in sentences:
@@ -644,12 +638,12 @@ def _extract_speech_elements(
     return decisions[:20], actions[:20], tech_mentions[:15], questions[:10]
 
 
-def _extract_tech_vocabulary(text: str) -> List[str]:
+def _extract_tech_vocabulary(text: str) -> list[str]:
     """
     Extract technical vocabulary: CamelCase identifiers, known tech terms,
     file extensions, API paths, version numbers.
     """
-    vocab: List[str] = []
+    vocab: list[str] = []
 
     # CamelCase identifiers (likely class/component names)
     camel = re.findall(r'\b[A-Z][a-z]+(?:[A-Z][a-z]+)+\b', text)
@@ -674,11 +668,11 @@ def _extract_tech_vocabulary(text: str) -> List[str]:
 
 def _format_voice_content(
     source: str,
-    decisions: List[str],
-    actions: List[str],
-    tech_mentions: List[str],
-    questions: List[str],
-    tech_vocab: List[str],
+    decisions: list[str],
+    actions: list[str],
+    tech_mentions: list[str],
+    questions: list[str],
+    tech_vocab: list[str],
     full_text: str,
 ) -> str:
     lines = [f"# Voice/Meeting Transcript: {source}", ""]
@@ -767,17 +761,17 @@ def ingest_diff(
 @dataclass
 class DiffHunk:
     path: str
-    added: List[str]
-    removed: List[str]
-    context_lines: List[str]
+    added: list[str]
+    removed: list[str]
+    context_lines: list[str]
 
 
-def _parse_unified_diff(diff_text: str) -> List[DiffHunk]:
-    hunks: List[DiffHunk] = []
+def _parse_unified_diff(diff_text: str) -> list[DiffHunk]:
+    hunks: list[DiffHunk] = []
     current_path = ""
-    current_added: List[str] = []
-    current_removed: List[str] = []
-    current_ctx: List[str] = []
+    current_added: list[str] = []
+    current_removed: list[str] = []
+    current_ctx: list[str] = []
 
     for line in diff_text.splitlines():
         if line.startswith("--- ") or line.startswith("diff --git"):
@@ -821,9 +815,9 @@ def _classify_diff_intent(diff_text: str, commit_msg: str) -> str:
     return "other"
 
 
-def _extract_diff_symbols(diff_text: str) -> List[str]:
+def _extract_diff_symbols(diff_text: str) -> list[str]:
     """Extract function/class names from added/removed lines."""
-    symbols: List[str] = []
+    symbols: list[str] = []
     fn_re = re.compile(r'(?:def|fn|func|function|class|impl|pub fn|async fn)\s+(\w+)')
     for line in diff_text.splitlines():
         if line.startswith("+") or line.startswith("-"):
@@ -834,7 +828,7 @@ def _extract_diff_symbols(diff_text: str) -> List[str]:
     return symbols[:30]
 
 
-def _count_diff_lines(diff_text: str) -> Tuple[int, int]:
+def _count_diff_lines(diff_text: str) -> tuple[int, int]:
     adds = sum(1 for line in diff_text.splitlines() if line.startswith("+") and not line.startswith("+++"))
     removes = sum(1 for line in diff_text.splitlines() if line.startswith("-") and not line.startswith("---"))
     return adds, removes
@@ -842,9 +836,9 @@ def _count_diff_lines(diff_text: str) -> Tuple[int, int]:
 
 def _format_diff_content(
     source: str,
-    hunks: List[DiffHunk],
+    hunks: list[DiffHunk],
     intent: str,
-    symbols: List[str],
+    symbols: list[str],
     adds: int,
     removes: int,
     commit_msg: str,

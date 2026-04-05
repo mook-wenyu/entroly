@@ -32,34 +32,36 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from .config import EntrolyConfig
-from .prefetch import PrefetchEngine
-from .checkpoint import CheckpointManager, ContextFragment
-from .query_refiner import QueryRefiner
 from .adaptive_pruner import EntrolyPruner, FragmentGuard
-from .provenance import build_provenance, ContextProvenance
 from .autotune import FeedbackJournal, TaskProfileOptimizer
-from .multimodal import ingest_image as _mm_image, ingest_diagram as _mm_diagram
-from .multimodal import ingest_voice as _mm_voice, ingest_diff as _mm_diff
-from .proxy_transform import calibrated_token_count as _calibrated_token_count
-from .epistemic_router import (
-    EpistemicRouter, EpistemicFlow, EpistemicIntent,
-    RoutingDecision, BeliefCoverage, classify_intent,
-)
-from .vault import (
-    VaultManager, VaultConfig, BeliefArtifact,
-    VerificationArtifact,
-)
 from .belief_compiler import BeliefCompiler
-from .verification_engine import VerificationEngine
-from .change_pipeline import ChangePipeline
-from .flow_orchestrator import FlowOrchestrator
-from .skill_engine import SkillEngine
-from .evolution_logger import EvolutionLogger
 from .change_listener import WorkspaceChangeListener
+from .change_pipeline import ChangePipeline
+from .checkpoint import CheckpointManager, ContextFragment
+from .config import EntrolyConfig
+from .epistemic_router import (
+    EpistemicRouter,
+)
+from .evolution_logger import EvolutionLogger
+from .flow_orchestrator import FlowOrchestrator
+from .multimodal import ingest_diagram as _mm_diagram
+from .multimodal import ingest_diff as _mm_diff
+from .multimodal import ingest_voice as _mm_voice
+from .prefetch import PrefetchEngine
+from .provenance import build_provenance
+from .proxy_transform import calibrated_token_count as _calibrated_token_count
+from .query_refiner import QueryRefiner
 from .repo_map import build_repo_map, render_repo_map_markdown
+from .skill_engine import SkillEngine
+from .vault import (
+    BeliefArtifact,
+    VaultConfig,
+    VaultManager,
+)
+from .verification_engine import VerificationEngine
+
 # ── Rust engine import (preferred, 50-100× faster) ─────────────────
 try:
     from entroly_core import EntrolyEngine as RustEngine
@@ -135,11 +137,11 @@ class _PyDedupIndex:
 
     def __init__(self, hamming_threshold: int = 3):
         self._threshold = hamming_threshold
-        self._fingerprints: Dict[str, int] = {}
-        self._bands: List[Dict[int, List[str]]] = [{} for _ in range(4)]
+        self._fingerprints: dict[str, int] = {}
+        self._bands: list[dict[int, list[str]]] = [{} for _ in range(4)]
         self._duplicates_detected = 0
 
-    def insert(self, fragment_id: str, text: str) -> Optional[str]:
+    def insert(self, fragment_id: str, text: str) -> str | None:
         """Insert a fragment. Returns duplicate_id if near-duplicate found."""
         fp = _py_simhash(text)
 
@@ -180,9 +182,9 @@ class _PyDedupIndex:
 
 def _py_compute_information_score(
     text: str,
-    global_token_counts: Dict[str, int],
+    global_token_counts: dict[str, int],
     total_tokens: int,
-    other_fragments: List[str],
+    other_fragments: list[str],
 ) -> float:
     """Compute information density score [0, 1] using Shannon entropy + redundancy."""
     import math as _m
@@ -190,7 +192,7 @@ def _py_compute_information_score(
         return 0.0
 
     # 1. Normalized Shannon entropy on bytes (40% weight)
-    byte_counts: Dict[int, int] = {}
+    byte_counts: dict[int, int] = {}
     encoded = text.encode("utf-8", errors="replace")
     for b in encoded:
         byte_counts[b] = byte_counts.get(b, 0) + 1
@@ -238,7 +240,7 @@ def _py_compute_information_score(
 
 
 def _py_compute_relevance(
-    frag: "ContextFragment",
+    frag: ContextFragment,
     w_recency: float,
     w_frequency: float,
     w_semantic: float,
@@ -397,7 +399,7 @@ class EntrolyEngine:
     Python handles: prefetch, checkpoint, MCP protocol.
     """
 
-    def __init__(self, config: Optional[EntrolyConfig] = None):
+    def __init__(self, config: EntrolyConfig | None = None):
         self.config = config or EntrolyConfig()
         self._use_rust = _RUST_AVAILABLE
 
@@ -413,7 +415,7 @@ class EntrolyEngine:
             logger.info("Using Rust engine (entroly_core)")
         else:
             # Python fallback state
-            self._fragments: Dict[str, Any] = {}
+            self._fragments: dict[str, Any] = {}
             self._current_turn: int = 0
             from collections import Counter
             self._global_token_counts: Counter = Counter()
@@ -464,7 +466,7 @@ class EntrolyEngine:
             except AttributeError:
                 # PyO3 EntrolyEngine may not expose load_index in this build
                 logger.debug("Rust engine does not support load_index -- skipping persistent index")
-            except (OSError, IOError):
+            except OSError:
                 # Index file doesn't exist yet — normal on first run
                 logger.info("No persistent index found, starting fresh session")
             except Exception as e:
@@ -510,7 +512,7 @@ class EntrolyEngine:
         source: str = "",
         token_count: int = 0,
         is_pinned: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Ingest a new context fragment."""
         # GC freeze: disable the garbage collector during the tight Python→Rust
         # dispatch to prevent unpredictable GC pauses. Manually collect after
@@ -542,7 +544,7 @@ class EntrolyEngine:
         self,
         token_budget: int = 0,
         query: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Select the mathematically optimal subset of context fragments."""
         if token_budget <= 0:
             token_budget = self.config.default_token_budget
@@ -552,7 +554,7 @@ class EntrolyEngine:
         # "fix the bug" → "bug fix in payments module (Python/Rust) involving
         # payment processing, error handling"
         refined_query = query
-        refinement_info: Dict[str, Any] = {}
+        refinement_info: dict[str, Any] = {}
         if query:
             fragment_summaries = []
             if self._use_rust:
@@ -610,7 +612,7 @@ class EntrolyEngine:
         self,
         query: str,
         top_k: int = 5,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Semantic recall of relevant fragments."""
         if self._use_rust:
             result = self._rust.recall(query, top_k)
@@ -618,7 +620,7 @@ class EntrolyEngine:
         else:
             return self._recall_python(query, top_k)
 
-    def record_success(self, fragment_ids: List[str]) -> None:
+    def record_success(self, fragment_ids: list[str]) -> None:
         """Record that selected fragments led to a successful output."""
         if self._use_rust:
             self._rust.record_success(fragment_ids)
@@ -630,7 +632,7 @@ class EntrolyEngine:
         for fid in fragment_ids:
             self._pruner.apply_feedback(fid, 1.0)
 
-    def record_failure(self, fragment_ids: List[str]) -> None:
+    def record_failure(self, fragment_ids: list[str]) -> None:
         """Record that selected fragments led to a failed output."""
         if self._use_rust:
             self._rust.record_failure(fragment_ids)
@@ -642,7 +644,7 @@ class EntrolyEngine:
         for fid in fragment_ids:
             self._pruner.apply_feedback(fid, -1.0)
 
-    def record_reward(self, fragment_ids: List[str], reward: float) -> None:
+    def record_reward(self, fragment_ids: list[str], reward: float) -> None:
         """Record a continuous reward signal for selected fragments.
 
         Unlike record_success/failure (binary), this allows graded feedback:
@@ -719,7 +721,7 @@ class EntrolyEngine:
         file_path: str,
         source_content: str = "",
         language: str = "python",
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Predict and pre-load likely-needed context."""
         predictions = self._prefetch.predict(
             file_path, source_content, language
@@ -733,11 +735,11 @@ class EntrolyEngine:
             for p in predictions
         ]
 
-    def checkpoint(self, metadata: Optional[Dict[str, Any]] = None) -> str:
+    def checkpoint(self, metadata: dict[str, Any] | None = None) -> str:
         """Manually create a checkpoint."""
         return self._auto_checkpoint(metadata)
 
-    def resume(self) -> Dict[str, Any]:
+    def resume(self) -> dict[str, Any]:
         """Resume from the latest checkpoint."""
         ckpt = self._checkpoint_mgr.load_latest()
         if ckpt is None:
@@ -787,7 +789,7 @@ class EntrolyEngine:
             "metadata": ckpt.metadata,
         }
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get comprehensive session statistics."""
         if self._use_rust:
             rust_stats = dict(self._rust.stats())
@@ -799,7 +801,7 @@ class EntrolyEngine:
         else:
             return self._stats_python()
 
-    def explain_selection(self) -> Dict[str, Any]:
+    def explain_selection(self) -> dict[str, Any]:
         """Explain why each fragment was included or excluded."""
         if self._use_rust:
             result = self._rust.explain_selection()
@@ -809,7 +811,7 @@ class EntrolyEngine:
 
     def _auto_checkpoint(
         self,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         """Create an auto-checkpoint."""
         if self._use_rust:
@@ -962,7 +964,7 @@ class EntrolyEngine:
         except Exception:
             pass  # skeleton is best-effort; never block ingest
 
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "status": "ingested",
             "fragment_id": frag_id,
             "token_count": token_count,
@@ -2381,7 +2383,7 @@ def create_mcp_server():
             return json.dumps(_cogops.export_training_data(output_path, format), indent=2)
         # Python fallback
         beliefs_dir = _vault_mgr.config.path / "beliefs"
-        from .vault import _parse_frontmatter, _extract_body
+        from .vault import _extract_body, _parse_frontmatter
         lines = []
         skipped = 0
         for md in sorted(beliefs_dir.rglob("*.md")):
@@ -2414,7 +2416,7 @@ def create_mcp_server():
 
 
 
-def _start_autotune_daemon(engine: "EntrolyEngine") -> None:
+def _start_autotune_daemon(engine: EntrolyEngine) -> None:
     """
     Spawn the autotune loop as a daemon background thread.
 

@@ -6,11 +6,11 @@ Central configuration for the context optimization engine.
 All tunable parameters live here — no magic numbers buried in code.
 """
 
-from dataclasses import dataclass, field
-from pathlib import Path
 import hashlib
 import os
 import tempfile
+from dataclasses import dataclass, field
+from pathlib import Path
 
 
 def _project_checkpoint_dir() -> Path:

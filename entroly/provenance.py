@@ -18,7 +18,7 @@ but is purpose-built for the context selection use case.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -30,7 +30,7 @@ class FragmentProvenance:
     token_count: int
     verified: bool            # True if source is a real file (not "internal_knowledge")
     is_pinned: bool = False
-    quality_issues: List[str] = field(default_factory=list)
+    quality_issues: list[str] = field(default_factory=list)
 
     @property
     def risk_contribution(self) -> str:
@@ -54,8 +54,8 @@ class ContextProvenance:
     """
     turn: int
     query: str
-    refined_query: Optional[str]
-    fragments: List[FragmentProvenance]
+    refined_query: str | None
+    fragments: list[FragmentProvenance]
     token_budget: int
     tokens_used: int
 
@@ -77,7 +77,7 @@ class ContextProvenance:
         return {f.source for f in self.fragments if f.verified and f.source}
 
     @property
-    def quality_flagged_sources(self) -> List[str]:
+    def quality_flagged_sources(self) -> list[str]:
         """Sources with code quality issues."""
         return [f.source for f in self.fragments if f.quality_issues]
 
@@ -94,7 +94,7 @@ class ContextProvenance:
             return "medium"
         return "low"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "turn": self.turn,
             "query": self.query,
@@ -125,9 +125,9 @@ class ContextProvenance:
 
 
 def build_provenance(
-    optimize_result: Dict[str, Any],
+    optimize_result: dict[str, Any],
     query: str,
-    refined_query: Optional[str],
+    refined_query: str | None,
     turn: int,
     token_budget: int,
     quality_scan_fn=None,  # Optional: FragmentGuard.scan
@@ -160,7 +160,7 @@ def build_provenance(
         verified = bool(source) and source not in ("internal_knowledge", "unknown", "synthetic")
 
         # Quality scan (CodeQualityGuard)
-        issues: List[str] = []
+        issues: list[str] = []
         if quality_scan_fn and content:
             issues = quality_scan_fn(content, source)
 

@@ -16,7 +16,6 @@ import logging
 import os
 import subprocess
 import time
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -149,7 +148,7 @@ def _load_entrolyignore(project_dir: str) -> list[str]:
     if not os.path.isfile(ignore_path):
         return []
     try:
-        with open(ignore_path, "r") as f:
+        with open(ignore_path) as f:
             return [
                 line.strip() for line in f
                 if line.strip() and not line.startswith("#")
@@ -205,7 +204,7 @@ def _estimate_tokens(content: str) -> int:
 
 
 def auto_index(
-    engine: "EntrolyEngine",
+    engine: EntrolyEngine,
     project_dir: str | None = None,
     force: bool = False,
 ) -> dict:
@@ -286,7 +285,7 @@ def auto_index(
         except OSError:
             return ("skip_read",)
         try:
-            with open(abs_path, "r", encoding="utf-8", errors="ignore") as f:
+            with open(abs_path, encoding="utf-8", errors="ignore") as f:
                 content = f.read()
         except (OSError, UnicodeDecodeError):
             return ("skip_read",)
@@ -354,7 +353,7 @@ def auto_index(
 
 
 def start_incremental_watcher(
-    engine: "EntrolyEngine",
+    engine: EntrolyEngine,
     project_dir: str | None = None,
     interval_s: int = 120,
 ) -> None:
@@ -417,7 +416,7 @@ def start_incremental_watcher(
                 size = os.path.getsize(abs_path)
                 if size > MAX_FILE_BYTES or size == 0:
                     continue
-                with open(abs_path, "r", encoding="utf-8", errors="ignore") as f:
+                with open(abs_path, encoding="utf-8", errors="ignore") as f:
                     content = f.read()
                 if not content.strip():
                     continue
