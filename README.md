@@ -171,11 +171,11 @@ docker run --rm -p 9377:9377 -p 9378:9378 -v .:/workspace:ro ghcr.io/juyterman10
 
 | Agent Type | What Entroly Does | Token Savings |
 |------------|---|---|
-| **Main agent** | Full codebase at variable resolution | ~78% |
+| **Main agent** | Full codebase at variable resolution | ~95% |
 | **Heartbeat** | Only loads changes since last check | ~90% |
-| **Subagents** | Inherited context + Nash bargaining budget split | ~70% |
-| **Cron jobs** | Minimal context — relevant memories + schedule | ~85% |
-| **Group chat** | Entropy-filtered messages — only high-signal kept | ~60% |
+| **Subagents** | Inherited context + Nash bargaining budget split | ~92% |
+| **Cron jobs** | Minimal context — relevant memories + schedule | ~93% |
+| **Group chat** | Entropy-filtered messages — only high-signal kept | ~90% |
 
 ```python
 from entroly.context_bridge import MultiAgentContext
