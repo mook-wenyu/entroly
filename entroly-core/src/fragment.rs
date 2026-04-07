@@ -44,6 +44,14 @@ pub struct ContextFragment {
     pub is_pinned: bool,
     #[pyo3(get, set)]
     pub simhash: u64,
+    /// True iff simhash was computed from actual file content.
+    /// False for shadow stubs — they are excluded from all similarity ops.
+    /// Explicit flag avoids fragile "simhash==0 means no fingerprint" idiom:
+    ///   - Future hash algo changes won't accidentally treat 0 as valid
+    ///   - Hydration path can set this to true after content is loaded
+    #[pyo3(get, set)]
+    #[serde(default)]
+    pub has_simhash: bool,
 
     // Hierarchical fragmentation: optional skeleton variant
     #[pyo3(get, set)]
@@ -84,6 +92,7 @@ impl ContextFragment {
             access_count: 0,
             is_pinned: false,
             simhash: 0,
+            has_simhash: false,  // must be set explicitly after content processing
             skeleton_content: None,
             skeleton_token_count: None,
             eligibility_trace: 0.0,
