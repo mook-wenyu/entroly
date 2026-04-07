@@ -130,9 +130,6 @@ CRITICAL_FILES = [
     ("pyproject.toml", "Critical"),
     ("go.mod", "Critical"),
     ("tsconfig.json", "Critical"),
-    ("schema.proto", "Critical"),
-    ("types.ts", "Critical"),
-    ("models.py", "Critical"),
 ]
 
 SAFETY_FILES = [
@@ -143,6 +140,9 @@ SAFETY_FILES = [
 ]
 
 IMPORTANT_FILES = [
+    ("schema.proto", "Important"),
+    ("types.ts", "Important"),
+    ("models.py", "Important"),
     ("test_auth.py", "Important"),
     ("auth_test.rs", "Important"),
     ("api_handler.py", "Important"),
@@ -172,9 +172,12 @@ print("\n═══ 4. SAFETY SIGNAL DETECTION ═══")
 
 def test_license_safety():
     e = sc.EntrolyEngine()
-    r = e.ingest("MIT License\nCopyright 2024", "header.py", 0, False)
-    assert r["is_pinned"] == True, "License content should be auto-pinned"
-test("License content auto-pinned", test_license_safety)
+    # License *files* (by name) are Safety-pinned; license *text* in normal
+    # files is NOT auto-pinned (intentional — broad content matching destroyed
+    # budgets in real codebases).
+    r = e.ingest("MIT License\nCopyright 2024", "LICENSE", 0, False)
+    assert r["is_pinned"] == True, "LICENSE file should be auto-pinned via Safety criticality"
+test("License file auto-pinned", test_license_safety)
 
 def test_security_warning_safety():
     e = sc.EntrolyEngine()
