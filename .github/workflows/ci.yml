@@ -82,11 +82,11 @@ jobs:
         run: |
           python -m venv .venv
           echo "$PWD/.venv/bin" >> $GITHUB_PATH
-          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install --upgrade pip --timeout 120 --retries 5
 
       - name: Install maturin and build entroly-core wheel
         run: |
-          .venv/bin/pip install maturin
+          .venv/bin/pip install maturin --timeout 120 --retries 5
           cd entroly-core
           ../.venv/bin/maturin develop --release
 
@@ -95,7 +95,7 @@ jobs:
           # maturin develop already installed entroly-core into the venv.
           # Install only the remaining runtime deps (mcp, httpx, starlette)
           # without re-resolving entroly-core from PyPI (0.3.0 isn't there yet).
-          .venv/bin/pip install -e . "mcp>=1.6.0" "httpx>=0.27" "starlette>=0.37" "uvicorn>=0.30" psutil
+          .venv/bin/pip install --timeout 120 --retries 5 -e . "mcp>=1.6.0" "httpx>=0.27" "starlette>=0.37" "uvicorn>=0.30" psutil
 
       - name: Verify imports
         run: |
@@ -109,7 +109,7 @@ jobs:
 
       - name: Run Python tests
         run: |
-          .venv/bin/pip install pytest pytest-timeout
+          .venv/bin/pip install pytest pytest-timeout --timeout 120 --retries 5
           .venv/bin/pytest tests/ -v --tb=short -x --timeout=60
 
       - name: Run entroly-core integration tests
