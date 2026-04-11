@@ -496,8 +496,8 @@ def _compress_log_universal(text: str) -> str:
 def _compress_table(text: str) -> str:
     """Compress markdown/pipe-delimited tables: keep header + sample rows."""
     lines = text.split("\n")
-    table_lines = [l for l in lines if "|" in l]
-    non_table = [l for l in lines if "|" not in l]
+    table_lines = [ln for ln in lines if "|" in ln]
+    non_table = [ln for ln in lines if "|" not in ln]
 
     if len(table_lines) <= 6:
         return text

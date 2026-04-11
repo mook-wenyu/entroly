@@ -17,6 +17,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import math
+import re as _re
 from typing import Any
 
 from .proxy_config import ProxyConfig, context_window_for_model
@@ -893,7 +894,6 @@ def _infer_language(source: str) -> str:
 # Savings: 60-90% token reduction on tool results.
 # ═══════════════════════════════════════════════════════════════════════════
 
-import re as _re
 
 # Minimum content length to attempt compression (chars).
 # Short tool results aren't worth compressing.
@@ -929,10 +929,10 @@ def _compress_test_output(content: str) -> str | None:
     lines = content.split("\n")
 
     # Detect test runner
-    is_cargo_test = any("test result:" in l or "running " in l.lower() and " test" in l.lower() for l in lines[:20])
-    is_pytest = any("==" in l and ("FAILED" in l or "passed" in l or "ERRORS" in l) for l in lines[-10:])
-    is_npm_test = any("Tests:" in l or "Test Suites:" in l for l in lines[-10:])
-    is_go_test = any(l.startswith("--- FAIL") or l.startswith("PASS") or l.startswith("FAIL") for l in lines)
+    is_cargo_test = any("test result:" in ln or "running " in ln.lower() and " test" in ln.lower() for ln in lines[:20])
+    is_pytest = any("==" in ln and ("FAILED" in ln or "passed" in ln or "ERRORS" in ln) for ln in lines[-10:])
+    is_npm_test = any("Tests:" in ln or "Test Suites:" in ln for ln in lines[-10:])
+    is_go_test = any(ln.startswith("--- FAIL") or ln.startswith("PASS") or ln.startswith("FAIL") for ln in lines)
 
     if not (is_cargo_test or is_pytest or is_npm_test or is_go_test):
         return None
@@ -1039,7 +1039,7 @@ def _compress_git_status(content: str) -> str | None:
 
     lines = content.split("\n")
     result = []
-    skip_section = False
+    _skip_section = False  # noqa: F841 – reserved for future section skipping
 
     for line in lines:
         stripped = line.strip()
@@ -1049,7 +1049,7 @@ def _compress_git_status(content: str) -> str | None:
         # Keep section headers
         elif stripped.startswith("Changes") or stripped.startswith("Untracked"):
             result.append(stripped)
-            skip_section = False
+            _skip_section = False  # noqa: F841
         # Keep file-level info but strip instructions
         elif stripped.startswith("modified:") or stripped.startswith("new file:") or \
              stripped.startswith("deleted:") or stripped.startswith("renamed:"):
@@ -1094,7 +1094,7 @@ def _compress_directory_listing(content: str) -> str | None:
 
     # Detect ls -la style (permissions column)
     ls_pattern = _re.compile(r'^[drwx\-lsStT]{10}\s+')
-    ls_lines = [l for l in lines if ls_pattern.match(l)]
+    ls_lines = [ln for ln in lines if ls_pattern.match(ln)]
 
     if len(ls_lines) < 5:
         return None
@@ -1188,7 +1188,7 @@ def _compress_log_output(content: str) -> str | None:
 
     # Detect log-style output (timestamps or log levels)
     log_pattern = _re.compile(r'^\d{4}[-/]|^\[?\d{2}:\d{2}|^(DEBUG|INFO|WARN|ERROR|TRACE)')
-    log_lines = sum(1 for l in lines[:30] if log_pattern.match(l.strip()))
+    log_lines = sum(1 for ln in lines[:30] if log_pattern.match(ln.strip()))
     if log_lines < 5:
         return None
 
