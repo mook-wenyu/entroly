@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <code>pip install entroly && entroly go</code>
+  <code>pip install entroly && entroly go</code>&nbsp;&nbsp;|&nbsp;&nbsp;<code>npm install entroly-wasm && npx entroly-wasm</code>
 </p>
 
 <p align="center">
@@ -98,35 +98,45 @@ pip install entroly && entroly demo    # see savings on YOUR codebase
 
 ## 30-Second Install
 
+**Python:**
 ```bash
 pip install entroly[full]
 entroly go
 ```
 
-**That's it.** `entroly go` auto-detects your IDE, configures everything, starts the proxy and dashboard. Then point your AI tool to `http://localhost:9377/v1`.
+**Node.js / TypeScript:**
+```bash
+npm install entroly-wasm
+npx entroly-wasm serve     # MCP server
+npx entroly-wasm optimize  # CLI optimizer
+npx entroly-wasm demo      # see savings on YOUR codebase
+```
+
+The WASM package runs the full Rust engine natively in Node.js — **no Python required**.
+
+**That's it.** `entroly go` (Python) or `npx entroly-wasm serve` (Node.js) auto-detects your IDE, starts the engine, and begins optimizing. Point your AI tool to `http://localhost:9377/v1`.
 
 ### Or step by step
 
 ```bash
+# Python
 pip install entroly                # core engine
 entroly init                       # detect IDE + generate config
 entroly proxy --quality balanced   # start proxy
+
+# Node.js
+npm install entroly-wasm           # WASM engine, zero dependencies
+npx entroly-wasm serve             # start MCP server
 ```
 
-### Node.js
+### npm packages
 
-```bash
-npm install entroly
-```
+| Package | What you get |
+|---------|---|
+| `npm install entroly-wasm` | Full Rust engine via WebAssembly — MCP server, CLI, autotune, health |
+| `npm install @ebbiforge/entroly-mcp` | Bridge to Python engine (requires `pip install entroly`) |
 
-### Docker
-
-```bash
-docker pull ghcr.io/juyterman1000/entroly:latest
-docker run --rm -p 9377:9377 -p 9378:9378 -v .:/workspace:ro ghcr.io/juyterman1000/entroly:latest
-```
-
-### Install options
+### pip packages
 
 | Package | What you get |
 |---------|---|
@@ -134,6 +144,13 @@ docker run --rm -p 9377:9377 -p 9378:9378 -v .:/workspace:ro ghcr.io/juyterman10
 | `pip install entroly[proxy]` | + HTTP proxy mode |
 | `pip install entroly[native]` | + Rust engine (50-100x faster) |
 | `pip install entroly[full]` | Everything |
+
+### Docker
+
+```bash
+docker pull ghcr.io/juyterman1000/entroly:latest
+docker run --rm -p 9377:9377 -p 9378:9378 -v .:/workspace:ro ghcr.io/juyterman1000/entroly:latest
+```
 
 ---
 
@@ -278,6 +295,10 @@ These layers are **complementary.** Entroly is the optimization layer that ensur
 | Command | What it does |
 |---------|---|
 | `entroly go` | **One command** — auto-detect, init, proxy, dashboard |
+| `entroly wrap claude` | Start proxy + launch Claude Code in one command |
+| `entroly wrap codex` | Start proxy + launch Codex CLI |
+| `entroly wrap aider` | Start proxy + launch Aider |
+| `entroly wrap cursor` | Start proxy + print Cursor config |
 | `entroly demo` | Before/after comparison with dollar savings on YOUR project |
 | `entroly dashboard` | Live metrics: savings trends, health grade, PRISM weights |
 | `entroly doctor` | 7 diagnostic checks — finds problems before you do |
@@ -285,8 +306,122 @@ These layers are **complementary.** Entroly is the optimization layer that ensur
 | `entroly benchmark` | Competitive benchmark: Entroly vs raw context vs top-K |
 | `entroly role` | Weight presets: `frontend`, `backend`, `sre`, `data`, `fullstack` |
 | `entroly autotune` | Auto-optimize engine parameters |
+| `entroly learn` | Analyze session for failure patterns, write to CLAUDE.md |
 | `entroly digest` | Weekly summary: tokens saved, cost reduction |
 | `entroly status` | Check running services |
+
+---
+
+## Coding Agents — One Command
+
+```bash
+entroly wrap claude              # Starts proxy + launches Claude Code
+entroly wrap codex               # Starts proxy + launches Codex CLI
+entroly wrap aider               # Starts proxy + launches Aider
+entroly wrap cursor              # Starts proxy + prints Cursor config
+```
+
+Entroly starts the proxy, sets the base URL environment variable, and launches your tool. Zero configuration.
+
+---
+
+## Python SDK — One Function
+
+```python
+from entroly import compress
+
+result = compress(messages, budget=50_000)
+response = client.messages.create(model="claude-sonnet-4-5-20250929", messages=result)
+```
+
+Or compress any content directly:
+
+```python
+from entroly.universal_compress import universal_compress
+
+compressed = universal_compress(huge_json_blob)    # auto-detects JSON
+compressed = universal_compress(log_output)        # auto-detects logs
+compressed = universal_compress(csv_data)          # auto-detects CSV
+```
+
+Content-type auto-detection routes each input to the best compressor — JSON, logs, code, CSV, XML, stacktraces, tables.
+
+---
+
+## Drop Into Your Existing Stack
+
+| Your setup | Add Entroly | One-liner |
+|---|---|---|
+| Any Python app | `compress()` | `result = compress(messages, budget=50_000)` |
+| Any app (proxy) | `entroly proxy` | Point base URL at `localhost:9377` |
+| LangChain | `EntrolyCompressor` | `chain = compressor \| llm` |
+| Multi-agent | `MultiAgentContext` | `ctx = MultiAgentContext(...)` |
+| Claude Code | `entroly wrap claude` | One command |
+| Codex / Aider | `entroly wrap codex` | One command |
+| MCP tools | `entroly init` | Auto-config |
+
+### LangChain Integration
+
+```python
+from langchain_openai import ChatOpenAI
+from entroly.integrations.langchain import EntrolyCompressor
+
+llm = ChatOpenAI(model="gpt-4o")
+compressor = EntrolyCompressor(budget=30000)
+chain = compressor | llm
+result = chain.invoke("Explain the auth module")
+```
+
+### Multi-Agent Context (SharedContext)
+
+```python
+from entroly.context_bridge import MultiAgentContext
+
+ctx = MultiAgentContext(workspace_path="~/.agent/workspace", token_budget=128_000)
+ctx.ingest_workspace()
+
+# NKBE allocates budget optimally across agents
+budgets = ctx.allocate_budgets(["researcher", "coder", "reviewer"])
+
+# Spawn subagent with inherited context
+sub = ctx.spawn_subagent("main", "researcher", "find auth bugs")
+
+# Schedule cron jobs with minimal context
+ctx.schedule_cron("monitor", "check error rates", interval_seconds=900)
+```
+
+---
+
+## Lossless Compression (CCR)
+
+Entroly never permanently discards data. When a fragment is compressed to a skeleton, the original is stored in the **Compressed Context Store**. The LLM can retrieve the full original on demand:
+
+```bash
+# List all retrievable fragments
+curl localhost:9377/retrieve
+
+# Get full original of a compressed file
+curl localhost:9377/retrieve?source=file:src/auth.py
+```
+
+This is the architectural answer to "silent truncation": nothing is permanently lost. If the LLM needs the full body of a skeletonized function, it asks for it.
+
+---
+
+## Cache Optimization
+
+Entroly stabilizes context prefixes across turns to maximize LLM provider KV cache reuse. Anthropic offers a **90% discount** on cached prefixes — Entroly ensures your prefixes actually hit the cache.
+
+---
+
+## Failure Learning
+
+```bash
+entroly learn                    # Analyze session for failure patterns
+entroly learn --apply            # Write learnings to CLAUDE.md / AGENTS.md
+```
+
+Reads the proxy's passive feedback data, identifies patterns where the LLM was confused or gave low-quality responses, and writes actionable corrections to your agent config files.
 
 ---
 
@@ -367,6 +502,8 @@ entroly proxy --port 9378
 | `ENTROLY_MAX_FILES` | `5000` | Max files to index |
 | `ENTROLY_RATE_LIMIT` | `0` | Requests/min (0 = unlimited) |
 | `ENTROLY_MCP_TRANSPORT` | `stdio` | MCP transport (stdio/sse) |
+| `ENTROLY_CONTEXT_REPORT` | `1` | Inline context report in LLM prompts (0 to disable) |
+| `ENTROLY_CACHE_ALIGN` | `1` | Provider KV cache prefix stabilization (0 to disable) |
 
 ---
 

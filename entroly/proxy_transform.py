@@ -17,6 +17,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import math
+import os as _os
 import re as _re
 from typing import Any
 
@@ -347,7 +348,6 @@ def _deduplicate_fragments(
 # ══════════════════════════════════════════════════════════════════════
 
 # On by default — set ENTROLY_CONTEXT_REPORT=0 to disable
-import os as _os
 _CONTEXT_REPORT_ENABLED = _os.environ.get("ENTROLY_CONTEXT_REPORT", "1") != "0"
 
 

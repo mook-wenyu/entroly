@@ -86,7 +86,6 @@ jobs:
         run: |
           python -m venv .venv
           echo "$PWD/.venv/bin" >> $GITHUB_PATH
-          .venv/bin/pip install --upgrade pip --timeout 120 --retries 5
 
       - name: Install maturin and build entroly-core wheel
         run: |

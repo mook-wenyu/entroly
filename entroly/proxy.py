@@ -1909,6 +1909,50 @@ async def _context_explain(request: Request) -> JSONResponse:
     })
 
 
+async def _context_retrieve(request: Request) -> JSONResponse:
+    """CCR: Compressed Context Retrieval — get full original of a compressed fragment.
+
+    GET /retrieve?source=file:src/auth.py → full original content
+    GET /retrieve → list all retrievable fragments
+
+    This is the architectural answer to 'silent truncation':
+    nothing is permanently lost, the LLM can always get the original back.
+    """
+    try:
+        from .ccr import get_ccr_store
+        store = get_ccr_store()
+    except ImportError:
+        return JSONResponse({"error": "CCR module not available"}, status_code=500)
+
+    source = request.query_params.get("source", "")
+
+    if not source:
+        # List all retrievable fragments
+        available = store.list_available()
+        return JSONResponse({
+            "available": available,
+            "count": len(available),
+            "stats": store.stats(),
+            "usage": 'GET /retrieve?source=file:src/auth.py to retrieve full content',
+        })
+
+    entry = store.retrieve(source)
+    if entry is None:
+        return JSONResponse(
+            {"error": f"Source '{source}' not found in CCR store", "hint": "GET /retrieve to list available"},
+            status_code=404,
+        )
+
+    return JSONResponse({
+        "source": source,
+        "resolution": entry["resolution"],
+        "original_tokens": entry["original_tokens"],
+        "compressed_tokens": entry["compressed_tokens"],
+        "tokens_recovered": entry["original_tokens"] - entry["compressed_tokens"],
+        "original_content": entry["original"],
+    })
+
+
 async def _confidence(request: Request) -> JSONResponse:
     """Real-time confidence snapshot for IDE status bar widgets.
 
@@ -2113,6 +2157,7 @@ def create_proxy_app(
             Route("/explain", _context_explain),                       # Gap #43
             Route("/confidence", _confidence),                         # IDE widget API
             Route("/trends", _value_trends),                           # Dashboard trends
+            Route("/retrieve", _context_retrieve),                     # CCR: lossless retrieval
             # Catch-all: forward any unmatched path to upstream API
             # Must be LAST — Starlette matches routes in declaration order
             Route("/{path:path}", _catch_all, methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]),

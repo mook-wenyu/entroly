@@ -1194,6 +1194,170 @@ def cmd_batch(args):
         print(f"\n  {C.GREEN}{C.BOLD}Processed {len(queries)} queries.{C.RESET}\n")
 
 
+# ── Wrap: One-command agent launcher ─────────────────────────────────
+
+
+_WRAP_AGENTS = {
+    "claude": {
+        "cmd": ["claude"],
+        "env_key": "ANTHROPIC_BASE_URL",
+        "env_val": "http://localhost:{port}",
+        "name": "Claude Code",
+    },
+    "codex": {
+        "cmd": ["codex"],
+        "env_key": "OPENAI_BASE_URL",
+        "env_val": "http://localhost:{port}/v1",
+        "name": "OpenAI Codex CLI",
+    },
+    "aider": {
+        "cmd": ["aider"],
+        "env_key": "OPENAI_API_BASE",
+        "env_val": "http://localhost:{port}/v1",
+        "name": "Aider",
+    },
+    "cursor": {
+        "cmd": None,
+        "env_key": None,
+        "env_val": None,
+        "name": "Cursor",
+    },
+}
+
+
+def cmd_wrap(args):
+    """entroly wrap <agent> — start proxy + launch agent in one command.
+
+    Starts the Entroly proxy as a daemon, sets the agent's base URL
+    env var, and launches it. Zero-config context optimization.
+    """
+    agent = args.agent.lower()
+    if agent not in _WRAP_AGENTS:
+        print(f"\n  {C.RED}Unknown agent: {agent}{C.RESET}")
+        print(f"  {C.GRAY}Supported: {', '.join(_WRAP_AGENTS.keys())}{C.RESET}\n")
+        return
+
+    spec = _WRAP_AGENTS[agent]
+    port = args.port or 9377
+
+    print(f"\n{C.CYAN}{C.BOLD}  Entroly Wrap — {spec['name']}{C.RESET}\n")
+
+    # Check if proxy is already running
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.3)
+        proxy_running = s.connect_ex(("127.0.0.1", port)) == 0
+
+    if not proxy_running:
+        print(f"  {C.GRAY}Starting proxy on port {port}...{C.RESET}")
+        proxy_cmd = [sys.executable, "-m", "entroly", "proxy", "--port", str(port)]
+        subprocess.Popen(
+            proxy_cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        import time as _time
+        for _ in range(30):
+            _time.sleep(0.2)
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(0.3)
+                if s.connect_ex(("127.0.0.1", port)) == 0:
+                    break
+        print(f"  {C.GREEN}Proxy running at http://localhost:{port}{C.RESET}")
+    else:
+        print(f"  {C.GREEN}Proxy already running at http://localhost:{port}{C.RESET}")
+
+    if agent == "cursor":
+        print(f"\n  {C.BOLD}Cursor Configuration:{C.RESET}")
+        print(f"  Open Cursor Settings → Models → Override OpenAI Base URL:")
+        print(f"    {C.CYAN}http://localhost:{port}/v1{C.RESET}")
+        print(f"\n  {C.GRAY}All Cursor requests will be automatically optimized.{C.RESET}\n")
+        return
+
+    env = os.environ.copy()
+    env[spec["env_key"]] = spec["env_val"].format(port=port)
+    print(f"  {C.GRAY}Set {spec['env_key']}={spec['env_val'].format(port=port)}{C.RESET}")
+    print(f"  {C.GREEN}Launching {spec['name']}...{C.RESET}\n")
+
+    try:
+        agent_cmd = spec["cmd"] + args.agent_args
+        subprocess.run(agent_cmd, env=env)
+    except FileNotFoundError:
+        print(f"\n  {C.RED}{spec['name']} not found.{C.RESET}")
+        print(f"  {C.GRAY}Install it first, then run: entroly wrap {agent}{C.RESET}\n")
+    except KeyboardInterrupt:
+        print(f"\n  {C.GRAY}{spec['name']} stopped.{C.RESET}")
+
+
+# ── Learn: Failure pattern analysis ──────────────────────────────────
+
+
+def cmd_learn(args):
+    """entroly learn — analyze session for failure patterns."""
+    print(f"\n{C.CYAN}{C.BOLD}  Entroly Learn — Failure Pattern Analysis{C.RESET}\n")
+
+    import urllib.request
+    port = args.port or 9377
+
+    try:
+        resp = urllib.request.urlopen(f"http://127.0.0.1:{port}/stats", timeout=2)
+        stats = json.loads(resp.read())
+        feedback = stats.get("implicit_feedback", {})
+    except Exception:
+        feedback = {}
+
+    if not feedback:
+        print(f"  {C.YELLOW}No feedback data available.{C.RESET}")
+        print(f"  {C.GRAY}Run the proxy and make some requests first.{C.RESET}\n")
+        return
+
+    confusion = feedback.get("confusion_detections", 0)
+    confidence = feedback.get("confidence_detections", 0)
+    rephrases = feedback.get("rephrase_detections", 0)
+    total = feedback.get("total_assessed", 0)
+    trend = feedback.get("quality_trend", "stable")
+
+    print(f"  {C.BOLD}Session Analysis:{C.RESET}")
+    print(f"    Total assessed:     {total}")
+    print(f"    Confident:          {C.GREEN}{confidence}{C.RESET}")
+    print(f"    Confused:           {C.RED if confusion > 0 else C.GRAY}{confusion}{C.RESET}")
+    print(f"    Rephrases (retries):{C.YELLOW if rephrases > 0 else C.GRAY} {rephrases}{C.RESET}")
+    print(f"    Quality trend:      {C.GREEN if trend == 'stable' else C.RED}{trend}{C.RESET}")
+
+    if total > 0:
+        success_rate = (confidence / total) * 100
+        print(f"    Success rate:       {success_rate:.0f}%")
+
+    learnings = []
+    if confusion > total * 0.3 and total > 5:
+        learnings.append("High confusion rate. Consider --quality max.")
+    if rephrases > total * 0.2 and total > 5:
+        learnings.append("Frequent rephrases. Check /explain for dropped files.")
+    if trend == "declining":
+        learnings.append("Quality declining. R-D self-correction is active.")
+
+    if learnings:
+        print(f"\n  {C.BOLD}Learnings:{C.RESET}")
+        for l in learnings:
+            print(f"    {C.YELLOW}• {l}{C.RESET}")
+
+    if getattr(args, "apply", False) and learnings:
+        for fname in ["CLAUDE.md", "AGENTS.md"]:
+            fpath = Path.cwd() / fname
+            if fpath.exists():
+                existing = fpath.read_text(encoding="utf-8", errors="replace")
+                if "## Entroly Learnings" not in existing:
+                    section = "\n\n## Entroly Learnings (auto-generated)\n\n"
+                    section += "\n".join(f"- {l}" for l in learnings) + "\n"
+                    fpath.write_text(existing + section, encoding="utf-8")
+                    print(f"\n  {C.GREEN}Written learnings to {fname}{C.RESET}")
+                else:
+                    print(f"\n  {C.GRAY}{fname} already has learnings section{C.RESET}")
+                break
+
+    print()
+
+
 def _recommend_quality(project: dict, file_count: int) -> str:
     """Smart auto-config: recommend quality preset based on project characteristics."""
     lang = project.get("primary", "unknown")
@@ -2760,6 +2924,38 @@ def main():
         help="Quick-win demo: before/after comparison showing token savings",
     )
 
+    # entroly wrap
+    wrap_parser = subparsers.add_parser(
+        "wrap",
+        help="Start proxy + launch coding agent in one command (claude, codex, aider, cursor)",
+    )
+    wrap_parser.add_argument(
+        "agent", type=str,
+        help="Agent to wrap: claude, codex, aider, cursor",
+    )
+    wrap_parser.add_argument(
+        "--port", type=int, default=None,
+        help="Proxy port (default: 9377)",
+    )
+    wrap_parser.add_argument(
+        "agent_args", nargs=argparse.REMAINDER,
+        help="Additional arguments passed to the agent",
+    )
+
+    # entroly learn
+    learn_parser = subparsers.add_parser(
+        "learn",
+        help="Analyze session for failure patterns, write corrections",
+    )
+    learn_parser.add_argument(
+        "--port", type=int, default=None,
+        help="Proxy port to read feedback from (default: 9377)",
+    )
+    learn_parser.add_argument(
+        "--apply", action="store_true",
+        help="Write learnings to CLAUDE.md / AGENTS.md",
+    )
+
     # entroly doctor (Gap #52)
     doctor_parser = subparsers.add_parser(
         "doctor",
@@ -2939,6 +3135,8 @@ def main():
         "search": cmd_search,
         "docs": cmd_docs,
         "finetune": cmd_finetune,
+        "wrap": cmd_wrap,
+        "learn": cmd_learn,
     }
 
     handler = _dispatch.get(args.command)
