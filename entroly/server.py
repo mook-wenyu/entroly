@@ -1228,10 +1228,13 @@ def create_mcp_server():
                 )),
                 "beliefs",
             )
-            if os.path.isdir(vault_beliefs_dir):
-                n = engine._rust.load_vault_beliefs(vault_beliefs_dir)
-                if n > 0:
-                    logger.info(f"Vault beliefs bridge: attached {n} beliefs to fragments")
+            if os.path.isdir(vault_beliefs_dir) and hasattr(engine._rust, "load_vault_beliefs"):
+                try:
+                    n = engine._rust.load_vault_beliefs(vault_beliefs_dir)
+                    if n > 0:
+                        logger.info(f"Vault beliefs bridge: attached {n} beliefs to fragments")
+                except Exception as e:
+                    logger.debug(f"Vault belief loading failed: {e}")
             _vault_beliefs_loaded = True
 
         # Apply task-conditioned weights before optimization
