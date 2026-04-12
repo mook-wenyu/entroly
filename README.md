@@ -290,7 +290,6 @@ Entroly is the first context engine with a **self-improving runtime** — it lea
 | **Dreaming Loop** | During idle time (>60s inactivity), generates synthetic queries and runs self-play experiments to find better weight configurations. Monotonic improvement guarantee. | Zero — no API calls |
 | **Task-Conditioned Profiles** | Automatically detects task type (debugging, feature, refactor, performance, testing, docs) and loads task-specific learned weights. Debugging prioritizes recency; documentation prioritizes semantic similarity. | Zero |
 | **Skill Synthesis** | Identifies gaps in coverage, synthesizes new tools from AST analysis, benchmarks them, promotes winners, prunes losers. Full lifecycle — no human intervention. | Zero — structural analysis only |
-| **Evolution Budget Guardrail** | Self-improvement spending is capped at 5% of lifetime token savings. The system can never cost more than it saves. | Self-funding |
 | **Adaptive Exploration (RAVEN-UCB)** | Thompson sampling + Upper Confidence Bound automatically balances exploring new strategies vs exploiting known-good ones. Exploration rate anneals as confidence grows. | Zero |
 
 ### How The Learning Loop Works
