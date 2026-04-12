@@ -4,10 +4,10 @@
 
 <h1 align="center">Entroly</h1>
 
-<h3 align="center">Stop your AI from hallucinating. Give it your entire codebase.</h3>
+<h3 align="center">A self-evolving daemon that "dreams" about your codebase to cure AI hallucination.</h3>
 
 <p align="center">
-  <b>The Token-Saving MCP Server & Context Compression Engine</b><br/>
+  <b>A self-evolving daemon for Token-Saving MCP Server & Context Compression Engine</b><br/>
   <i>Stop paying for useless LLM tokens. Entroly is a zero-config Context Engine (with native HTTP proxy support) that compresses codebase context, reducing Claude, Cursor, and OpenAI API costs by <b>80%</b> without losing visibility.</i>
 </p>
 
