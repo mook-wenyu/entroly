@@ -43,7 +43,10 @@ class EntrolyConfig {
     this.checkpointDir = opts.checkpointDir ?? projectCheckpointDir();
     this.autoCheckpointInterval = opts.autoCheckpointInterval ?? 5;
     this.serverName = opts.serverName ?? 'entroly';
-    this.serverVersion = opts.serverVersion ?? '0.6.2';
+    this.serverVersion = opts.serverVersion ?? (() => {
+      try { return require('../package.json').version; }
+      catch { return '0.0.0'; }
+    })();
   }
 }
 

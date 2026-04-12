@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re as _re
 import subprocess
 import time
 import uuid
@@ -194,9 +195,6 @@ class SkillSynthesizer:
 #   - This is equivalent to solving the rate-distortion problem
 #     R(D) = min_{p(ê|e)} I(E; Ê) s.t. E[d(e, ê)] ≤ D
 #     where the "distortion" is miss rate and "rate" is token cost.
-
-import re as _re
-
 
 class StructuralSynthesizer:
     """Zero-token skill synthesis via entropy-gradient structural analysis.

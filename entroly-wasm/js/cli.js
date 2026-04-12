@@ -22,7 +22,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-const VERSION = '0.6.2';
+const VERSION = require('../package.json').version;
 
 // ANSI colors
 const C = {

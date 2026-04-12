@@ -9,7 +9,22 @@ This package is a universal `npx` bridge to the Entroly Python engine.
 
 You can use it directly in any MCP-compatible client like Cursor or Claude Desktop:
 
-### Method 1: NPX (Claude Desktop/Cursor)
+### Method 1: entroly-wasm (Recommended — zero dependencies)
+```json
+{
+  "mcpServers": {
+    "entroly": {
+      "command": "npx",
+      "args": ["-y", "entroly-wasm", "serve"],
+      "env": {
+        "ENTROLY_BUDGET": "200000"
+      }
+    }
+  }
+}
+```
+
+### Method 2: NPX Bridge to Python (requires `pip install entroly`)
 ```json
 {
   "mcpServers": {
@@ -17,7 +32,8 @@ You can use it directly in any MCP-compatible client like Cursor or Claude Deskt
       "command": "npx",
       "args": [
         "-y",
-        "@ebbiforge/entroly-mcp"
+        "@ebbiforge/entroly-mcp",
+        "serve"
       ],
       "env": {
         "ENTROLY_BUDGET": "200000"
