@@ -7,7 +7,7 @@
 <h3 align="center">Your AI is blind. Fix it in 30 seconds — then watch it teach itself.</h3>
 
 <p align="center">
-  <i>Claude, Cursor, Copilot, Codex, and MiniMax only see 5% of your codebase. Entroly gives them a <b>2M-token brain for 90% less</b> — then its daemon <b>dreams up new skills while you sleep, at $0 token cost, compresses tokens, and improves answer quality</b>. The first AI runtime whose learning is provably token-negative.</i>
+  <i>Claude, Cursor, Copilot, Codex, and MiniMax only see 5% of your codebase. Entroly gives them a <b>2M-token brain for 90% less</b> — a daemon that <b>continuously self-evolves, compressing your context and dreaming up new skills with one obsession: saving more of your tokens and sharpening every answer</b>. The first AI runtime whose learning is provably token-negative.</i>
 </p>
 
 <p align="center">
