@@ -1,6 +1,6 @@
 {
   "name": "entroly-wasm",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Information-theoretic context optimization for AI coding agents. Zero-friction, pure WebAssembly — no Python dependency.",
   "main": "index.js",
   "types": "pkg/entroly_wasm.d.ts",
@@ -23,7 +23,11 @@
     "js/workspace.js",
     "js/repo_map.js",
     "js/skills.js",
-    "js/multimodal.js"
+    "js/multimodal.js",
+    "js/value_tracker.js",
+    "js/agentskills_export.js",
+    "js/gateways.js",
+    "js/vault_observer.js"
   ],
   "scripts": {
     "serve": "node js/server.js",

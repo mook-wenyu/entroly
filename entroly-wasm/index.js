@@ -16,6 +16,10 @@ const { autoIndex, startIncrementalWatcher, estimateTokens } = require('./js/aut
 const { CheckpointManager, persistIndex, loadIndex } = require('./js/checkpoint');
 const { EntrolyMCPServer } = require('./js/server');
 const { runAutotune, startAutotuneDaemon, TaskProfileOptimizer, FeedbackJournal } = require('./js/autotune');
+const { ValueTracker, EVOLUTION_TAX_RATE, estimateCost } = require('./js/value_tracker');
+const { exportPromoted: exportAgentSkills } = require('./js/agentskills_export');
+const { TelegramGateway, DiscordGateway, SlackGateway } = require('./js/gateways');
+const { VaultObserver } = require('./js/vault_observer');
 
 module.exports = {
   // Core engine (wasm)
@@ -43,4 +47,21 @@ module.exports = {
   startAutotuneDaemon,
   TaskProfileOptimizer,
   FeedbackJournal,
+
+  // Self-funded evolution budget (C_spent ≤ τ·S(t))
+  ValueTracker,
+  EVOLUTION_TAX_RATE,
+  estimateCost,
+
+  // agentskills.io portable export
+  exportAgentSkills,
+
+  // Chat gateways (live self-evolution event stream)
+  TelegramGateway,
+  DiscordGateway,
+  SlackGateway,
+
+  // Observe the shared vault — works with skills promoted by the
+  // Python daemon OR any node-side orchestrator. No daemon required.
+  VaultObserver,
 };
