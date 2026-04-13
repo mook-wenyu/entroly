@@ -2,12 +2,12 @@
   <img src="https://raw.githubusercontent.com/juyterman1000/entroly/main/docs/assets/logo.png" width="180" alt="Entroly">
 </p>
 
-<h1 align="center">Entroly</h1>
+<h1 align="center">Entroly Daemon</h1>
 
-<h3 align="center">Give your AI a 2M-token brain. Pay 90% less. Watch it teach itself new skills.</h3>
+<h3 align="center">Give your AI a 2M-token brain. Pay 90% less. Watch the daemon dream up new skills.</h3>
 
 <p align="center">
-  <i>Entroly is the context engine that lets Claude, Cursor, and Copilot see your <b>entire codebase</b> — not the top-5 files — while cutting token bills <b>70–95%</b>. And it's the first runtime that <b>evolves its own tools at $0 token cost</b>, so it gets smarter while you sleep.</i>
+  <i>Entroly is the self-evolving context engine that lets Claude, Cursor, and Copilot see your <b>entire codebase</b> — not the top-5 files — while cutting token bills <b>70–95%</b>. It's the first runtime that <b>evolves its own tools at $0 token cost</b>, dreaming up new skills while you sleep.</i>
 </p>
 
 <p align="center">
