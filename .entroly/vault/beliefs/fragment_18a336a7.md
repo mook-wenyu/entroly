@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a72b00d5382b186b38
 entity: fragment
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\src\fragment.rs:14

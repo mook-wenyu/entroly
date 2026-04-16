@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a722b717fc22ceadfc
 entity: server
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\js\server.js:17

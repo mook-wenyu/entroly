@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a70c53d4dc0c6b6adc
 entity: verification_engine
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly\verification_engine.py:35

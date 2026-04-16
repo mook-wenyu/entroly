@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a73236bfe8324e55e8
 entity: test_cogops_smoke
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - test_cogops_smoke.py:18

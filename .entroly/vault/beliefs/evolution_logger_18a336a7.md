@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a70941b7f009594df0
 entity: evolution_logger
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly\evolution_logger.py:31

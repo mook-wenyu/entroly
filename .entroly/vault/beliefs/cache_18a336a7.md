@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a72a59cea02a7164a0
 entity: cache
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\src\cache.rs:47

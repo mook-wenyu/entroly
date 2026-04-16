@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a70838b49408504a94
 entity: generate_demo
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - docs\generate_demo.py:135

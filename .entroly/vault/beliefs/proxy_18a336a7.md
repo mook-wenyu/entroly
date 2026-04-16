@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a70b99f0f80bb186f8
 entity: proxy
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly\proxy.py:104

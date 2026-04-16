@@ -217,6 +217,28 @@ function cmdDemo() {
   }
 }
 
+function cmdGo() {
+  console.log(`\n${C.CYAN}${C.BOLD}  Entroly Daemon${C.RESET} — self-evolving context engine\n`);
+  console.log(`  ${C.GRAY}Auto-detecting IDE, indexing codebase, starting MCP server...${C.RESET}\n`);
+
+  // Step 1: Init (detect IDE + write config)
+  cmdInit();
+
+  // Step 2: Serve (start MCP daemon)
+  console.log(`\n  ${C.GREEN}${C.BOLD}Starting MCP server...${C.RESET}\n`);
+  cmdServe();
+}
+
+function cmdGateways() {
+  console.log(banner());
+  console.log();
+  console.log(`  ${C.BOLD}Chat Gateways${C.RESET} — stream evolution events to Telegram/Discord/Slack\n`);
+
+  // Delegate to the standalone entrypoint in gateways.js
+  const gwPath = path.join(__dirname, 'gateways.js');
+  require(gwPath);
+}
+
 function cmdClean() {
   const config = new EntrolyConfig();
   const dir = config.checkpointDir;
@@ -253,40 +275,45 @@ function cmdAutotune(args) {
 function cmdHelp() {
   console.log(banner());
   console.log();
-  console.log(`  ${C.BOLD}Usage:${C.RESET} entroly-wasm <command> [options]`);
+  console.log(`  ${C.BOLD}Usage:${C.RESET} entroly-wasm [command] [options]`);
   console.log();
   console.log(`  ${C.BOLD}Commands:${C.RESET}`);
+  console.log(`    ${C.CYAN}go${C.RESET}         ${C.BOLD}One command: detect IDE → index → start daemon${C.RESET} (default)`);
   console.log(`    ${C.CYAN}serve${C.RESET}      Start MCP server (stdio JSON-RPC)`);
   console.log(`    ${C.CYAN}optimize${C.RESET}   Generate optimized context (args: [budget] [query...])`);
   console.log(`    ${C.CYAN}health${C.RESET}     Analyze codebase health (grade A-F)`);
-  console.log(`    ${C.CYAN}stats${C.RESET}      Show session statistics`);
-  console.log(`    ${C.CYAN}init${C.RESET}       Auto-detect IDE and generate MCP config`);
   console.log(`    ${C.CYAN}demo${C.RESET}       Before/after demo showing token savings`);
+  console.log(`    ${C.CYAN}gateways${C.RESET}   Stream evolution events to Telegram/Discord/Slack`);
+  console.log(`    ${C.CYAN}init${C.RESET}       Auto-detect IDE and generate MCP config`);
+  console.log(`    ${C.CYAN}stats${C.RESET}      Show session statistics`);
   console.log(`    ${C.CYAN}status${C.RESET}     Check environment status`);
   console.log(`    ${C.CYAN}autotune${C.RESET}   Run autonomous self-tuning (args: [iterations] [--bench-only])`);
   console.log(`    ${C.CYAN}clean${C.RESET}      Clear cached state`);
   console.log();
   console.log(`  ${C.BOLD}Examples:${C.RESET}`);
+  console.log(`    ${C.GRAY}npx entroly-wasm${C.RESET}                              ${C.GRAY}# auto-detect + start${C.RESET}`);
   console.log(`    ${C.GRAY}npx entroly-wasm optimize 8000 "fix the auth bug"${C.RESET}`);
-  console.log(`    ${C.GRAY}npx entroly-wasm serve${C.RESET}`);
   console.log(`    ${C.GRAY}npx entroly-wasm health${C.RESET}`);
+  console.log(`    ${C.GRAY}npx entroly-wasm gateways${C.RESET}`);
 }
 
 // ── Main ──
 const [,, cmd, ...args] = process.argv;
 
 switch (cmd) {
+  case 'go': case undefined: cmdGo(); break;
   case 'serve': case '--serve': case 'server': cmdServe(); break;
   case 'optimize': case 'opt': cmdOptimize(args); break;
   case 'health': cmdHealth(); break;
   case 'stats': cmdStats(); break;
   case 'init': cmdInit(); break;
   case 'demo': cmdDemo(); break;
+  case 'gateways': case 'gateway': cmdGateways(); break;
   case 'clean': cmdClean(); break;
   case 'status': cmdStatus(); break;
   case 'autotune': case 'tune': cmdAutotune(args); break;
   case '--version': case '-v': console.log(VERSION); break;
-  case '--help': case '-h': case undefined: cmdHelp(); break;
+  case '--help': case '-h': cmdHelp(); break;
   default:
     console.error(`Unknown command: ${cmd}`);
     cmdHelp();

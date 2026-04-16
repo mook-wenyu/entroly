@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a72af1502c2b08e62c
 entity: entropy
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\src\entropy.rs:26

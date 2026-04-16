@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a72c46b1242c5e4724
 entity: skeleton
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\src\skeleton.rs:19

@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a7310f9cd4312732d4
 entity: test_context_bridge
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - tests\test_context_bridge.py:30

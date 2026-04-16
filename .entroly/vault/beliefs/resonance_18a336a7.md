@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a72bf667a02c0dfda0
 entity: resonance
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\src\resonance.rs:61

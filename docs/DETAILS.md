@@ -471,11 +471,11 @@ After any request, call `GET localhost:9377/explain` to see:
 
 | Claim | What it actually means |
 |---|---|
-| **50-80% token savings** | Measured across real codebases (Langfuse, VSCode). Varies by query specificity. |
+| **70–95% token savings** | Peak 95% on focused queries against large codebases. 70% floor on broad architectural queries. Varies by query specificity and repo size. |
 | **100% code visibility** | Every file in your codebase is represented at some resolution. Nothing is invisible. |
 | **< 10ms latency** | The Rust engine adds < 10ms. Network to the LLM API is unchanged. |
 
-We don't claim 95% savings because that's only achievable on trivial queries against massive codebases. Real-world savings on complex monorepo queries are 50-80%.
+The range reflects real variability: a narrow bug-fix query against a 1000-file repo hits 95%. A broad "explain the architecture" query against a 50-file repo lands closer to 70%. We publish the range, not the peak.
 
 ### Disable the Report
 

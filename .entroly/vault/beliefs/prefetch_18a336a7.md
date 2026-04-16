@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a70b592b540b70c154
 entity: prefetch
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly\prefetch.py:45

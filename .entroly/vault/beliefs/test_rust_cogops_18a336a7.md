@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a73248a97432603f74
 entity: test_rust_cogops
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - test_rust_cogops.py:6

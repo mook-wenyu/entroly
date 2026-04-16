@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a71535a0a8154d36a8
 entity: autotune
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\js\autotune.js:31

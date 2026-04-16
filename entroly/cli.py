@@ -1,5 +1,6 @@
 """
 Entroly CLI — Zero-friction onboarding for AI coding agents.
+(Test change to trigger cost-check workflow)
 
 Commands:
     entroly optimize    Generate optimized context snapshot for a task

@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a70b7be8b00b937eb0
 entity: provenance
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly\provenance.py:25

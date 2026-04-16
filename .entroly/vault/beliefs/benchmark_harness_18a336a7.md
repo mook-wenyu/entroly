@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a7088658c0089deec0
 entity: benchmark_harness
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly\benchmark_harness.py:44

@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a708744054088bd654
 entity: belief_compiler
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly\belief_compiler.py:38

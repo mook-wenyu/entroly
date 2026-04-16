@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a70be017f40bf7adf4
 entity: query_refiner
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly\query_refiner.py:27

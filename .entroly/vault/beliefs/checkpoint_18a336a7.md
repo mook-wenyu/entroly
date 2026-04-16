@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a719e33e8019fad480
 entity: checkpoint
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\js\checkpoint.js:9

@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a72bb4bfd02bcc55d0
 entity: prism
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\src\prism.rs:33

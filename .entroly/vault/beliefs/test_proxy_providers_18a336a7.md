@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a731ed39a43204cfa4
 entity: test_proxy_providers
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - tests\test_proxy_providers.py:52

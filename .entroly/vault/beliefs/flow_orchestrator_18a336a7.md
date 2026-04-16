@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a709531478096aaa78
 entity: flow_orchestrator
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly\flow_orchestrator.py:35

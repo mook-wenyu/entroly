@@ -15,7 +15,7 @@ Two heatmaps side-by-side:
   Right: Entroly (compressed context → LLM)
 
 Usage:
-    python -m bench.needle_heatmap --model gpt-4o-mini --output needle_results.png
+    python -m bench.needle_heatmap --model gemini-2.0-flash --output needle_results.png
 """
 
 from __future__ import annotations

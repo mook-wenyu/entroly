@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a72c5cd5e42c746be4
 entity: utilization
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\src\utilization.rs:28

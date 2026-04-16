@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a70f76813c0f8e173c
 entity: test_integration
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-core\tests\test_integration.py:15

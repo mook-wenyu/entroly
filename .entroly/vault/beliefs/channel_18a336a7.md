@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a72a8622ac2a9db8ac
 entity: channel
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\src\channel.rs:41

@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a7092b8f4809432548
 entity: epistemic_router
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly\epistemic_router.py:39

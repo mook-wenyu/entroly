@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a72b35cc342b4d6234
 entity: hierarchical
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\src\hierarchical.rs:29

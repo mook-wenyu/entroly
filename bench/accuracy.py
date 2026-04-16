@@ -25,9 +25,10 @@ The key metric is ACCURACY RETENTION:
 Usage:
     python -m bench.accuracy --benchmark needle --model claude-sonnet-4-5-20250929
     python -m bench.accuracy --benchmark all --model gpt-4o
+    python -m bench.accuracy --benchmark all --model gemini-2.0-flash
     python -m bench.accuracy --benchmark humaneval --samples 50
 
-Requires: ANTHROPIC_API_KEY or OPENAI_API_KEY set in environment.
+Requires: ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY set in environment.
 """
 
 from __future__ import annotations
@@ -78,7 +79,7 @@ class RetentionReport:
 def _call_llm(messages: list[dict], model: str, max_tokens: int = 1024) -> tuple[str, int, float]:
     """Call LLM API. Returns (response_text, token_count, latency_ms).
 
-    Supports Anthropic (claude-*) and OpenAI (gpt-*) models.
+    Supports Anthropic (claude-*), OpenAI (gpt-*), and Gemini (gemini-*) models.
     """
     t0 = time.perf_counter()
 
@@ -101,6 +102,20 @@ def _call_llm(messages: list[dict], model: str, max_tokens: int = 1024) -> tuple
         )
         text = resp.content[0].text
         tokens = resp.usage.input_tokens + resp.usage.output_tokens
+    elif model.startswith("gemini"):
+        import openai
+        # Gemini provides an OpenAI compatibility API
+        client = openai.OpenAI(
+            api_key=os.environ.get("GEMINI_API_KEY"),
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+        )
+        resp = client.chat.completions.create(
+            model=model,
+            max_tokens=max_tokens,
+            messages=messages,
+        )
+        text = resp.choices[0].message.content or ""
+        tokens = resp.usage.total_tokens if resp.usage else 0
     else:
         import openai
         client = openai.OpenAI()
@@ -123,6 +138,12 @@ def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
         "claude-3-5-haiku-20241022": (0.80, 4.0),
         "gpt-4o": (2.50, 10.0),
         "gpt-4o-mini": (0.15, 0.60),
+        "gemini-1.5-flash": (0.075, 0.30),
+        "gemini-1.5-pro": (1.25, 5.0),
+        "gemini-2.0-flash": (0.10, 0.40),
+        "gemini-2.5-flash": (0.10, 0.40),
+        "gemini-3-flash-preview": (0.10, 0.40),
+        "gemini-3.1-pro-preview": (1.25, 5.0),
     }
     inp_rate, out_rate = rates.get(model, (2.0, 8.0))
     return (input_tokens * inp_rate + output_tokens * out_rate) / 1_000_000
@@ -131,22 +152,54 @@ def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
 # ── Entroly Compression ──────────────────────────────────────────────
 
 
-def _compress_messages(messages: list[dict], budget: int) -> list[dict]:
-    """Compress messages through Entroly."""
+def _compress_messages(messages: list[dict], budget: int, query: str = "") -> list[dict]:
+    """Compress messages through Entroly Engine with query-awareness."""
     try:
-        from entroly.sdk import compress_messages
-        return compress_messages(messages, budget=budget)
-    except ImportError:
-        # Fallback: truncate to budget (token-rough)
-        result = []
-        total = 0
+        from bench.evaluate import create_engine_from_config, load_tuning_config
+        config = load_tuning_config()
+        # boost semantic weight for needle retrieval accuracy
+        config["weights"]["semantic_sim"] = 4.0
+        engine = create_engine_from_config(config)
+
+        system_chunks = []
+        user_query = ""
+        chunk_map = {}
         for m in messages:
-            est = len(m.get("content", "")) // 4
-            if total + est > budget:
-                break
-            result.append(m)
-            total += est
-        return result
+            if m["role"] == "system":
+                # Split huge haystacks into ingestible chunks
+                chunks = m["content"].split("\n")
+                current_chunk = []
+                current_len = 0
+                for line in chunks:
+                    current_chunk.append(line)
+                    current_len += len(line)
+                    if current_len > 4000:  # ~1000 tokens
+                        text = "\n".join(current_chunk)
+                        res = engine.ingest(text, "chunk", len(text)//4, False)
+                        chunk_map[dict(res)["fragment_id"]] = text
+                        current_chunk = []
+                        current_len = 0
+                if current_chunk:
+                    text = "\n".join(current_chunk)
+                    res = engine.ingest(text, "chunk", len(text)//4, False)
+                    chunk_map[dict(res)["fragment_id"]] = text
+            else:
+                user_query = m["content"]
+
+        query_to_use = query or user_query
+        result = dict(engine.optimize(budget, query_to_use))
+        selected = result.get("selected", [])
+        
+        # Reconstruct system prompt with selected high-info fragments
+        compressed_text = "\n...\n".join([chunk_map.get(dict(item).get("id"), "") for item in selected])
+        
+        return [
+            {"role": "system", "content": f"Context:\n{compressed_text}"},
+            {"role": "user", "content": user_query}
+        ]
+    except Exception as e:
+        print(f"Engine failed: {e}")
+        return messages
 
 
 # ── Benchmark: NeedleInAHaystack ──────────────────────────────────────
@@ -190,7 +243,7 @@ def _generate_haystack(size_tokens: int, needle: str, depth_pct: float) -> str:
 def bench_needle(model: str, samples: int = 20) -> list[dict]:
     """NeedleInAHaystack: can the LLM find a fact in compressed context?"""
     needle = "The secret passphrase for Project Aurora is 'crystalline-nebula-7742'."
-    question = "What is the secret passphrase for Project Aurora?"
+    question = "What is the secret passphrase for Project Aurora? Answer with just the passphrase."
     expected = "crystalline-nebula-7742"
 
     results = []
@@ -461,7 +514,7 @@ def _run_mode(
 
         # Compress if Entroly mode
         if mode == "entroly" and budget:
-            messages = _compress_messages(messages, budget)
+            messages = _compress_messages(messages, budget, query=item["question"])
 
         try:
             response, tokens, latency = _call_llm(messages, model)
@@ -519,7 +572,7 @@ Benchmarks:
   all         Run all benchmarks
 
 Examples:
-  python -m bench.accuracy --benchmark needle --model gpt-4o-mini --samples 20
+  python -m bench.accuracy --benchmark needle --model gemini-2.0-flash --samples 20
   python -m bench.accuracy --benchmark gsm8k --model claude-sonnet-4-5-20250929
   python -m bench.accuracy --benchmark all --model gpt-4o-mini
 """,

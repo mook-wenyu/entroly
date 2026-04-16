@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a72b23d6f02b3b6cf0
 entity: health
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\src\health.rs:44

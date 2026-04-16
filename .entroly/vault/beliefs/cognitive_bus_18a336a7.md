@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a72a9965882ab0fb88
 entity: cognitive_bus
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\src\cognitive_bus.rs:59

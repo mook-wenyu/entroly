@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a72b1157c82b28edc8
 entity: guardrails
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\src\guardrails.rs:24

@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a708f055900907eb90
 entity: context_bridge
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly\context_bridge.py:52

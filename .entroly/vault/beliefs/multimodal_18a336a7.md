@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a709846dac099c03ac
 entity: multimodal
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly\multimodal.py:44

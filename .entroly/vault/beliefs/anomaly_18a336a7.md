@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a72a3704602a4e9a60
 entity: anomaly
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\src\anomaly.rs:44

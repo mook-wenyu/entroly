@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a730bb2c6c30d2c26c
 entity: extractor_cogops
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - extractor_cogops.py:4

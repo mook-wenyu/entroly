@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a708966f1c08ae051c
 entity: change_pipeline
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly\change_pipeline.py:36

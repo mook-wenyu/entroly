@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a7090d712009250720
 entity: dashboard
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly\dashboard.py:38

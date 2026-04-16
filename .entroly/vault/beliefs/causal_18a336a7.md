@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a72a7037582a87cd58
 entity: causal
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\src\causal.rs:98

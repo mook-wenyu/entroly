@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a71806c460181e5a60
 entity: auto_index
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\js\auto_index.js:71

@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a70c421cec0c59b2ec
 entity: vault
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly\vault.py:49

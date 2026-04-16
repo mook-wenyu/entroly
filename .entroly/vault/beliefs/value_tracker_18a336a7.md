@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a70c2bc2a80c4358a8
 entity: value_tracker
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly\value_tracker.py:64

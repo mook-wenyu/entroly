@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a707f4d65c080c6c5c
 entity: compare
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - bench\compare.py:152

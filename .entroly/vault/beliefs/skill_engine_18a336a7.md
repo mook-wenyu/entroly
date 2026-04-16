@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a70c1a33bc0c31c9bc
 entity: skill_engine
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly\skill_engine.py:36

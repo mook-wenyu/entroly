@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a72c2957142c40ed14
 entity: semantic_dedup
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\src\semantic_dedup.rs:43

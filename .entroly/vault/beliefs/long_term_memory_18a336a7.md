@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a7096e31180985c718
 entity: long_term_memory
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly\long_term_memory.py:70

@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a708495a4c0860f04c
 entity: adaptive_pruner
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly\adaptive_pruner.py:38

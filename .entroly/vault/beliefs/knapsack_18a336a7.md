@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a72b46976c2b5e2d6c
 entity: knapsack
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\src\knapsack.rs:44

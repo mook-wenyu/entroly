@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a72adf31802af6c780
 entity: depgraph
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\src\depgraph.rs:32

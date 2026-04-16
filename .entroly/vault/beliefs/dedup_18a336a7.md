@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a72ac3049c2ada9a9c
 entity: dedup
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\src\dedup.rs:23

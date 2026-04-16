@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a70cfa55140d11eb14
 entity: cogops
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-core\src\cogops.rs:26

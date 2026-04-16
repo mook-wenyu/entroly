@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a70f6343d80f7ad9d8
 entity: test_brutal
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-core\tests\test_brutal.py:23

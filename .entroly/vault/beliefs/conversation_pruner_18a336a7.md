@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a72aaf8bd82ac721d8
 entity: conversation_pruner
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\src\conversation_pruner.rs:96

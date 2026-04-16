@@ -1,7 +1,7 @@
 ---
 claim_id: 18a336a72be1af542bf94554
 entity: query_persona
-status: inferred
+status: stale
 confidence: 0.75
 sources:
   - entroly-wasm\src\query_persona.rs:73
