@@ -85,3 +85,7 @@ All strategies operate on the **same corpus** with the **same token budget**. No
 - **Relevance** = fraction of query terms present in selected context
 
 > **Note**: These benchmarks run on a synthetic but realistic corpus. Real-world numbers depend on your codebase structure, query patterns, and token budget. Run `entroly benchmark` to see your own numbers.
+
+---
+
+*Last automated run: 2026-04-18 02:42 UTC · Commit: 6753989d · [View workflow](https://github.com/juyterman1000/entroly/actions/runs/24595120941)*
