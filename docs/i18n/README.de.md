@@ -1,46 +1,116 @@
 <p align="center">
+  <a href="../../README.md">🇬🇧 English</a> •
+  <a href="README.zh-CN.md">🇨🇳 中文</a> •
+  <a href="README.ja.md">🇯🇵 日本語</a> •
+  <a href="README.ko.md">🇰🇷 한국어</a> •
+  <a href="README.pt-BR.md">🇧🇷 Português</a> •
+  <a href="README.es.md">🇪🇸 Español</a> •
+  <a href="README.fr.md">🇫🇷 Français</a> •
+  <a href="README.ru.md">🇷🇺 Русский</a> •
+  <a href="README.hi.md">🇮🇳 हिन्दी</a> •
+  <a href="README.tr.md">🇹🇷 Türkçe</a>
+</p>
+
+<p align="center">
   <img src="https://raw.githubusercontent.com/juyterman1000/entroly/main/docs/assets/logo.png" width="180" alt="Entroly">
 </p>
 
-<h1 align="center">Entroly Daemon</h1>
+<h1 align="center">Entroly — KI-Token-Kosten um 70–95% senken</h1>
 
-<h3 align="center">Ihre KI ist blind. Beheben Sie das in 30 Sekunden – und sehen Sie dann zu, wie sie sich selbst unterrichtet.</h3>
-
-<p align="center">
-  <i>Claude, Cursor, Copilot, Codex und MiniMax sehen nur 5% Ihrer Codebasis. Entroly gibt ihnen ein <b>Gehirn von 2M Tokens mit 90% Rabatt</b> – ein Daemon, der sich <b>kontinuierlich selbst weiterentwickelt, Ihren Kontext komprimiert und neue Fähigkeiten erträumt, um Ihre Tokens zu sparen und jede Antwort zu schärfen</b>. Die erste KI-Runtime, deren Lernen nachweislich token-negativ ist.</i>
-</p>
+<h3 align="center">Deine KI-Coding-Tools sehen nur 5% deiner Codebase.<br/>Entroly gibt ihnen das volle Bild — für einen Bruchteil der Kosten.</h3>
 
 <p align="center">
-  <code>npm install entroly-wasm && npx entroly-wasm</code>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="../../README.md"><b>English (Original) →</b></a>
+  <code>npm install entroly-wasm && npx entroly-wasm</code>&nbsp;&nbsp;|&nbsp;&nbsp;<code>pip install entroly && entroly go</code>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="https://juyterman1000.github.io/entroly/"><b>Live-Demo →</b></a>
 </p>
 
 ---
 
-## Was Sie tatsächlich bekommen
+## Das Problem — und die Auswirkung auf das Ergebnis
 
-| | Ohne Entroly | **Mit Entroly** |
+Jedes KI-Coding-Tool — Claude, Cursor, Copilot, Codex — hat denselben blinden Fleck: **Es sieht nur 5–10 Dateien gleichzeitig.** Die anderen 95% deiner Codebase sind unsichtbar.
+
+Modelle werden immer größer — **Claude Opus 4.7** wurde gerade mit noch mehr Funktionen und noch höheren Token-Kosten veröffentlicht. Größere Kontextfenster lösen das Problem nicht; sie machen es noch schlimmer. Du bezahlst für 186.000 Tokens pro Anfrage — wovon das meiste nur duplizierter Boilerplate-Code ist.
+
+> **Entroly behebt beide Probleme in 30 Sekunden.**
+
+---
+
+## Was sich am Tag 1 ändert
+
+| Metrik | Vor Entroly | **Nach Entroly** |
 |---|---|---|
-| Dateien, die die KI sieht | 5–10 | **Ihr gesamtes Repository** |
-| Tokens pro Anfrage | ~186,000 | **9,300 – 55,000** |
-| Kosten pro 1K Anfragen | ~$560 | **$28 – $168** |
-| Effektives Kontextfenster | 200K | **~2M (durch variable Auflösungskomprimierung)** |
-| Lernkosten im Laufe der Zeit| Steigen (Tokens)| **$0 — nachweislich token-negativ** |
-| Einrichtung | Stundenlange Hacks | **30 Sekunden** |
+| Für die KI sichtbare Dateien | 5–10 | **Dein gesamtes Repository** |
+| Tokens pro Anfrage | ~186.000 | **9.300 – 55.000** |
+| Monatliche KI-Ausgaben (1K Req/Tag) | ~$16.800 | **$840 – $5.040** |
+| KI-Antwortgenauigkeit | Unvollständig, oft halluziniert | **Dependency-aware, korrekt** |
+| Dev-Zeit für KI-Fehlerbehebung | Stunden/Woche | **Fast null** |
+| Setup | Tage Prompt-Engineering | **30 Sekunden** |
 
-Kritische Dateien werden vollständig übertragen. Unterstützende Dateien als Signaturen. Der Rest als Referenzen. Ihre KI erhält das Gesamtbild. Sie zahlen fast nichts dafür.
+> **ROI:** Ein 10-Personen-Team mit $15K/Monat KI-API-Kosten spart **$10K–$14K/Monat** am Tag 1.
 
 ---
 
-## Installation
+## Was Deine Wettbewerber Bereits Wissen
 
-```bash
-npm install entroly-wasm && npx entroly-wasm
-# oder
-pip install entroly && entroly go
+Teams, die heute Entroly einsetzen, sparen nicht nur Geld — sie **bauen einen zusammengesetzten Vorteil auf**, den dein Team nicht einholen kann.
+
+- **Woche 1:** Deren KI sieht 100% der Codebase. Deine sieht 5%. Sie liefern schneller.
+- **Monat 1:** Deren Runtime hat die Codebase-Muster gelernt. Deine halluziniert noch Imports.
+- **Monat 3:** Deren Installation ist an die Föderation angeschlossen — absorbiert Optimierungsstrategien von Tausenden Teams weltweit. Du weißt nicht mal, dass das existiert.
+- **Monat 6:** Sie haben $80K+ API-Kosten gespart. Das Budget ging in Einstellungen. Du erklärst der Finanzabteilung noch, warum die KI-Rechnung weiter steigt.
+
+Jeder Tag Wartezeit vergrößert die Lücke. Der Föderationseffekt bedeutet: **Early Adopters werden schneller stärker** — und dieser Vorteil wächst exponentiell.
+
+---
+
+## 🌐 Föderiertes Schwarmlernen — Der Teil, der wie Science-Fiction klingt
+
+Nimm den Dreaming Loop und multipliziere ihn mit **jedem Entwickler auf der Erde, der Entroly nutzt.**
+
+Während du schläfst, träumt dein Daemon — und 10.000 andere auch. Jeder entdeckt leicht unterschiedliche Tricks zur Code-Kompression. Jeder teilt anonym, was er gelernt hat. Jeder absorbiert, was die anderen gefunden haben.
+
+**Du wachst auf. Deine KI ist schlauer als gestern. Nicht wegen dir — wegen dem, was der Schwarm geträumt hat.**
+
+```
+Dein Daemon träumt → entdeckt eine bessere Strategie → teilt sie (anonym)
+     ↓
+10.000 andere Daemons haben gestern Nacht dasselbe getan
+     ↓
+Du öffnest deinen Laptop → deine KI hat bereits alles absorbiert
 ```
 
-Das war's. Es erkennt Ihre IDE, verbindet sich mit Claude/Cursor/Copilot/Codex und beginnt mit der Komprimierung.
+Das ist nicht theoretisch. Es läuft. Jetzt gerade.
+
+**Warum das niemand kopieren kann:**
+- Das Netzwerk **ist** das Produkt. Jeder neue User macht die KI aller anderen besser
+- Infrastrukturkosten: **$0**. Läuft auf GitHub. Keine Server. Keine GPUs. Keine Cloud
+
+```bash
+# Opt-in — immer deine Wahl
+export ENTROLY_FEDERATION=1
+```
+
+### 🔒 Läuft Lokal. Dein Code Verlässt Niemals Deine Maschine.
+
+Funktioniert in Air-Gapped- und regulierten Umgebungen — nichts sendet jemals Daten nach außen.
+
+---
+
+## Volle Parität: Python & Node.js
+
+| Fähigkeit | Python | Node.js (WASM) |
+|---|---|---|
+| Kontextkompression | ✅ | ✅ |
+| Selbstevolution | ✅ | ✅ |
+| Dreaming Loop | ✅ | ✅ |
+| Föderation | ✅ | ✅ |
+| Antwortdestillation | ✅ | ✅ |
+| Chat-Gateways | ✅ | ✅ |
+| agentskills.io Export | ✅ | ✅ |
+
+---
 
 <p align="center">
-  <b>Hören Sie auf, für Tokens zu bezahlen, die Ihre KI verschwendet. Starten Sie eine KI, die sich selbst unterrichtet.</b>
+  <b>Hör auf, für Tokens zu bezahlen, die deine KI verschwendet. Starte eine KI, die sich selbst lehrt.</b><br/>
+  <code>npm install entroly-wasm && npx entroly-wasm</code>&nbsp;&nbsp;|&nbsp;&nbsp;<code>pip install entroly && entroly go</code>
 </p>

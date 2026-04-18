@@ -1,0 +1,56 @@
+name: Entroly Context Index — Automated Benchmark
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'entroly/**'
+      - 'entroly-core/**'
+      - 'bench/**'
+  schedule:
+    # Weekly: Monday at 06:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]" 2>/dev/null || pip install -e . 2>/dev/null || true
+
+      - name: Run competitive benchmark
+        run: |
+          python bench/compare.py > bench_output.txt 2>&1 || true
+          cat bench_output.txt
+
+      - name: Run test suite
+        run: |
+          python -m pytest tests/test_federation.py tests/test_archetype.py -v --tb=short 2>&1 | tee test_output.txt || true
+
+      - name: Update BENCHMARKS.md with timestamp
+        run: |
+          # Append run metadata
+          echo "" >> BENCHMARKS.md
+          echo "---" >> BENCHMARKS.md
+          echo "" >> BENCHMARKS.md
+          echo "*Last automated run: $(date -u '+%Y-%m-%d %H:%M UTC') · Commit: ${GITHUB_SHA::8} · [View workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})*" >> BENCHMARKS.md
+
+      - name: Commit updated benchmarks
+        run: |
+          git config user.name "entroly-bot"
+          git config user.email "bot@entroly.dev"
+          git add BENCHMARKS.md
+          git diff --cached --quiet || git commit -m "chore: update benchmark results [skip ci]"
+          git push || true

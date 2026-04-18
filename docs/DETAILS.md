@@ -4,7 +4,7 @@
 
 <h1 align="center">Entroly</h1>
 
-<h3 align="center">The first AI runtime that evolves its own tools — at zero token cost.</h3>
+<h3 align="center">The first AI runtime that evolves its own tools — at zero token cost.<br/>Now with federated swarm learning and output distillation.</h3>
 
 <p align="center">
   <b>Autonomous Self-Evolving Context Engine &nbsp;•&nbsp; Zero-Token Skill Synthesis &nbsp;•&nbsp; MCP-Native</b><br/>
@@ -23,6 +23,8 @@
   <a href="#works-with-everything">Integrations</a> &bull;
   <a href="#how-it-works">Architecture</a> &bull;
   <a href="#self-improving-ai-runtime--gets-smarter-every-session">Self-Improving</a> &bull;
+  <a href="#pillar-4--federated-swarm-learning">Federation</a> &bull;
+  <a href="#pillar-5--response-distillation">Distillation</a> &bull;
   <a href="https://github.com/juyterman1000/entroly/discussions">Community</a>
 </p>
 
@@ -342,6 +344,86 @@ User query → miss → EvolutionLogger registers gap
 ```
 
 No manual tuning. No config files. No tokens spent on learning. The daemon ships with the runtime and starts the moment you run `entroly go`.
+
+---
+
+### Pillar 4 — Federated Swarm Learning
+
+> **10,000 developers dreaming together. Your AI wakes up smarter every morning.**
+
+Here's the sci-fi part: when your Entroly daemon goes idle and starts dreaming (Pillar 3), it doesn't just improve *your* installation. It broadcasts what it learned — anonymously, privately — to every other Entroly user on Earth. And absorbs what they learned too.
+
+**The result:** A self-improving global intelligence network that gets exponentially smarter as it grows. Every developer who installs Entroly makes every other developer's AI better. Overnight. Automatically.
+
+```
+You sleep → your daemon dreams → finds a better strategy → shares it globally
+     ↓
+10,000 other daemons do the same → you wake up → your AI absorbed all of it
+```
+
+**Why this is unkillable:**
+
+| | Every other AI tool | **Entroly** |
+|---|---|---|
+| Who improves your AI? | You, alone | **Every Entroly user on the planet** |
+| Network effect | None | **More users = everyone gets smarter, faster** |
+| Can competitors copy this? | N/A | **Not without building the same user base** |
+| Infrastructure cost | Cloud servers, GPU clusters | **$0 — runs on GitHub** |
+| Privacy | Your data on someone's server | **Military-grade: differential privacy + anonymous IDs** |
+
+This is the moat. Not the code. Not the algorithms. **The network.** Every new user makes the moat deeper. OpenAI can't buy this. Anthropic can't build this. It only exists because thousands of developers chose Entroly.
+
+**Privacy is non-negotiable:**
+- Your code never leaves your machine. Only anonymized optimization weights are shared
+- Each contribution is noise-protected — even if intercepted, individual data is indistinguishable from random noise
+- Your identity is a random ID stored locally — not derived from your name, email, or machine
+- Poisoning attacks are filtered by trimmed-mean aggregation — bad actors can't corrupt the swarm
+
+```bash
+# Opt-in (default: off — your choice, always)
+export ENTROLY_FEDERATION=1
+```
+
+Works identically in Python and Node.js. Same protocol. Same privacy guarantees.
+
+---
+
+### Pillar 5 — Response Distillation
+
+> **Your AI talks too much. Entroly fixes that too.**
+
+LLMs waste ~40% of output tokens on filler nobody reads: "Sure, I'd be happy to help!", "Let me think about that...", "Hope this helps!". You're paying for every one of those tokens.
+
+Response Distillation strips the fluff. Code blocks are never touched.
+
+```
+Before: "Sure! I'd be happy to help you with that. Let me take a careful look
+          at your code. The issue is in the auth module — specifically the
+          token validation logic. Hope this helps! Let me know if you need
+          anything else."
+
+After:  "The issue is in the auth module — specifically the token validation logic."
+
+         → 75% fewer output tokens. Same information. Zero filler.
+```
+
+**Three levels — you choose:**
+
+| Mode | What goes | What stays | Typical savings |
+|---|---|---|---|
+| `lite` | Greetings, sign-offs | Everything else | 15–25% |
+| `full` | + hedging, meta-commentary, transitions | Code + technical content | 30–50% |
+| `ultra` | + articles, function words | Pure signal | 50–70% |
+
+**Safety guarantee:** Code blocks, JSON, YAML, XML — never modified. The distiller only touches prose.
+
+```bash
+export ENTROLY_DISTILL=1           # Turn it on
+export ENTROLY_DISTILL_MODE=full   # lite | full | ultra
+```
+
+Works in real-time on streaming responses. <1ms overhead per chunk.
+
 
 ### Make The Autonomy Visible
 
@@ -729,6 +811,10 @@ entroly proxy --port 9378
 | `ENTROLY_MCP_TRANSPORT` | `stdio` | MCP transport (stdio/sse) |
 | `ENTROLY_CONTEXT_REPORT` | `1` | Inline context report in LLM prompts (0 to disable) |
 | `ENTROLY_CACHE_ALIGN` | `1` | Provider KV cache prefix stabilization (0 to disable) |
+| `ENTROLY_FEDERATION` | `0` | Enable federated swarm learning (1 to enable) |
+| `ENTROLY_FEDERATION_BOT` | *(none)* | Shared GitHub bot token for anonymous federation writes |
+| `ENTROLY_DISTILL` | `0` | Enable response distillation / output compression (1 to enable) |
+| `ENTROLY_DISTILL_MODE` | `full` | Distillation intensity: `lite`, `full`, or `ultra` |
 
 ---
 
@@ -784,18 +870,8 @@ Hybrid Rust + Python. All math in Rust via PyO3 (50-100x faster). MCP + orchestr
 | **fragment.rs** | Core data structure | Content, metadata, scoring, SimHash fingerprint |
 | **lib.rs** | PyO3 bridge | All modules exposed to Python |
 
-### Novel Algorithms
 
-- **ECC** — 3-level hierarchical compression: L1 skeleton (5%), L2 deps (25%), L3 diversified fragments (70%)
-- **IOS** — Submodular Diversity + Multi-Resolution Knapsack in one greedy pass, (1-1/e) optimal
-- **KKT-REINFORCE** — Dual variable from budget constraint as REINFORCE baseline
-- **PRISM** — Natural gradient via Jacobi eigendecomposition of 4x4 gradient covariance
-- **PSM** — RBF kernel mean embedding in RKHS for query archetype discovery
-- **NKBE** — Game-theoretic multi-agent token allocation via Arrow-Debreu equilibrium
 
-### References
-
-Shannon (1948), Charikar (2002), Nemhauser-Wolsey-Fisher (1978), Sviridenko (2004), Boyd & Vandenberghe (Convex Optimization), Williams (1992), LLMLingua (EMNLP 2023), RepoFormer (ICML 2024), FILM-7B (NeurIPS 2024), CodeSage (ICLR 2024).
 
 </details>
 

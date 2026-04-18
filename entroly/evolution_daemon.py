@@ -2,7 +2,7 @@
 Evolution Daemon — Zero-Token Autonomous Self-Improvement
 =========================================================
 
-The orchestrator for the 3 Pillars of Zero-Token Autonomy:
+The orchestrator for the 4 Pillars of Zero-Token Autonomy:
 
   Pillar 1 — Token Economy (Self-Funded Evolution):
     Before any LLM-based synthesis, checks ValueTracker.get_evolution_budget().
@@ -19,6 +19,14 @@ The orchestrator for the 3 Pillars of Zero-Token Autonomy:
     During idle cycles (>60s), runs counterfactual weight optimization
     via DreamingLoop.run_dream_cycle(). Generates synthetic queries from
     FeedbackJournal history, tests weight perturbations, keeps improvements.
+
+  Pillar 4 — Archetype-Aware Evolution (NEW):
+    On startup, fingerprints the codebase topology (language mix, dep graph
+    density, entropy distribution, FFI ratio) and classifies it into an
+    archetype (e.g., 'rust_ffi_library', 'python_backend'). Loads optimized
+    PRISM 5D weights (recency, frequency, semantic, entropy, resonance)
+    for that archetype. The DreamingLoop evolves weights per-archetype
+    independently, so switching projects loads the right strategy instantly.
 
 Architecture:
   run_once() → EvolutionLogger.get_pending_gaps()
@@ -51,10 +59,11 @@ logger = logging.getLogger("entroly.evolution_daemon")
 class EvolutionDaemon:
     """Background daemon for autonomous self-improvement.
 
-    Orchestrates the 3 pillars:
+    Orchestrates the 4 pillars:
       1. ROI-gated evolution (ValueTracker budget guardrail)
       2. Structural synthesis first ($0), LLM fallback (budget-gated)
       3. Dreaming loop during idle cycles
+      4. Archetype-aware weight adaptation (PRISM 5D)
     """
 
     # How often the daemon checks for pending gaps (seconds)
@@ -69,6 +78,8 @@ class EvolutionDaemon:
         value_tracker: Any,
         feedback_journal: Any = None,
         rust_engine: Any = None,
+        project_root: str | None = None,
+        data_dir: str | None = None,
     ):
         """
         Args:
@@ -87,14 +98,64 @@ class EvolutionDaemon:
         self._structural = StructuralSynthesizer(rust_engine)
         self._dreaming = None
 
+        # ── Pillar 4: Archetype-Aware Evolution ─────────────────────
+        # Must initialize BEFORE DreamingLoop (which receives it as param)
+        self._archetype = None
+        self._archetype_info = None
+        try:
+            from .archetype_optimizer import ArchetypeOptimizer
+            arch_data_dir = data_dir or ".entroly"
+            arch_project_root = project_root or "."
+            self._archetype = ArchetypeOptimizer(
+                data_dir=arch_data_dir,
+                project_root=arch_project_root,
+            )
+            # Detect archetype on init (fast: scans file extensions + first 100 lines)
+            self._archetype_info = self._archetype.detect_and_load()
+            logger.info(
+                "EvolutionDaemon: detected archetype '%s' (conf=%.2f)",
+                self._archetype_info.label,
+                self._archetype_info.confidence,
+            )
+        except Exception as e:
+            logger.debug("EvolutionDaemon: archetype detection skipped: %s", e)
+
+        # ── Pillar 5: Federated Learning ────────────────────────────
+        # Opt-in: off by default. Enable via ENTROLY_FEDERATION=1.
+        self._federation = None
+        self._github_transport = None
+        try:
+            from .federation import FederationClient, GitHubTransport
+            self._federation = FederationClient(
+                data_dir=data_dir or ".entroly",
+            )
+            if self._federation.enabled:
+                logger.info("EvolutionDaemon: federation enabled")
+                # GitHub transport for global P2P (zero-cost)
+                self._github_transport = GitHubTransport()
+                # On startup: sync remote contributions then merge
+                if self._archetype:
+                    try:
+                        self._github_transport.sync_to_local(self._federation)
+                    except Exception:
+                        pass  # Network errors are non-fatal
+                    self._federation.merge_global(self._archetype)
+        except Exception as e:
+            logger.debug("EvolutionDaemon: federation init skipped: %s", e)
+
+        # ── Pillar 3: Dreaming Loop ─────────────────────────────────
         if feedback_journal:
             from .autotune import DreamingLoop
-            self._dreaming = DreamingLoop(feedback_journal)
+            self._dreaming = DreamingLoop(
+                feedback_journal,
+                archetype_optimizer=self._archetype,
+            )
 
         # State
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._cooldowns: dict[str, float] = {}  # entity_key -> last_attempt_time
+        self._federation_cycle_counter = 0
         self._stats = {
             "structural_successes": 0,
             "structural_failures": 0,
@@ -103,6 +164,10 @@ class EvolutionDaemon:
             "skills_promoted": 0,
             "skills_pruned": 0,
             "dream_cycles": 0,
+            "federation_contributions": 0,
+            "federation_merges": 0,
+            "archetype": self._archetype_info.label if self._archetype_info else None,
+            "archetype_confidence": self._archetype_info.confidence if self._archetype_info else 0.0,
         }
 
     def start(self) -> None:
@@ -176,6 +241,72 @@ class EvolutionDaemon:
             results["dream"] = dream_result
             if dream_result.get("status") == "completed":
                 self._stats["dream_cycles"] += 1
+
+                # ── Phase 3: Archetype weight feedback (Pillar 4) ──────
+                # After dreaming, feed updated weights back to the archetype
+                # optimizer so they persist across sessions.
+                if self._archetype and dream_result.get("improvements", 0) > 0:
+                    try:
+                        from .autotune import load_config
+                        evolved_config = load_config()
+                        # Map autotune config keys → archetype weight keys
+                        updated_weights = self._archetype.current_weights()
+                        weight_map = {
+                            "w_r": "w_recency", "w_f": "w_frequency",
+                            "w_s": "w_semantic", "w_e": "w_entropy",
+                        }
+                        for short, full in weight_map.items():
+                            if short in evolved_config:
+                                updated_weights[full] = evolved_config[short]
+                        self._archetype.update_weights(updated_weights)
+                        results["archetype_updated"] = True
+                        logger.debug(
+                            "EvolutionDaemon: archetype weights updated from dream cycle"
+                        )
+                    except Exception as e:
+                        logger.debug("EvolutionDaemon: archetype feedback error: %s", e)
+
+                # ── Phase 4: Federation (Pillar 5) ─────────────────────
+                # Contribute improved weights + periodically merge global
+                self._federation_cycle_counter += 1
+                if self._federation and self._federation.enabled and self._archetype:
+                    try:
+                        # Contribute after each dream improvement
+                        if dream_result.get("improvements", 0) > 0:
+                            if self._federation.contribute(self._archetype):
+                                self._stats["federation_contributions"] += 1
+                                results["federation_contributed"] = True
+                                # Push to GitHub for global reach
+                                if self._github_transport and self._github_transport.can_write:
+                                    try:
+                                        packet = self._federation.prepare_contribution(
+                                            self._archetype.current_archetype(),
+                                            self._archetype.current_weights(),
+                                            self._archetype.stats().get("strategy_table", {}).get(
+                                                self._archetype.current_archetype(), {}
+                                            ).get("sample_count", 0),
+                                            self._archetype.stats().get("strategy_table", {}).get(
+                                                self._archetype.current_archetype(), {}
+                                            ).get("confidence", 0),
+                                        )
+                                        if packet:
+                                            self._github_transport.push(packet)
+                                    except Exception:
+                                        pass  # GitHub push is best-effort
+
+                        # Merge global every 10 dream cycles
+                        if self._federation_cycle_counter % 10 == 0:
+                            # Sync from GitHub first
+                            if self._github_transport:
+                                try:
+                                    self._github_transport.sync_to_local(self._federation)
+                                except Exception:
+                                    pass  # Network errors are non-fatal
+                            if self._federation.merge_global(self._archetype):
+                                self._stats["federation_merges"] += 1
+                                results["federation_merged"] = True
+                    except Exception as e:
+                        logger.debug("EvolutionDaemon: federation error: %s", e)
 
         return results
 
@@ -273,6 +404,18 @@ class EvolutionDaemon:
         result["budget"] = self._value_tracker.get_evolution_budget()
         if self._dreaming:
             result["dreaming"] = self._dreaming.stats()
+        if self._archetype:
+            result["archetype"] = self._archetype.stats()
         result["running"] = bool(self._thread and self._thread.is_alive())
         return result
+
+    def get_archetype_weights(self) -> dict[str, float] | None:
+        """Return the PRISM 5D weights for the detected archetype.
+
+        Called by the context engine to set initial weights on startup,
+        before any task-specific or dreaming optimizations kick in.
+        """
+        if self._archetype:
+            return self._archetype.get_export_weights()
+        return None
 

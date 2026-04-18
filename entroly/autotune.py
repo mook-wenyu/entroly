@@ -1053,6 +1053,7 @@ class DreamingLoop:
         journal: FeedbackJournal,
         config_path: Path | None = None,
         max_iterations: int = DREAMING_MAX_ITERATIONS,
+        archetype_optimizer: Any = None,
     ):
         self._journal = journal
         self._config_path = config_path or CONFIG_PATH
@@ -1061,6 +1062,7 @@ class DreamingLoop:
         self._total_dreams: int = 0
         self._total_improvements: int = 0
         self._best_efficiency: float = 0.0
+        self._archetype_optimizer = archetype_optimizer
 
     def record_activity(self) -> None:
         """Called on every user query to reset the idle timer."""
@@ -1215,6 +1217,23 @@ class DreamingLoop:
                 save_config(config)
                 improvements += 1
                 self._total_improvements += 1
+
+                # ── Pillar 4: Feed improvement to archetype optimizer ──
+                # Maps the improved autotune config weights to the archetype
+                # strategy table so they persist per-archetype across sessions.
+                if self._archetype_optimizer:
+                    try:
+                        updated = self._archetype_optimizer.current_weights()
+                        key_map = {
+                            "w_r": "w_recency", "w_f": "w_frequency",
+                            "w_s": "w_semantic", "w_e": "w_entropy",
+                        }
+                        for short, full in key_map.items():
+                            if short in mutated_config:
+                                updated[full] = mutated_config[short]
+                        self._archetype_optimizer.update_weights(updated)
+                    except Exception:
+                        pass  # non-critical: don't break dreaming
 
         wall_seconds = time.time() - t_start
 

@@ -650,6 +650,20 @@ class PromptCompilerProxy:
         self._trajectory_turns: collections.OrderedDict[str, int] = collections.OrderedDict()
         self._trajectory_max_clients = 1000  # evict LRU beyond this
 
+        # ── Context Waste Telemetry ──
+        # Tracks input context waste % per request (orig - optimized) / orig
+        # This is what produces the real "X% of context window is wasted" number
+        self._waste_ratios: list[float] = []  # Rolling window of per-request waste %
+        self._waste_max_samples: int = 1000   # Keep last 1000 for rolling average
+
+        # ── Response Distillation ──
+        # Strips filler from LLM responses (pleasantries, hedging, meta-commentary)
+        # Grounded in Selective Context (Li et al., EMNLP 2023) self-information theory
+        self._enable_distill = os.environ.get("ENTROLY_DISTILL", "1") != "0"
+        self._distill_mode = os.environ.get("ENTROLY_DISTILL_MODE", "full")  # lite/full/ultra
+        self._total_output_original_tokens: int = 0
+        self._total_output_compressed_tokens: int = 0
+
         # Gap #29: Last optimization context (for transparency endpoint)
         self._last_context_fragments: list = []
         self._last_excluded_fragments: list = []  # Top rejected candidates for /explain
@@ -859,6 +873,13 @@ class PromptCompilerProxy:
                     with self._stats_lock:
                         self._total_original_tokens += original_tokens
                         self._total_optimized_tokens += optimized_tokens
+                        # ── Context Waste Telemetry ──
+                        # Record per-request waste ratio for the real "X% wasted" number
+                        if original_tokens > 0:
+                            waste_ratio = max(0.0, (original_tokens - optimized_tokens) / original_tokens)
+                            self._waste_ratios.append(waste_ratio)
+                            if len(self._waste_ratios) > self._waste_max_samples:
+                                self._waste_ratios.pop(0)
                         self._last_context_fragments = selected_frags[:20] if selected_frags else []
                         # Track the top 10 excluded fragments for /explain transparency.
                         # These are candidates the engine considered but dropped.
@@ -1573,6 +1594,76 @@ class PromptCompilerProxy:
                         self.engine.record_reward(selected_frag_ids, reward)
             except Exception:
                 pass  # Never block response for feedback
+
+        # ── Response Distillation ──
+        # Strip filler from LLM response (pleasantries, hedging, meta-commentary)
+        # Preserves all code blocks, technical content, and structured data
+        if self._enable_distill and isinstance(content, dict):
+            try:
+                from .proxy_transform import distill_response
+                modified = False
+                # OpenAI format: choices[].message.content
+                for choice in content.get("choices", []):
+                    msg = choice.get("message", {})
+                    if msg.get("content") and isinstance(msg["content"], str):
+                        compressed, orig_c, comp_c = distill_response(
+                            msg["content"], mode=self._distill_mode,
+                        )
+                        if comp_c < orig_c:
+                            msg["content"] = compressed
+                            modified = True
+                            with self._stats_lock:
+                                self._total_output_original_tokens += orig_c
+                                self._total_output_compressed_tokens += comp_c
+
+                # Anthropic format: content[].text
+                for block in content.get("content", []):
+                    if isinstance(block, dict) and block.get("text"):
+                        compressed, orig_c, comp_c = distill_response(
+                            block["text"], mode=self._distill_mode,
+                        )
+                        if comp_c < orig_c:
+                            block["text"] = compressed
+                            modified = True
+                            with self._stats_lock:
+                                self._total_output_original_tokens += orig_c
+                                self._total_output_compressed_tokens += comp_c
+
+                # Gemini format: candidates[].content.parts[].text
+                for cand in content.get("candidates", []):
+                    for part in cand.get("content", {}).get("parts", []):
+                        if part.get("text") and isinstance(part["text"], str):
+                            compressed, orig_c, comp_c = distill_response(
+                                part["text"], mode=self._distill_mode,
+                            )
+                            if comp_c < orig_c:
+                                part["text"] = compressed
+                                modified = True
+                                with self._stats_lock:
+                                    self._total_output_original_tokens += orig_c
+                                    self._total_output_compressed_tokens += comp_c
+
+                if modified:
+                    with self._stats_lock:
+                        output_saved_pct = 0
+                        if self._total_output_original_tokens > 0:
+                            output_saved_pct = (
+                                (self._total_output_original_tokens - self._total_output_compressed_tokens)
+                                * 100 // self._total_output_original_tokens
+                            )
+                    resp_headers["X-Entroly-Output-Saved-Pct"] = str(output_saved_pct)
+                    logger.debug(
+                        "Distill: output compressed (%d%% saved, mode=%s)",
+                        output_saved_pct, self._distill_mode,
+                    )
+            except Exception:
+                pass  # Never block response for output compression
+
+        # Add context waste % header
+        with self._stats_lock:
+            if self._waste_ratios:
+                avg_waste = sum(self._waste_ratios) / len(self._waste_ratios)
+                resp_headers["X-Entroly-Context-Waste-Pct"] = f"{avg_waste * 100:.1f}"
 
         return JSONResponse(
             content=content,

@@ -27,7 +27,10 @@
     "js/value_tracker.js",
     "js/agentskills_export.js",
     "js/gateways.js",
-    "js/vault_observer.js"
+    "js/vault_observer.js",
+    "js/distill.js",
+    "js/federation.js",
+    "js/evolution_daemon.js"
   ],
   "scripts": {
     "serve": "node js/server.js",

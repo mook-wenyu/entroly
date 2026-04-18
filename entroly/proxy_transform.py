@@ -1721,3 +1721,189 @@ def _ecp_is_redundant(text: str, context_trigrams: set[str]) -> bool:
     overlap = len(text_trigrams & context_trigrams)
     coverage = overlap / len(text_trigrams)
     return coverage > 0.60  # >60% overlap = redundant
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Response Distillation — Output-Side Token Optimization
+# ═══════════════════════════════════════════════════════════════════════
+#
+# Inspired by:
+#   - Selective Context (Li et al., EMNLP 2023): self-information scoring
+#   - TRIM (arXiv 2025): omit inferable words, reconstruct later
+#
+# Key insight: LLM outputs contain ~40-60% "social tokens" — pleasantries,
+# hedging, meta-commentary — that carry near-zero Shannon entropy for
+# coding tasks. Removing them preserves all technical content while
+# cutting cost and latency.
+#
+# This does NOT touch code blocks, terminal output, or structured data.
+# Only prose sections between code blocks are compressed.
+
+# Filler patterns: high-frequency, zero-information phrases
+# Categorized by linguistic function for targeted removal
+_DISTILL_FILLER_PATTERNS: list[tuple[str, str]] = [
+    # Pleasantries (zero technical content)
+    (r"(?i)^(?:Sure!?|Of course!?|Absolutely!?|Great question!?|Happy to help!?|"
+     r"I'd be happy to help\.?|Let me help you with that\.?|"
+     r"No problem!?|Certainly!?|You're welcome!?)\s*", ""),
+    # Preamble ("I'm going to...")
+    (r"(?i)^(?:Let me |I'll |I will |I'm going to |I can |I need to )"
+     r"(?:take a look|look at|review|examine|analyze|check|investigate)\b[^.]*\.\s*", ""),
+    # Meta-commentary ("Here's what I found")
+    (r"(?i)^(?:Here(?:'s| is) (?:what|how|the|my|a|an)\b[^:]*:\s*)", ""),
+    # Hedging (near-zero information)
+    (r"(?i)\b(?:I think |I believe |It seems like |It looks like |"
+     r"It appears that |As far as I can tell,? |From what I can see,? |"
+     r"If I understand correctly,? )", ""),
+    # Filler transitions
+    (r"(?i)^(?:Now,? |Next,? |Then,? |After that,? |Moving on,? |"
+     r"With that said,? |That being said,? |Having said that,? )"
+     r"(?:let(?:'s| us) )", ""),
+    # Closing pleasantries
+    (r"(?i)(?:Let me know if (?:you (?:have|need)|there(?:'s| is)|that)\b[^.!]*[.!]?\s*$)", ""),
+    (r"(?i)(?:Feel free to (?:ask|reach out|let me know)\b[^.!]*[.!]?\s*$)", ""),
+    (r"(?i)(?:Hope (?:this|that) helps!?\s*$)", ""),
+    (r"(?i)(?:Is there anything else\b[^.?!]*[.?!]?\s*$)", ""),
+    # Redundant acknowledgments
+    (r"(?i)^(?:I see\.|I understand\.|Got it\.|Right\.|Okay\.)\s*", ""),
+    # Verbose connectors (replace with terse equivalents)
+    (r"(?i)\bIn order to\b", "To"),
+    (r"(?i)\bDue to the fact that\b", "Because"),
+    (r"(?i)\bAt this point in time\b", "Now"),
+    (r"(?i)\bFor the purpose of\b", "For"),
+    (r"(?i)\bIn the event that\b", "If"),
+    (r"(?i)\bWith regard to\b", "About"),
+    (r"(?i)\bIt is important to note that\b", "Note:"),
+    (r"(?i)\bAs (?:mentioned|noted|stated) (?:earlier|above|previously),?\s*", ""),
+]
+
+# Pre-compile for performance (called on every response)
+_DISTILL_COMPILED = [
+    (_re.compile(pat), repl) for pat, repl in _DISTILL_FILLER_PATTERNS
+]
+
+# Lines that are pure filler (entire line is fluff)
+_DISTILL_PURE_FILLER = _re.compile(
+    r"^(?:"
+    r"Sure(?:,| thing).*|"
+    r"I(?:'d| would) (?:be happy|love) to.*|"
+    r"Let me (?:know|explain|walk you through).*|"
+    r"(?:Here(?:'s| is) (?:a|the) (?:summary|breakdown|overview|explanation).*)|"
+    r"(?:To (?:summarize|recap|sum up):?.*)|"
+    r"(?:In (?:summary|conclusion):?.*)"
+    r")$",
+    _re.IGNORECASE,
+)
+
+
+def distill_response(
+    text: str,
+    mode: str = "full",
+) -> tuple[str, int, int]:
+    """Apply response distillation to LLM output text.
+
+    Strips filler, pleasantries, hedging, and meta-commentary while
+    preserving all code blocks, technical content, and structured data.
+
+    Args:
+        text: Raw LLM response text
+        mode: Compression intensity
+            - "lite": Only remove pure pleasantries
+            - "full": Remove filler + verbose connectors (default)
+            - "ultra": Aggressive — also strip articles and filler words
+
+    Returns:
+        (compressed_text, original_token_count, compressed_token_count)
+    """
+    if not text or len(text) < 50:
+        original_count = len(text.split()) if text else 0
+        return text, original_count, original_count
+
+    original_count = len(text.split())
+
+    # Split into code blocks and prose sections
+    # We NEVER touch code blocks — only compress prose
+    parts = _re.split(r"(```[\s\S]*?```)", text)
+
+    compressed_parts = []
+    for i, part in enumerate(parts):
+        if part.startswith("```"):
+            # Code block — pass through untouched
+            compressed_parts.append(part)
+        else:
+            # Prose — compress
+            compressed_parts.append(
+                _compress_prose(part, mode)
+            )
+
+    result = "".join(compressed_parts)
+
+    # Clean up: collapse multiple blank lines
+    result = _re.sub(r"\n{3,}", "\n\n", result)
+    result = result.strip()
+
+    compressed_count = len(result.split()) if result else 0
+
+    return result, original_count, compressed_count
+
+
+def _compress_prose(text: str, mode: str) -> str:
+    """Compress a prose section (not inside a code block)."""
+    lines = text.split("\n")
+    output = []
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Skip pure-filler lines entirely
+        if stripped and _DISTILL_PURE_FILLER.match(stripped):
+            continue
+
+        # Apply pattern replacements
+        compressed = stripped
+        if mode in ("full", "ultra"):
+            for pattern, replacement in _DISTILL_COMPILED:
+                compressed = pattern.sub(replacement, compressed)
+        elif mode == "lite":
+            # Lite: only first 4 patterns (pleasantries + preamble)
+            for pattern, replacement in _DISTILL_COMPILED[:4]:
+                compressed = pattern.sub(replacement, compressed)
+
+        # Ultra mode: also strip articles and filler words
+        if mode == "ultra":
+            compressed = _re.sub(r"\b(?:the|a|an|just|simply|basically|essentially)\s+", "", compressed)
+            compressed = _re.sub(r"\s{2,}", " ", compressed)
+
+        # Keep the line if it has content after compression
+        if compressed.strip():
+            # Preserve original indentation for non-empty lines
+            leading = len(line) - len(line.lstrip())
+            output.append(" " * leading + compressed.strip())
+        elif not stripped:
+            # Preserve blank lines
+            output.append("")
+
+    return "\n".join(output)
+
+
+def distill_response_sse_chunk(
+    chunk_text: str,
+    mode: str = "full",
+) -> str:
+    """Distill a single SSE content delta for streaming responses.
+
+    Lightweight version for streaming: only applies pattern matching
+    to individual deltas. No cross-chunk analysis.
+    """
+    if not chunk_text or len(chunk_text) < 10:
+        return chunk_text
+
+    # Don't compress if we're inside a code block
+    if "```" in chunk_text or chunk_text.startswith("    "):
+        return chunk_text
+
+    result = chunk_text
+    for pattern, replacement in _DISTILL_COMPILED[:8]:  # Core patterns only
+        result = pattern.sub(replacement, result)
+
+    return result
