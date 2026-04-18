@@ -84,17 +84,6 @@ impl LshTable {
         let key = self.hash_key(fp);
         self.buckets.entry(key).or_default().push(idx);
     }
-    #[cfg(test)]
-    fn remove(&mut self, fp: u64, idx: usize) {
-        let key = self.hash_key(fp);
-        if let Some(bucket) = self.buckets.get_mut(&key) {
-            bucket.retain(|&x| x != idx);
-            if bucket.is_empty() {
-                self.buckets.remove(&key);
-            }
-        }
-    }
-
     /// Multi-probe: exact bucket + MULTI_PROBE_DEPTH single-bit-flip neighbors.
     fn query_multiprobe(&self, fp: u64) -> Vec<usize> {
         let key = self.hash_key(fp);
@@ -138,14 +127,6 @@ impl LshIndex {
         }
     }
 
-    /// Remove a fragment entry (called on eviction).
-    #[cfg(test)]
-    pub(crate) fn remove(&mut self, fp: u64, idx: usize) {
-        for table in &mut self.tables {
-            table.remove(fp, idx);
-        }
-    }
-
     /// Query for candidate fragment indices similar to the given fingerprint.
     /// Returns a deduplicated set — caller computes exact Hamming distance.
     pub fn query(&self, fp: u64) -> Vec<usize> {
@@ -164,11 +145,18 @@ impl LshIndex {
             table.buckets.clear();
         }
     }
+}
 
-    /// Number of unique entries in the first table (approximate size).
-    #[cfg(test)]
-    pub(crate) fn approx_size(&self) -> usize {
-        self.tables[0].buckets.values().map(|b| b.len()).sum()
+#[cfg(test)]
+impl LshIndex {
+    /// Remove a fragment entry (called on eviction).
+    pub fn remove(&mut self, fp: u64, idx: usize) {
+        for table in &mut self.tables {
+            let key = table.hash_key(fp);
+            if let Some(v) = table.buckets.get_mut(&key) {
+                v.retain(|&i| i != idx);
+            }
+        }
     }
 }
 

@@ -28,29 +28,6 @@ use crate::depgraph::DepGraph;
 // Types
 // ═══════════════════════════════════════════════════════════════════
 
-/// Severity of a health issue (distinct from SAST severity — this is about
-/// maintenance burden, not security risk).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[cfg(test)]
-pub(crate) enum HealthSeverity {
-    Low,
-    Medium,
-    High,
-    Critical,
-}
-
-#[cfg(test)]
-impl HealthSeverity {
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            HealthSeverity::Low      => "LOW",
-            HealthSeverity::Medium   => "MEDIUM",
-            HealthSeverity::High     => "HIGH",
-            HealthSeverity::Critical => "CRITICAL",
-        }
-    }
-}
-
 /// A pair of fragments that are near-duplicates (code clones).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClonePair {
@@ -81,14 +58,6 @@ impl CloneType {
         else if dist <= 8 { Some(CloneType::Renamed) }
         else if dist <= 16 { Some(CloneType::Structural) }
         else { None }
-    }
-    #[cfg(test)]
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            CloneType::NearIdentical => "Type-1 (near-identical)",
-            CloneType::Renamed       => "Type-2 (renamed)",
-            CloneType::Structural    => "Type-3 (structural)",
-        }
     }
 }
 

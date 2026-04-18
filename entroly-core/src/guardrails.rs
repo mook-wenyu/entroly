@@ -220,16 +220,6 @@ pub fn has_safety_signal(content: &str) -> bool {
 
 /// Compute the criticality boost for a fragment.
 /// Returns a multiplier [1.0, 10.0] for the relevance score.
-#[cfg(test)]
-pub fn criticality_boost(criticality: Criticality) -> f64 {
-    match criticality {
-        Criticality::Normal => 1.0,
-        Criticality::Important => 2.0,
-        Criticality::Critical => 5.0,
-        Criticality::Safety => 10.0,
-    }
-}
-
 /// Adaptive budget allocation based on task type.
 ///
 /// Different tasks need different context volumes:

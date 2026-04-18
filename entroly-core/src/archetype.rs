@@ -534,6 +534,12 @@ impl ArchetypeEngine {
 // PyO3 Bindings — Exposes ArchetypeEngine to Python
 // ═══════════════════════════════════════════════════════════════════
 
+impl Default for ArchetypeEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[pymethods]
 impl ArchetypeEngine {
     /// Create a new ArchetypeEngine with 5 seed archetypes.

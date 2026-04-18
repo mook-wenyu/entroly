@@ -51,13 +51,6 @@ pub enum AnomalyType {
 }
 
 impl AnomalyType {
-    #[cfg(test)]
-    pub fn label(&self) -> &'static str {
-        match self {
-            AnomalyType::Spike => "ENTROPY_SPIKE",
-            AnomalyType::Drop  => "ENTROPY_DROP",
-        }
-    }
 }
 
 /// A single entropy anomaly detected in the codebase.

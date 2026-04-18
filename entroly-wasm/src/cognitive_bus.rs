@@ -701,9 +701,8 @@ impl CognitiveBus {
 }
 
 #[cfg(test)]
-// ── Rust-only helpers (not exposed to Python) ──────────────────────────
-
 impl CognitiveBus {
+    // ── Rust-only helpers (not exposed to Python) ──
     /// Drain raw events (Rust-only, for internal use and testing).
     pub fn drain_raw(&mut self, agent_id: &str, limit: usize) -> Vec<BusEvent> {
         match self.subscribers.get_mut(agent_id) {

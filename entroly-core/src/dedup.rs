@@ -214,20 +214,7 @@ impl DedupIndex {
 
 }
 
-#[cfg(test)]
-impl DedupIndex {
-    /// Get the stored fingerprint for a fragment.
-    pub fn get_fingerprint(&self, fragment_id: &str) -> Option<u64> {
-        self.fingerprints.get(fragment_id).copied()
-    }
 
-    /// Export all fingerprints for checkpointing.
-    pub fn export_fingerprints(&self) -> Vec<(String, u64)> {
-        self.fingerprints.iter()
-            .map(|(k, v)| (k.clone(), *v))
-            .collect()
-    }
-}
 
 #[cfg(test)]
 mod tests {

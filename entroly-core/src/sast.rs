@@ -46,16 +46,6 @@ impl Severity {
             Severity::Critical => 9.5,
         }
     }
-    #[cfg(test)]
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Severity::Info     => "INFO",
-            Severity::Low      => "LOW",
-            Severity::Medium   => "MEDIUM",
-            Severity::High     => "HIGH",
-            Severity::Critical => "CRITICAL",
-        }
-    }
 }
 
 /// A single SAST rule.
@@ -77,24 +67,6 @@ pub struct SastRule {
     pub languages:   &'static [&'static str],
     /// Is this rule taint-aware (needs TaintContext to fire)?
     pub taint_aware: bool,
-}
-
-/// A taint source — a variable or expression that receives user-controlled data.
-#[derive(Debug, Clone)]
-#[cfg(test)]
-struct TaintSource {
-    var_name: String,
-    line:     usize,
-}
-
-/// A taint-flow finding: user input reached a sink.
-#[derive(Debug, Clone)]
-#[cfg(test)]
-pub(crate) struct TaintFinding {
-    pub source_line: usize,
-    pub source_var:  String,
-    pub sink_line:   usize,
-    pub sink_pattern: String,
 }
 
 /// A single SAST finding.
