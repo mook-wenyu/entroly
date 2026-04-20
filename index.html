@@ -706,13 +706,9 @@
 
     <div class="preview" role="button" tabindex="0" aria-label="Play Entroly demo video"
          onclick="openDemo()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDemo();}">
-      <video autoplay muted loop playsinline preload="metadata"
-        poster="https://raw.githubusercontent.com/juyterman1000/entroly/main/docs/assets/demo.svg">
-        <source src="https://raw.githubusercontent.com/juyterman1000/entroly/main/docs/assets/demo.mp4" type="video/mp4">
-        <source src="https://raw.githubusercontent.com/juyterman1000/entroly/main/docs/assets/demo.webm" type="video/webm">
-        <img src="https://raw.githubusercontent.com/juyterman1000/entroly/main/docs/assets/demo.svg"
-          alt="Entroly Demo — 70-95% token savings">
-      </video>
+      <img src="https://raw.githubusercontent.com/juyterman1000/entroly/main/docs/assets/demo.svg"
+        alt="Entroly Demo — 70-95% token savings"
+        loading="eager" decoding="async">
       <div class="play-overlay">
         <div class="play-btn" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
@@ -743,28 +739,21 @@
   <div class="lightbox" id="demoLightbox" onclick="closeDemo(event)" role="dialog" aria-modal="true" aria-label="Entroly demo video">
     <div class="lightbox-content" onclick="event.stopPropagation()">
       <button class="lightbox-close" onclick="closeDemo()" aria-label="Close demo">×</button>
-      <video id="demoVideoFull" controls playsinline preload="none"
-        poster="https://raw.githubusercontent.com/juyterman1000/entroly/main/docs/assets/demo.svg">
-        <source src="https://raw.githubusercontent.com/juyterman1000/entroly/main/docs/assets/demo.mp4" type="video/mp4">
-        <source src="https://raw.githubusercontent.com/juyterman1000/entroly/main/docs/assets/demo.webm" type="video/webm">
-      </video>
+      <img id="demoVideoFull"
+        src="https://raw.githubusercontent.com/juyterman1000/entroly/main/docs/assets/demo.svg"
+        alt="Entroly Demo — 70-95% token savings"
+        style="width:100%;height:100%;object-fit:contain;display:block;background:#050508;">
     </div>
   </div>
   <script>
     function openDemo() {
-      const lb = document.getElementById('demoLightbox');
-      const v  = document.getElementById('demoVideoFull');
-      lb.classList.add('open');
+      document.getElementById('demoLightbox').classList.add('open');
       document.body.style.overflow = 'hidden';
-      try { v.currentTime = 0; v.play(); } catch(e) {}
     }
     function closeDemo(ev) {
       if (ev && ev.target && ev.target.closest('.lightbox-content') && ev.type === 'click' && !ev.target.classList.contains('lightbox-close')) return;
-      const lb = document.getElementById('demoLightbox');
-      const v  = document.getElementById('demoVideoFull');
-      lb.classList.remove('open');
+      document.getElementById('demoLightbox').classList.remove('open');
       document.body.style.overflow = '';
-      try { v.pause(); } catch(e) {}
     }
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape') closeDemo();
