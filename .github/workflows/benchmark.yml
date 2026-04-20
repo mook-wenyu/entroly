@@ -1,13 +1,17 @@
-name: Entroly Context Index — Automated Benchmark
+name: Entroly Context Index — Competitive Benchmark
 
 on:
-  schedule:
-    # Weekly: Monday at 06:00 UTC
-    - cron: '0 6 * * 1'
+  pull_request:
+    paths:
+      - 'bench/**'
+      - 'entroly/**'
+      - 'entroly-core/**'
+      - 'BENCHMARKS.md'
+      - '.github/workflows/benchmark.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   benchmark:
@@ -24,27 +28,40 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dev]" 2>/dev/null || pip install -e . 2>/dev/null || true
 
-      - name: Run competitive benchmark
+      - name: Run competitive benchmark with regression guard
         run: |
-          python bench/compare.py > bench_output.txt 2>&1 || true
-          cat bench_output.txt
+          python bench/compare.py \
+            --markdown bench_section.md \
+            --check-regression \
+            | tee bench_output.txt
 
-      - name: Run test suite
+      - name: Verify BENCHMARKS.md is in sync with code
         run: |
-          python -m pytest tests/test_federation.py tests/test_archetype.py -v --tb=short 2>&1 | tee test_output.txt || true
+          python - <<'PY'
+          from pathlib import Path
+          import re, sys
 
-      - name: Update BENCHMARKS.md with timestamp
-        run: |
-          # Append run metadata
-          echo "" >> BENCHMARKS.md
-          echo "---" >> BENCHMARKS.md
-          echo "" >> BENCHMARKS.md
-          echo "*Last automated run: $(date -u '+%Y-%m-%d %H:%M UTC') · Commit: ${GITHUB_SHA::8} · [View workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})*" >> BENCHMARKS.md
+          doc = Path("BENCHMARKS.md").read_text(encoding="utf-8")
+          fresh = Path("bench_section.md").read_text(encoding="utf-8").rstrip()
 
-      - name: Commit updated benchmarks
-        run: |
-          git config user.name "entroly-bot"
-          git config user.email "bot@entroly.dev"
-          git add BENCHMARKS.md
-          git diff --cached --quiet || git commit -m "chore: update benchmark results [skip ci]"
-          git push || true
+          start, end = "<!-- BENCH:START -->", "<!-- BENCH:END -->"
+          if start not in doc or end not in doc:
+              sys.exit("::error::BENCHMARKS.md is missing BENCH sentinels")
+
+          m = re.search(re.escape(start) + r"\n(.*?)\n" + re.escape(end), doc, flags=re.DOTALL)
+          committed = m.group(1).rstrip()
+
+          if committed != fresh:
+              print("::error::BENCHMARKS.md is stale — regenerate and commit it in this PR.")
+              print("Run locally:")
+              print("  python bench/compare.py --markdown bench_section.md")
+              print("then splice bench_section.md into BENCHMARKS.md between the BENCH sentinels.")
+              print()
+              print("--- expected (fresh) ---")
+              print(fresh)
+              print("--- committed ---")
+              print(committed)
+              sys.exit(1)
+
+          print("BENCHMARKS.md is in sync with bench/compare.py output.")
+          PY

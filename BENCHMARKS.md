@@ -18,42 +18,45 @@
 
 ---
 
+<!-- BENCH:START -->
 ## Results
 
-### Query 1: "authenticate user and process payment with rate limiting"
+### Query: "authenticate user and process payment with rate limiting"
 
 | Strategy | Fragments | Tokens | Utilization | Info Density | Relevance | Module Coverage | SAST Catches |
 |---|---|---|---|---|---|---|---|
 | RAW (Naive FIFO) | 6 | 295 | 98% | 0.751 | 50% | 3 | 0 |
-| TOP-K (Cosine) | 6 | 290 | 97% | 0.686 | 50% | 3 | 0 |
-| **ENTROLY** | **9** | **300** | **100%** | 0.721 | **75%** | **9** | **1** |
+| TOP-K (Cody-style) | 6 | 290 | 97% | 0.686 | 50% | 3 | 0 |
+| **ENTROLY (Knapsack)** | 9 | 300 | 100% | 0.721 | 75% | 9 | 1 |
 
-### Query 2: "fix the SQL injection vulnerability in the search endpoint"
+### Query: "fix the SQL injection vulnerability in the search endpoint"
 
 | Strategy | Fragments | Tokens | Utilization | Info Density | Relevance | Module Coverage | SAST Catches |
 |---|---|---|---|---|---|---|---|
 | RAW (Naive FIFO) | 6 | 295 | 98% | 0.751 | 14% | 3 | 0 |
-| TOP-K (Cosine) | 6 | 300 | 100% | 0.702 | 14% | 4 | 0 |
-| **ENTROLY** | **9** | **300** | **100%** | 0.721 | **29%** | **9** | **1** |
+| TOP-K (Cody-style) | 6 | 300 | 100% | 0.702 | 14% | 4 | 0 |
+| **ENTROLY (Knapsack)** | 9 | 300 | 100% | 0.721 | 29% | 9 | 1 |
 
-### Query 3: "add a refund button to the dashboard"
+### Query: "add a refund button to the dashboard"
 
 | Strategy | Fragments | Tokens | Utilization | Info Density | Relevance | Module Coverage | SAST Catches |
 |---|---|---|---|---|---|---|---|
 | RAW (Naive FIFO) | 6 | 295 | 98% | 0.751 | 20% | 3 | 0 |
-| TOP-K (Cosine) | 6 | 295 | 98% | 0.747 | 60% | 4 | 0 |
-| **ENTROLY** | **8** | **270** | **90%** | **0.777** | 40% | **8** | **1** |
+| TOP-K (Cody-style) | 6 | 295 | 98% | 0.747 | 60% | 4 | 0 |
+| **ENTROLY (Knapsack)** | 8 | 270 | 90% | 0.777 | 40% | 8 | 1 |
 
 ---
 
 ## Summary
 
-| Metric | RAW | TOP-K | ENTROLY | Entroly Advantage |
-|---|---|---|---|---|
-| **Avg fragments** | 6.0 | 6.0 | **8.7** | +45% more code per budget |
-| **Avg module coverage** | 3.0 | 3.7 | **8.7** | **2.4× broader** than Top-K |
-| **Total SAST catches** | 0 | 0 | **3** | Only Entroly finds the SQL injection |
-| **Avg info density** | 0.751 | 0.712 | 0.740 | +4% vs Top-K |
+| Metric | RAW | TOP-K | ENTROLY |
+|---|---|---|---|
+| Avg fragments | 6.0 | 6.0 | **8.7** |
+| Avg tokens used | 295 | 295 | 290 |
+| Avg info density | 0.751 | 0.712 | **0.740** |
+| Avg module coverage | 3.0 | 3.7 | **8.7** |
+| Total SAST catches | 0 | 0 | **3** |
+<!-- BENCH:END -->
 
 ### Key Findings
 
@@ -85,27 +88,3 @@ All strategies operate on the **same corpus** with the **same token budget**. No
 - **Relevance** = fraction of query terms present in selected context
 
 > **Note**: These benchmarks run on a synthetic but realistic corpus. Real-world numbers depend on your codebase structure, query patterns, and token budget. Run `entroly benchmark` to see your own numbers.
-
----
-
-*Last automated run: 2026-04-18 02:42 UTC · Commit: 6753989d · [View workflow](https://github.com/juyterman1000/entroly/actions/runs/24595120941)*
-
----
-
-*Last automated run: 2026-04-18 02:55 UTC · Commit: 63617c57 · [View workflow](https://github.com/juyterman1000/entroly/actions/runs/24595323954)*
-
----
-
-*Last automated run: 2026-04-18 03:09 UTC · Commit: 9109c6ee · [View workflow](https://github.com/juyterman1000/entroly/actions/runs/24595581278)*
-
----
-
-*Last automated run: 2026-04-18 03:46 UTC · Commit: 03912ac0 · [View workflow](https://github.com/juyterman1000/entroly/actions/runs/24596193098)*
-
----
-
-*Last automated run: 2026-04-18 04:08 UTC · Commit: 0e1d13a9 · [View workflow](https://github.com/juyterman1000/entroly/actions/runs/24596553247)*
-
----
-
-*Last automated run: 2026-04-20 08:22 UTC · Commit: 565714de · [View workflow](https://github.com/juyterman1000/entroly/actions/runs/24656141823)*

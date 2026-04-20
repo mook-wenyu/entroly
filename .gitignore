@@ -36,3 +36,8 @@ claudecode/
 # OS
 .DS_Store
 Thumbs.db
+
+# Benchmark workflow artifacts (regenerated each run)
+bench_section.md
+bench_output.txt
+test_output.txt

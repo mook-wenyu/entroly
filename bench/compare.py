@@ -22,6 +22,7 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import math
 import re
@@ -295,7 +296,86 @@ def evaluate(strategy_name: str, selected: list[dict], query: str, budget: int) 
 # Main
 # ═══════════════════════════════════════════════════════════════════════
 
+REGRESSION_MIN_SAST = 3
+REGRESSION_MIN_MODULES = 8.0
+
+
+def render_markdown(all_results: list) -> str:
+    """Emit the Results + Summary section as markdown for BENCHMARKS.md."""
+    lines: list[str] = []
+    lines.append("## Results")
+    lines.append("")
+    for query, query_results in zip(QUERIES, all_results):
+        lines.append(f'### Query: "{query}"')
+        lines.append("")
+        lines.append("| Strategy | Fragments | Tokens | Utilization | Info Density | Relevance | Module Coverage | SAST Catches |")
+        lines.append("|---|---|---|---|---|---|---|---|")
+        for r in query_results:
+            name = r["strategy"]
+            label = f"**{name}**" if name.startswith("ENTROLY") else name
+            lines.append(
+                f"| {label} | {r['fragments_selected']} | {r['tokens_used']} | "
+                f"{r['budget_utilization']} | {r['info_density']} | "
+                f"{r['query_relevance']} | {r['module_coverage']} | {r['security_catches']} |"
+            )
+        lines.append("")
+
+    lines.append("---")
+    lines.append("")
+    lines.append("## Summary")
+    lines.append("")
+    lines.append("| Metric | RAW | TOP-K | ENTROLY |")
+    lines.append("|---|---|---|---|")
+
+    def avg(idx: int, key: str) -> float:
+        return sum(r[idx][key] for r in all_results) / len(QUERIES)
+
+    def total(idx: int, key: str) -> int:
+        return sum(r[idx][key] for r in all_results)
+
+    lines.append(
+        f"| Avg fragments | {avg(0, 'fragments_selected'):.1f} | "
+        f"{avg(1, 'fragments_selected'):.1f} | **{avg(2, 'fragments_selected'):.1f}** |"
+    )
+    lines.append(
+        f"| Avg tokens used | {avg(0, 'tokens_used'):.0f} | "
+        f"{avg(1, 'tokens_used'):.0f} | {avg(2, 'tokens_used'):.0f} |"
+    )
+    lines.append(
+        f"| Avg info density | {avg(0, 'info_density'):.3f} | "
+        f"{avg(1, 'info_density'):.3f} | **{avg(2, 'info_density'):.3f}** |"
+    )
+    lines.append(
+        f"| Avg module coverage | {avg(0, 'module_coverage'):.1f} | "
+        f"{avg(1, 'module_coverage'):.1f} | **{avg(2, 'module_coverage'):.1f}** |"
+    )
+    lines.append(
+        f"| Total SAST catches | {total(0, 'security_catches')} | "
+        f"{total(1, 'security_catches')} | **{total(2, 'security_catches')}** |"
+    )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def regression_check(all_results: list) -> tuple[bool, str]:
+    """Return (ok, message). Fails if Entroly regresses below guardrails."""
+    entroly_sast = sum(r[2]["security_catches"] for r in all_results)
+    entroly_modules = sum(r[2]["module_coverage"] for r in all_results) / len(QUERIES)
+    if entroly_sast < REGRESSION_MIN_SAST:
+        return False, f"SAST catches regressed: {entroly_sast} < {REGRESSION_MIN_SAST}"
+    if entroly_modules < REGRESSION_MIN_MODULES:
+        return False, f"Module coverage regressed: {entroly_modules:.1f} < {REGRESSION_MIN_MODULES}"
+    return True, f"OK (SAST={entroly_sast}, modules={entroly_modules:.1f})"
+
+
 def main():
+    parser = argparse.ArgumentParser(description="Entroly competitive benchmark")
+    parser.add_argument("--markdown", metavar="PATH",
+                        help="Also write Results+Summary as markdown to PATH")
+    parser.add_argument("--check-regression", action="store_true",
+                        help="Exit non-zero if Entroly falls below quality guardrails")
+    args = parser.parse_args()
+
     print("=" * 80)
     print("COMPETITIVE BENCHMARK: Entroly vs Raw vs Top-K")
     print(f"Corpus: {len(CORPUS)} fragments · Budget: {TOKEN_BUDGET} tokens")
@@ -386,6 +466,16 @@ def main():
     topk_sast = sum(r[1]["security_catches"] for r in all_results)
     raw_sast = sum(r[0]["security_catches"] for r in all_results)
     print(f"  Security catches: Entroly={entroly_sast} vs Top-K={topk_sast} vs Raw={raw_sast}")
+
+    if args.markdown:
+        md = render_markdown(all_results)
+        Path(args.markdown).write_text(md, encoding="utf-8")
+        print(f"\n  Markdown written to: {args.markdown}")
+
+    ok, msg = regression_check(all_results)
+    print(f"\n  Regression check: {msg}")
+    if args.check_regression and not ok:
+        return 1
 
     return 0
 
