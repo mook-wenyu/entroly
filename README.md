@@ -270,5 +270,5 @@ Architecture, 21 Rust modules, 3-resolution compression, provenance guarantees, 
 <p align="center">
   <a href="https://github.com/juyterman1000/entroly/discussions">Discussions</a> •
   <a href="https://github.com/juyterman1000/entroly/issues">Issues</a> •
-  MIT License
+  Apache-2.0 License
 </p>
