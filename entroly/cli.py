@@ -1669,7 +1669,8 @@ def cmd_share(args):
     def _ids(frags: list) -> set:
         return {f.get("id") or f.get("source", "") for f in frags}
     def _jaccard(a: set, b: set) -> float:
-        if not a and not b: return 1.0
+        if not a and not b:
+            return 1.0
         return len(a & b) / max(len(a | b), 1)
 
     total_saved = 0
