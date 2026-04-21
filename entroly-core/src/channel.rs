@@ -424,8 +424,7 @@ pub fn contradiction_guard(
     // ASCII-set below covers Unix/Windows separators and common filename
     // delimiters, so "src/auth/login.py" → {src, auth, login, py}.
     fn path_tokens(src: &str) -> HashSet<String> {
-        src.split(|c: char| c == '/' || c == '\\' || c == '.' ||
-                             c == '_' || c == '-' || c == ':')
+        src.split(['/', '\\', '.', '_', '-', ':'])
             .filter(|s| !s.is_empty())
             .map(|s| s.to_ascii_lowercase())
             .collect()
