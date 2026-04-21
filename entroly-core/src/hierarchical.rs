@@ -359,8 +359,12 @@ pub fn allocate_budget(
 ///
 /// This naturally prevents: 5 auth files < 3 auth + 1 db + 1 config
 ///
-/// Guarantee: greedy selection with this submodular objective achieves
-/// (1 - 1/e) ≈ 0.63 of optimal.
+/// The objective f(S) = Σ_{f ∈ S} relevance(f) / (1 + |same-module(f, S\{f})|)
+/// is monotone submodular (diminishing returns per module cluster).
+/// Plain greedy on this under a *cardinality* constraint achieves (1 - 1/e)
+/// (Nemhauser, Wolsey & Fisher 1978). Under a *knapsack* constraint, density-
+/// greedy alone gives ½; the full (1 - 1/e - ε) bound requires Sviridenko's
+/// partial-enumeration variant (2004), which this function does not perform.
 pub fn submodular_marginal_gain(
     candidate_source: &str,
     candidate_relevance: f64,

@@ -25,8 +25,16 @@
 //!
 //! This is a multi-choice knapsack problem (MCKP) — each block must be
 //! assigned exactly one of 4 resolution levels.  We solve it via KKT
-//! dual bisection in O(30·N·4) = O(120N), giving a (1-1/e) submodular
-//! optimality guarantee when information value is submodular.
+//! dual bisection in O(30·N·4) = O(120N).
+//!
+//! Approximation note: the objective as formulated (Σ per-block weights) is
+//! linear/modular, not strictly submodular. On a knapsack, density-greedy on
+//! a modular objective achieves ½-approximation; the (1 - 1/e) bound requires
+//! a genuinely submodular objective (Feige 1998 for cardinality, Sviridenko
+//! 2004 for knapsack). If forward_value() is refactored to capture actual
+//! diminishing returns (e.g., via mutual-information-with-selected-set), the
+//! objective becomes submodular and stronger bounds apply. Until then, treat
+//! the theoretical bound as ½.
 //!
 //! # Resolution Levels (LOD tiers)
 //!
@@ -73,7 +81,8 @@
 //! 2. **Multi-choice knapsack via KKT bisection** instead of heuristic keep/delete
 //! 3. **Shannon-Rényi divergence** for noise detection in tool results
 //! 4. **Progressive temporal LOD** instead of one-shot compression
-//! 5. **Submodular optimality guarantee** (1-1/e ≈ 63%)
+//! 5. **KKT dual bisection over level assignments** (½ under knapsack with
+//!    the current linear objective; (1-1/e) if weights are made submodular)
 //!
 use std::collections::{HashMap, HashSet};
 use serde::{Serialize, Deserialize};

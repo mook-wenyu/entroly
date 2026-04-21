@@ -688,13 +688,14 @@ class BeliefCompiler:
         )
 
     def _walk_source_files(self, root: Path, max_files: int) -> list[Path]:
-        """Walk and yield source files, skipping excluded directories."""
+        """Walk and yield source files. max_files <= 0 means unlimited."""
+        unlimited = max_files is None or max_files <= 0
         files = []
         for dirpath, dirnames, filenames in os.walk(root):
             dirnames[:] = [d for d in dirnames if d not in self.SKIP_DIRS]
             for fn in filenames:
                 if Path(fn).suffix.lower() in self.SUPPORTED_EXTENSIONS:
                     files.append(Path(dirpath) / fn)
-                    if len(files) >= max_files:
+                    if not unlimited and len(files) >= max_files:
                         return files
         return files

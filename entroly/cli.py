@@ -564,7 +564,10 @@ def cmd_health(args):
         sec = _json.loads(engine._rust.security_report())
         total_findings = sec.get("critical_total", 0) + sec.get("high_total", 0)
         if total_findings > 0:
+            taint = sec.get("taint_flow_total", 0)
+            pat = sec.get("pattern_only_total", 0)
             print(f"\n  {C.RED}{total_findings} security findings ({sec.get('critical_total', 0)} critical, {sec.get('high_total', 0)} high){C.RESET}")
+            print(f"    {C.GRAY}{taint} taint-flow (high-confidence) + {pat} pattern-only (review for FPs){C.RESET}")
             if sec.get("most_vulnerable_fragment"):
                 print(f"    {C.GRAY}Most vulnerable: {sec['most_vulnerable_fragment']}{C.RESET}")
         else:
@@ -761,24 +764,29 @@ def cmd_benchmark(args):
         print(f"  {C.YELLOW}No files indexed. Run from a project directory.{C.RESET}")
         return
 
-    print(f"  Codebase: {total:,} total tokens\n")
-    print(f"  {'Query':<45} {'Raw':>8} {'Entroly':>8} {'Saved':>6}")
-    print(f"  {'-'*45} {'-'*8} {'-'*8} {'-'*6}")
+    # Honest baseline: a 32K "paste matching files into the prompt" dump,
+    # capped at what actually exists. Claiming savings vs. the whole repo
+    # (7M+ tokens) is marketing, not measurement.
+    baseline = min(total, 32_000)
+    budget = getattr(args, "budget", 4096)
+    print(f"  Codebase: {total:,} total tokens  |  Naive baseline: {baseline:,} tokens (32K dump or repo total)\n")
+    print(f"  {'Query':<45} {'Baseline':>9} {'Entroly':>8} {'Saved':>6}")
+    print(f"  {'-'*45} {'-'*9} {'-'*8} {'-'*6}")
 
     total_saved = 0
     for q in queries:
         engine.advance_turn()
-        opt = engine.optimize_context(token_budget=4096, query=q)
+        opt = engine.optimize_context(token_budget=budget, query=q)
         selected = opt.get("selected_fragments", []) or opt.get("selected", [])
         used = sum(f.get("token_count", 0) for f in selected)
-        saved = max(total - used, 0)
-        pct = (saved * 100) // max(total, 1)
+        saved = max(baseline - used, 0)
+        pct = (saved * 100) // max(baseline, 1)
         total_saved += saved
-        print(f"  {q:<45} {total:>7,} {used:>7,} {pct:>5}%")
+        print(f"  {q:<45} {baseline:>9,} {used:>7,} {pct:>5}%")
 
-    avg_pct = (total_saved * 100) // max(total * len(queries), 1)
-    print(f"\n  {C.GREEN}{C.BOLD}Average reduction: {avg_pct}%{C.RESET}")
-    print(f"  {C.GRAY}Entroly selects only the fragments relevant to each query.{C.RESET}\n")
+    avg_pct = (total_saved * 100) // max(baseline * len(queries), 1)
+    print(f"\n  {C.GREEN}{C.BOLD}Average reduction vs. 32K dump: {avg_pct}%{C.RESET}")
+    print(f"  {C.GRAY}Budget: {budget:,} tokens. Selector picks whole fragments; no byte-truncation.{C.RESET}\n")
 
 
 def cmd_status(args):
@@ -1031,8 +1039,9 @@ def cmd_export(args):
         except (json.JSONDecodeError, OSError):
             pass
 
-    # Write export file
-    out_path = Path(args.output) if args.output else Path("entroly_export.json")
+    # Write export file. Positional `output_path` takes precedence over -o/--output.
+    chosen = getattr(args, "output_path", None) or args.output
+    out_path = Path(chosen) if chosen else Path("entroly_export.json")
     out_path.write_text(json.dumps(export_data, indent=2) + "\n")
     print(f"\n  {C.GREEN}{C.BOLD}Exported to {out_path}{C.RESET}")
     print(f"  {C.GRAY}Share this file with teammates: entroly import {out_path}{C.RESET}\n")
@@ -1538,8 +1547,12 @@ def cmd_demo(args):
     models = ["gpt-4o", "claude-sonnet-4", "gemini-2.5-pro"]
 
     budget = 4096
-    print(f"  {C.BOLD}Without Entroly:{C.RESET} All {total_tokens_raw:,} tokens sent to LLM (wasteful)")
-    print(f"  {C.BOLD}With Entroly:{C.RESET} Optimized context for each query:\n")
+    # Honest baseline: a 32K "paste matching files until you fill the window" dump,
+    # not the whole repo. Claiming savings vs. total_tokens_raw (7M+ for AutoGPT)
+    # is theatrical — nobody sends their entire codebase.
+    BASELINE_PER_QUERY = min(total_tokens_raw, 32_000)
+    print(f"  {C.BOLD}Naive baseline:{C.RESET} dump ~{BASELINE_PER_QUERY:,} tokens of matching files per query")
+    print(f"  {C.BOLD}With Entroly:{C.RESET} selected context for each query:\n")
 
     total_saved = 0
     for query in sample_queries:
@@ -1547,9 +1560,9 @@ def cmd_demo(args):
         opt = engine.optimize_context(token_budget=budget, query=query)
         selected = opt.get("selected_fragments", [])
         tokens_used = sum(f.get("token_count", 0) for f in selected)
-        saved = total_tokens_raw - tokens_used
+        saved = max(0, BASELINE_PER_QUERY - tokens_used)
         total_saved += saved
-        pct = (saved * 100) // max(total_tokens_raw, 1)
+        pct = (saved * 100) // max(BASELINE_PER_QUERY, 1)
 
         # Per-query cost estimate
         cost_gpt4o = estimate_cost(saved, "gpt-4o")
@@ -1564,7 +1577,7 @@ def cmd_demo(args):
               f"({C.BOLD}{pct}% reduction{C.RESET}, ~${cost_gpt4o:.4f} saved)")
         print(f"       {C.GRAY}Top files: {top_str}{C.RESET}\n")
 
-    avg_pct = (total_saved * 100) // max(total_tokens_raw * len(sample_queries), 1)
+    avg_pct = (total_saved * 100) // max(BASELINE_PER_QUERY * len(sample_queries), 1)
 
     # Show projected savings across popular models
     if avg_pct == 0 and total_tokens_raw < 4096:
@@ -1625,29 +1638,87 @@ def cmd_share(args):
         "Explain the module structure and dependency graph",
     ]
 
-    budget = 4096
+    # Honest baseline for *token reduction* (headline only): a 32K "paste matching
+    # files until the window fills" dump, capped at what actually exists. Comparing
+    # against total_tokens_raw (7M+ for AutoGPT) is marketing, not measurement.
+    BUDGET = 4096
+    BUDGET_RELAXED = 8192  # 2× for stability measurement
+    BASELINE_PER_QUERY = min(total_tokens_raw, 32_000)
+
+    # --- Context Score: geometric mean of three defined quantities per query ---
+    # Stability(q) = Jaccard(selection@B, selection@2B). A well-ordered selector
+    #                 puts its most important items first; doubling budget adds,
+    #                 doesn't replace. Random selection → ~0.
+    # Coverage(q)  = fraction of non-stopword query terms present in selected
+    #                content. Sanity check: is the selection actually about q?
+    # Respect(q)   = 1 iff tokens_used <= B. Budget is a hard contract.
+    # ContextScore = 100 * (∏_q Stability·Coverage·Respect)^(1/(3N))
+    # No floors, no arbitrary caps. Bad on any axis → low score.
+    import re as _re
+    _STOPWORDS = {"how","does","do","the","a","an","is","are","what","why","when",
+                  "where","and","or","but","to","of","in","on","for","with","by",
+                  "it","this","that","these","those","be","will","can","could",
+                  "would","should","you","your","i","we","my","our"}
+    def _coverage(q: str, frags: list) -> float:
+        terms = {w.lower() for w in _re.findall(r"[a-zA-Z_]{3,}", q)
+                 if w.lower() not in _STOPWORDS}
+        if not terms:
+            return 1.0
+        blob = " ".join(f.get("content", "") for f in frags).lower()
+        return sum(1 for t in terms if t in blob) / len(terms)
+    def _ids(frags: list) -> set:
+        return {f.get("id") or f.get("source", "") for f in frags}
+    def _jaccard(a: set, b: set) -> float:
+        if not a and not b: return 1.0
+        return len(a & b) / max(len(a | b), 1)
+
     total_saved = 0
     query_results = []
+    stabilities: list[float] = []
+    coverages: list[float] = []
+    respects: list[float] = []
+
     for query in sample_queries:
         engine.advance_turn()
-        opt = engine.optimize_context(token_budget=budget, query=query)
-        selected = opt.get("selected_fragments", [])
-        tokens_used = sum(f.get("token_count", 0) for f in selected)
-        saved = total_tokens_raw - tokens_used
+        opt_b = engine.optimize_context(token_budget=BUDGET, query=query)
+        sel_b = opt_b.get("selected_fragments", [])
+        engine.advance_turn()
+        opt_2b = engine.optimize_context(token_budget=BUDGET_RELAXED, query=query)
+        sel_2b = opt_2b.get("selected_fragments", [])
+
+        tokens_used = sum(f.get("token_count", 0) for f in sel_b)
+        saved = max(0, BASELINE_PER_QUERY - tokens_used)
         total_saved += saved
-        pct = (saved * 100) // max(total_tokens_raw, 1)
+        pct = (saved * 100) // max(BASELINE_PER_QUERY, 1)
+
+        stabilities.append(_jaccard(_ids(sel_b), _ids(sel_2b)))
+        coverages.append(_coverage(query, sel_b))
+        respects.append(1.0 if tokens_used <= BUDGET else 0.0)
+
         query_results.append({
             "query": query,
-            "fragments": len(selected),
+            "fragments": len(sel_b),
             "tokens": tokens_used,
             "saved_pct": pct,
         })
 
-    avg_pct = (total_saved * 100) // max(total_tokens_raw * len(sample_queries), 1)
-    monthly_savings = estimate_cost(total_saved // len(sample_queries) * 100 * 30, "gpt-4o")
+    avg_pct = (total_saved * 100) // max(BASELINE_PER_QUERY * len(sample_queries), 1)
 
-    # Context score: weighted blend of coverage and savings
-    context_score = min(99, max(40, avg_pct + 20 + (files_indexed // 100)))
+    # Geometric mean. A single 0 on any axis zeros the score — by design.
+    import math as _math
+    factors = stabilities + coverages + respects
+    if any(f <= 0 for f in factors):
+        context_score = 0
+    else:
+        log_sum = sum(_math.log(f) for f in factors)
+        context_score = int(round(100 * _math.exp(log_sum / len(factors))))
+    context_score = max(0, min(100, context_score))
+
+    avg_stability = sum(stabilities) / len(stabilities)
+    avg_coverage = sum(coverages) / len(coverages)
+    avg_respect = sum(respects) / len(respects)
+    # Per-query $ at today's GPT-4o rate — no fake 100-req/day multiplier.
+    per_query_savings_usd = estimate_cost(total_saved // len(sample_queries), "gpt-4o")
 
     # Detect project name
     project_name = Path.cwd().name
@@ -1659,6 +1730,10 @@ def cmd_share(args):
     lifetime_cost = lifetime.get("cost_saved_usd", 0.0)
     lifetime_requests = lifetime.get("requests_optimized", 0)
 
+    # Honest per-query tokens shown instead of "AI sees ALL".
+    avg_selected_frags = sum(qr["fragments"] for qr in query_results) // max(len(query_results), 1)
+    avg_tokens_used = sum(qr["tokens"] for qr in query_results) // max(len(query_results), 1)
+
     # Generate HTML report
     html = _generate_report_html(
         project_name=project_name,
@@ -1666,7 +1741,12 @@ def cmd_share(args):
         total_tokens=total_tokens_raw,
         avg_reduction=avg_pct,
         context_score=context_score,
-        monthly_savings=monthly_savings,
+        per_query_savings_usd=per_query_savings_usd,
+        avg_stability=avg_stability,
+        avg_coverage=avg_coverage,
+        avg_respect=avg_respect,
+        avg_selected_frags=avg_selected_frags,
+        avg_tokens_used=avg_tokens_used,
         query_results=query_results,
         lifetime_tokens=lifetime_tokens,
         lifetime_cost=lifetime_cost,
@@ -1677,13 +1757,15 @@ def cmd_share(args):
     out_path.write_text(html, encoding="utf-8")
 
     print(f"\n  {C.GREEN}{C.BOLD}Context Report Card{C.RESET}")
-    print("  ┌─────────────────────────────────────────────┐")
-    print(f"  │  {C.BOLD}PROJECT:{C.RESET}  {project_name:<35s}│")
-    print(f"  │  {C.BOLD}CONTEXT SCORE:{C.RESET}  {C.GREEN}{context_score}/100{C.RESET}                     │")
-    print(f"  │  {C.BOLD}FILES:{C.RESET}  {files_indexed:,} → AI sees ALL of them        │")
-    print(f"  │  {C.BOLD}TOKEN REDUCTION:{C.RESET}  {C.GREEN}{avg_pct}%{C.RESET} average               │")
-    print(f"  │  {C.BOLD}MONTHLY SAVINGS:{C.RESET}  {C.GREEN}${monthly_savings:,.0f}{C.RESET} (GPT-4o est.)      │")
-    print("  └─────────────────────────────────────────────┘")
+    print("  ┌─────────────────────────────────────────────────────┐")
+    print(f"  │  {C.BOLD}PROJECT:{C.RESET}  {project_name:<42s}│")
+    print(f"  │  {C.BOLD}CONTEXT SCORE:{C.RESET}  {C.GREEN}{context_score}/100{C.RESET}  "
+          f"{C.GRAY}(stab·cov·respect)^⅓{C.RESET}      │")
+    print(f"  │    {C.GRAY}stability {avg_stability:.2f}  coverage {avg_coverage:.2f}  respect {avg_respect:.2f}{C.RESET}   │")
+    print(f"  │  {C.BOLD}PER-QUERY:{C.RESET}  ~{avg_selected_frags} frags, {avg_tokens_used:,} tokens (from {files_indexed:,} files)")
+    print(f"  │  {C.BOLD}TOKENS vs 32K DUMP:{C.RESET}  {C.GREEN}{avg_pct}%{C.RESET} smaller")
+    print(f"  │  {C.BOLD}SAVED / QUERY:{C.RESET}  {C.GREEN}${per_query_savings_usd:.4f}{C.RESET} (GPT-4o, today)   │")
+    print("  └─────────────────────────────────────────────────────┘")
     print(f"\n  {C.GREEN}Report saved:{C.RESET} {out_path.resolve()}")
     print(f"\n  {C.CYAN}Share it!{C.RESET} Post your Context Score on Twitter/LinkedIn.")
     print(f"  {C.GRAY}\"My codebase scores {context_score}/100 on Entroly. What's yours?\"{C.RESET}\n")
@@ -1695,7 +1777,12 @@ def _generate_report_html(
     total_tokens: int,
     avg_reduction: int,
     context_score: int,
-    monthly_savings: float,
+    per_query_savings_usd: float,
+    avg_stability: float,
+    avg_coverage: float,
+    avg_respect: float,
+    avg_selected_frags: int,
+    avg_tokens_used: int,
     query_results: list,
     lifetime_tokens: int = 0,
     lifetime_cost: float = 0.0,
@@ -1731,11 +1818,11 @@ def _generate_report_html(
 <title>Entroly Context Report — {project_name}</title>
 <meta name="description" content="{project_name} scores {context_score}/100 on Entroly Context Score. {avg_reduction}% token reduction, {files:,} files optimized.">
 <meta property="og:title" content="{project_name} — Context Score {context_score}/100">
-<meta property="og:description" content="{avg_reduction}% token reduction. {files:,} files. AI sees everything. Powered by Entroly.">
+<meta property="og:description" content="{avg_reduction}% smaller than a 32K naive dump. {files:,} files indexed, ~{avg_selected_frags} selected per query. Powered by Entroly.">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="{project_name} — Context Score {context_score}/100 | Entroly">
-<meta name="twitter:description" content="My codebase scores {context_score}/100. {avg_reduction}% fewer tokens, {files:,} files visible to AI. What's yours?">
+<meta name="twitter:description" content="Context Score {context_score}/100 (stability·coverage·respect)^⅓. ~{avg_tokens_used:,} tokens/query from {files:,} files.">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
 *{{margin:0;padding:0;box-sizing:border-box}}
@@ -1797,16 +1884,31 @@ body{{background:#09090b;color:#fafafa;font-family:'Inter',system-ui,sans-serif;
 
   <div class="stats">
     <div class="stat">
-      <div class="stat-val">{files:,}</div>
-      <div class="stat-label">Files Visible</div>
+      <div class="stat-val">{avg_selected_frags:,}</div>
+      <div class="stat-label">Frags / Query<br><span style="font-size:10px;text-transform:none">of {files:,} indexed</span></div>
     </div>
     <div class="stat">
-      <div class="stat-val">{avg_reduction}%</div>
-      <div class="stat-label">Tokens Saved</div>
+      <div class="stat-val">{avg_tokens_used:,}</div>
+      <div class="stat-label">Tokens / Query<br><span style="font-size:10px;text-transform:none">{avg_reduction}% &lt; 32K dump</span></div>
     </div>
     <div class="stat">
-      <div class="stat-val">${monthly_savings:,.0f}</div>
-      <div class="stat-label">Saved / Month</div>
+      <div class="stat-val">${per_query_savings_usd:.4f}</div>
+      <div class="stat-label">Saved / Query<br><span style="font-size:10px;text-transform:none">GPT-4o, today</span></div>
+    </div>
+  </div>
+
+  <div class="stats" style="grid-template-columns:1fr 1fr 1fr">
+    <div class="stat">
+      <div class="stat-val" style="color:#a1a1aa;font-size:18px">{avg_stability:.2f}</div>
+      <div class="stat-label">Stability<br><span style="font-size:10px;text-transform:none">Jaccard(S@B, S@2B)</span></div>
+    </div>
+    <div class="stat">
+      <div class="stat-val" style="color:#a1a1aa;font-size:18px">{avg_coverage:.2f}</div>
+      <div class="stat-label">Coverage<br><span style="font-size:10px;text-transform:none">query terms hit</span></div>
+    </div>
+    <div class="stat">
+      <div class="stat-val" style="color:#a1a1aa;font-size:18px">{avg_respect:.2f}</div>
+      <div class="stat-label">Respect<br><span style="font-size:10px;text-transform:none">tokens ≤ budget</span></div>
     </div>
   </div>
 
@@ -2268,10 +2370,25 @@ def cmd_optimize(args):
             seen_sources.add(src)
             deduped.append(f)
     selected = deduped
-    tokens_used = sum(f.get("token_count", 0) for f in selected)
+    # Source of truth for tokens_used is the engine's own accounting
+    # (opt["total_tokens"]). It reflects the resolution-aware cost the
+    # knapsack actually charged against the budget. Summing per-fragment
+    # token_count in Python can drift by a handful of tokens because
+    # Reference/Skeleton/Belief variants report different costs than the
+    # knapsack internally charges.
+    tokens_used = opt.get("total_tokens", sum(f.get("token_count", 0) for f in selected))
+    recommended_budget = opt.get("recommended_budget", budget)
+    task_type = opt.get("task_type", "")
 
     if not quiet:
         print(f"  Selected {C.GREEN}{len(selected)}{C.RESET} fragments ({tokens_used:,} tokens)\n", file=sys.stderr)
+        if recommended_budget > budget and task_type:
+            print(
+                f"  {C.YELLOW}Note:{C.RESET} task classified as {C.CYAN}{task_type}{C.RESET} — "
+                f"a wider budget of {C.GREEN}{recommended_budget:,}{C.RESET} is recommended for best coverage.\n"
+                f"  Pass {C.GREEN}--budget {recommended_budget}{C.RESET} to opt in.\n",
+                file=sys.stderr,
+            )
 
     if output_format == "json":
         import json as _json
@@ -2354,8 +2471,13 @@ def cmd_feedback(args):
     from entroly.server import EntrolyEngine
 
     score = getattr(args, "score", None)
+    outcome = getattr(args, "outcome", None)
+    if score is None and outcome is not None:
+        score = {"success": 1.0, "good": 1.0,
+                 "fail": 0.0, "failure": 0.0, "bad": 0.0,
+                 "neutral": 0.5}.get(outcome)
     if score is None:
-        print(f"  {C.RED}--score is required.{C.RESET} Use a value between 0.0 (bad) and 1.0 (good).")
+        print(f"  {C.RED}Provide --score (0.0-1.0) or --outcome (success|fail|neutral).{C.RESET}")
         return
 
     # Load the last optimization state
@@ -2413,7 +2535,7 @@ def cmd_compile(args):
     from entroly.vault import VaultConfig, VaultManager
 
     target = getattr(args, "directory", None) or os.getcwd()
-    max_files = getattr(args, "max_files", 200)
+    max_files = getattr(args, "max_files", 0)
 
     vault_base = os.environ.get(
         "ENTROLY_VAULT",
@@ -2426,9 +2548,13 @@ def cmd_compile(args):
     print(f"\n  {C.CYAN}{C.BOLD}Compiling Beliefs{C.RESET}")
     print(f"  {C.GRAY}Source:  {target}{C.RESET}")
     print(f"  {C.GRAY}Vault:   {vault_base}{C.RESET}")
-    print(f"  {C.GRAY}Max files: {max_files}{C.RESET}\n")
+    cap_desc = "unlimited" if max_files <= 0 else str(max_files)
+    print(f"  {C.GRAY}Max files: {cap_desc}{C.RESET}\n")
 
     result = compiler.compile_directory(target, max_files)
+    if max_files > 0 and result.files_processed >= max_files:
+        print(f"  {C.YELLOW}! Hit --max-files cap ({max_files}); some files not indexed. "
+              f"Re-run with --max-files 0 for unlimited.{C.RESET}")
 
     print(f"  {C.GREEN}Files processed:{C.RESET}    {result.files_processed}")
     print(f"  {C.GREEN}Entities extracted:{C.RESET} {result.entities_extracted}")
@@ -2703,6 +2829,10 @@ def main():
         "--dry-run", action="store_true",
         help="Show what would be generated without writing files",
     )
+    init_parser.add_argument(
+        "--yes", "-y", action="store_true",
+        help="Non-interactive mode; accept defaults (no-op today; reserved for future prompts)",
+    )
 
     # entroly serve
     serve_parser = subparsers.add_parser(
@@ -2828,14 +2958,27 @@ def main():
         help="Signal outcome quality to improve future context selection",
     )
     feedback_parser.add_argument(
-        "--score", "-s", type=float, required=True,
-        help="Quality score: 0.0 (bad) to 1.0 (good)",
+        "--score", "-s", type=float, default=None,
+        help="Quality score: 0.0 (bad) to 1.0 (good). Mutually exclusive with --outcome.",
+    )
+    feedback_parser.add_argument(
+        "--outcome", choices=["success", "good", "fail", "failure", "bad", "neutral"],
+        default=None,
+        help="Symbolic outcome; mapped to a score (success/good→1.0, fail/bad→0.0, neutral→0.5).",
+    )
+    feedback_parser.add_argument(
+        "--task", type=str, default=None,
+        help="Optional task description for audit logs (metadata only).",
     )
 
     # entroly benchmark
-    subparsers.add_parser(
+    benchmark_parser = subparsers.add_parser(
         "benchmark",
         help="Run competitive benchmark: Entroly vs Raw vs Top-K",
+    )
+    benchmark_parser.add_argument(
+        "--budget", type=int, default=4096,
+        help="Token budget per query (default: 4096)",
     )
 
     # entroly status
@@ -2860,8 +3003,8 @@ def main():
         help="Manage anonymous usage statistics (opt-in, disabled by default)",
     )
     telem_parser.add_argument(
-        "action", choices=["on", "off", "status"],
-        help="Enable, disable, or check telemetry status",
+        "action", choices=["on", "off", "status"], nargs="?", default="status",
+        help="Enable, disable, or check telemetry status (default: status)",
     )
 
     # entroly clean
@@ -2880,8 +3023,12 @@ def main():
         help="Export learned state for sharing with teammates",
     )
     export_parser.add_argument(
+        "output_path", nargs="?", default=None,
+        help="Positional output path (alternative to --output).",
+    )
+    export_parser.add_argument(
         "-o", "--output", type=str, default=None,
-        help="Output file path (default: entroly_export.json)",
+        help="Output file path (default: entroly_export.json).",
     )
 
     # entroly import
@@ -3034,8 +3181,8 @@ def main():
         help="Directory to scan (default: current directory)",
     )
     compile_parser.add_argument(
-        "--max-files", type=int, default=200,
-        help="Maximum files to process (default: 200)",
+        "--max-files", type=int, default=0,
+        help="Maximum files to process (default: 0 = unlimited)",
     )
 
     # entroly verify
@@ -3054,8 +3201,8 @@ def main():
         help="Directory to scan (default: current directory)",
     )
     sync_parser.add_argument(
-        "--max-files", type=int, default=100,
-        help="Maximum files to process (default: 100)",
+        "--max-files", type=int, default=0,
+        help="Maximum files to process (default: 0 = unlimited)",
     )
     sync_parser.add_argument(
         "--force", action="store_true",
@@ -3086,8 +3233,8 @@ def main():
         help="Project root to scan (default: current directory)",
     )
     docs_parser.add_argument(
-        "--max-files", type=int, default=50,
-        help="Maximum doc files to process (default: 50)",
+        "--max-files", type=int, default=0,
+        help="Maximum doc files to process (default: 0 = unlimited)",
     )
 
     # entroly share

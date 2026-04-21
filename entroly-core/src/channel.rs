@@ -372,11 +372,18 @@ pub fn modulated_reward(success: bool, sufficiency: f64) -> f64 {
 // (different content). These "Knowledge Conflicting Hallucination"
 // (KCH) triggers poison the LLM's understanding.
 //
-// Algorithm: SimHash Divergence Ratio (SDR)
-//   structural_sim(A,B) = 1 - hamming(simhash(A.source), simhash(B.source)) / 64
+// Algorithm: Source-Divergence Ratio (SDR)
+//   structural_sim(A,B) = Jaccard over path components of A.source, B.source
+//                         — locality-preserving; files in the same directory
+//                         or module share most tokens and score high.
 //   content_sim(A,B)    = 1 - hamming(A.simhash, B.simhash) / 64
 //   SDR(A,B) = structural_sim - content_sim
 //   If SDR > threshold → contradictory pair → evict lower-relevance fragment
+//
+// Earlier versions used FNV-1a hashes of the raw source path, which is an
+// avalanche hash with no locality: two files in the same directory hashed
+// to ~32 differing bits → structural_sim ≈ 0.5, never clearing the 0.60
+// threshold. Jaccard over path tokens fixes this.
 //
 /// Result of contradiction scan.
 #[derive(Debug, Clone)]
@@ -413,18 +420,18 @@ pub fn contradiction_guard(
         );
     }
 
-    // Pre-compute source fingerprints (hash of the source path/file)
-    // We use FNV-1a on the source string for structural comparison
-    let source_fps: Vec<u64> = selected_indices.iter()
-        .map(|&i| {
-            let src = &frags[i].source;
-            let mut h: u64 = 0xcbf29ce484222325;
-            for b in src.as_bytes() {
-                h ^= *b as u64;
-                h = h.wrapping_mul(0x100000001b3);
-            }
-            h
-        })
+    // Pre-compute path-token sets for structural Jaccard. Splitting on the
+    // ASCII-set below covers Unix/Windows separators and common filename
+    // delimiters, so "src/auth/login.py" → {src, auth, login, py}.
+    fn path_tokens(src: &str) -> HashSet<String> {
+        src.split(|c: char| c == '/' || c == '\\' || c == '.' ||
+                             c == '_' || c == '-' || c == ':')
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_ascii_lowercase())
+            .collect()
+    }
+    let source_tokens: Vec<HashSet<String>> = selected_indices.iter()
+        .map(|&i| path_tokens(&frags[i].source))
         .collect();
 
     let mut pairs_found = 0usize;
@@ -440,9 +447,17 @@ pub fn contradiction_guard(
                 continue;
             }
 
-            // Structural similarity: are these from the same file/class?
-            let source_hamming = (source_fps[i] ^ source_fps[j]).count_ones() as f64;
-            let structural_sim = 1.0 - source_hamming / 64.0;
+            // Structural similarity via Jaccard over path tokens. Locality-
+            // preserving — files in the same dir or module share most tokens.
+            let a = &source_tokens[i];
+            let b = &source_tokens[j];
+            let structural_sim = if a.is_empty() && b.is_empty() {
+                1.0
+            } else {
+                let inter = a.intersection(b).count() as f64;
+                let union = a.union(b).count() as f64;
+                if union == 0.0 { 0.0 } else { inter / union }
+            };
 
             if structural_sim < structural_threshold {
                 continue; // Different files/structures — no contradiction risk

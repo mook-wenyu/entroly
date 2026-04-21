@@ -23,7 +23,12 @@
 //! in the REINFORCE backward pass → no train/test mismatch.
 //!
 //! Convergence: as τ → 0, p_i → I(sᵢ > th*) and the greedy fill recovers the
-//! exact greedy sort, giving a (1-1/e) ~ 0.63 optimality guarantee.
+//! exact density-sorted greedy. The objective here is linear (Σ sᵢ·xᵢ), i.e.
+//! modular, so density-greedy on a knapsack gives the ½-approximation of
+//! Dantzig-style rounding — NOT (1-1/e), which requires a submodular
+//! objective. If redundancy/diversity terms are added to the score (making
+//! it submodular), Sviridenko's partial-enumeration variant would be needed
+//! to recover the (1-1/e - ε) bound; this file does not do that.
 //!
 //! # Hard DP fallback (τ < 0.05)
 //!

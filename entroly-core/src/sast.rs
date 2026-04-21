@@ -8,7 +8,7 @@
 //!   - Iterative refinement via static analysis feedback.
 //!
 //! This engine implements:
-//!   1. **55 rules** across 8 CWE categories (language-aware)
+//!   1. **151 rules** across CWE families (language-aware, many Python/JS/Go/Java/Rust-specific)
 //!   2. **Taint-flow simulation**: tracks user-controlled sources across lines
 //!      to reduce false positives (whole-repo reasoning)
 //!   3. **CVSS v3.1-inspired scoring**: impact * exploitability * scope
@@ -16,8 +16,14 @@
 //!   5. **False-positive suppression**: test files, comment blocks, constant strings
 //!   6. **Confidence scoring** [0.0, 1.0]: accounts for context quality
 //!
-//! Performance: O(N × R) where N = line count, R = rule count (~55).
-//! For typical file sizes (<500 lines) this is ~27,500 operations, microseconds.
+//! Rule confidence profile: ~46 rules are taint_aware (require propagated taint
+//! context to fire — higher precision); ~105 are pattern-only (substring + optional
+//! require/suppress on the same line — higher recall, higher FP rate on incidental
+//! mentions like `md5_of_file`, `password_label`, or doc strings). Callers that need
+//! precision-weighted counts should split by the `taint_flow` field on findings.
+//!
+//! Performance: O(N × R) where N = line count, R = rule count (151).
+//! For typical file sizes (<500 lines) this is ~75,500 operations, microseconds.
 
 use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
@@ -104,7 +110,7 @@ pub struct SastReport {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Rule Database — 55 rules across 8 categories
+// Rule Database — 151 rules across CWE families (language-aware)
 // ═══════════════════════════════════════════════════════════════════
 
 static RULES: &[SastRule] = &[

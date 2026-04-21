@@ -1061,13 +1061,22 @@ impl EntrolyEngine {
             self.last_query = query.clone();
             self.last_cache_feedback_eligible = false;
 
-            // Apply task-type budget multiplier
-            let effective_budget = if !query.is_empty() {
+            // Budget discipline: the caller-declared `token_budget` is a HARD
+            // ceiling (downstream models have fixed context windows — silently
+            // exceeding it fails the request). Task-type multipliers below 1.0
+            // still shrink the budget to improve focus for narrow tasks (e.g.
+            // CodeGeneration 0.7×, Documentation 0.6×). Multipliers at or above
+            // 1.0 are treated as advisory: the result exposes
+            // `recommended_budget` so callers can opt in to a wider window
+            // explicitly, rather than us expanding it behind their back.
+            let (effective_budget, recommended_budget, task_type_label) = if !query.is_empty() {
                 let task_type = TaskType::classify(&query);
                 let mult = task_type.budget_multiplier();
-                (token_budget as f64 * mult) as u32
+                let desired = (token_budget as f64 * mult).round() as u32;
+                let capped = desired.min(token_budget);
+                (capped, desired, format!("{:?}", task_type))
             } else {
-                token_budget
+                (token_budget, token_budget, "Unknown".to_string())
             };
             self.last_effective_budget = effective_budget;
 
@@ -2164,6 +2173,9 @@ impl EntrolyEngine {
             py_result.set_item("skeleton_tokens", skeleton_tokens_used)?;
             py_result.set_item("tokens_saved", saved)?;
             py_result.set_item("effective_budget", effective_budget)?;
+            py_result.set_item("user_budget", token_budget)?;
+            py_result.set_item("recommended_budget", recommended_budget)?;
+            py_result.set_item("task_type", task_type_label.as_str())?;
             py_result.set_item("budget_utilization",
                 if effective_budget > 0 { (final_tokens as f64 / effective_budget as f64 * 10000.0).round() / 10000.0 } else { 0.0 }
             )?;
@@ -3543,6 +3555,8 @@ impl EntrolyEngine {
         let mut all_findings: Vec<serde_json::Value> = Vec::new();
         let mut critical_total = 0usize;
         let mut high_total = 0usize;
+        let mut taint_flow_total = 0usize;
+        let mut pattern_only_total = 0usize;
         let mut max_risk: f64 = 0.0;
         let mut most_vulnerable = String::new();
         let mut by_category: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
@@ -3556,6 +3570,7 @@ impl EntrolyEngine {
             high_total     += report.high_count;
             for f in &report.findings {
                 *by_category.entry(f.category.clone()).or_insert(0) += 1;
+                if f.taint_flow { taint_flow_total += 1; } else { pattern_only_total += 1; }
             }
             if report.risk_score > max_risk {
                 max_risk = report.risk_score;
@@ -3584,6 +3599,8 @@ impl EntrolyEngine {
             "fragments_with_findings": all_findings.len(),
             "critical_total": critical_total,
             "high_total": high_total,
+            "taint_flow_total": taint_flow_total,
+            "pattern_only_total": pattern_only_total,
             "max_risk_score": (max_risk * 100.0).round() / 100.0,
             "most_vulnerable_fragment": most_vulnerable,
             "findings_by_category": by_category,

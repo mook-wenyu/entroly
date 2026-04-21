@@ -14,8 +14,11 @@
 //!   3. If ΔI > τ (default 0.3): add cᵢ to S
 //!   4. Return S
 //!
-//! This is the lazy greedy algorithm for monotone submodular
-//! maximization under a knapsack constraint. Guarantee: (1 - 1/e) ≈ 63% of optimal.
+//! Note: this is a threshold-based *filter*, not a submodular maximization.
+//! It decides per-candidate whether ΔI > τ and keeps or drops accordingly.
+//! There is no objective being maximized and no budget constraint here, so
+//! no (1 - 1/e) or other worst-case approximation ratio applies. The knapsack
+//! optimisation happens downstream in `knapsack_sds.rs` / `knapsack.rs`.
 //!
 //! Runs as a pre-filter BEFORE IOS selection: removes informationally
 //! redundant candidates, then IOS optimizes the remaining unique ones.

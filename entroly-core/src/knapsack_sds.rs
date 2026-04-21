@@ -9,8 +9,14 @@
 //!    Hamming distance as a proxy for content overlap.
 //!
 //!    Algorithm: Lazy greedy with diversity penalty.
-//!    Guarantee: (1 - 1/e) ≈ 63% of optimal for monotone submodular
-//!    functions under cardinality/knapsack constraint.
+//!    Approximation: the (1 - 1/e) ≈ 0.63 ratio (Feige 1998 for cardinality;
+//!    Sviridenko 2004 for knapsack) applies to *monotone* submodular
+//!    objectives. A subtractive redundancy penalty can violate monotonicity
+//!    — f(S ∪ {x}) may fall below f(S) for a near-duplicate x. For that
+//!    regime, the best known polynomial-time ratio under a knapsack is
+//!    0.325 (Chekuri, Vondrák, Zenklusen 2011 via continuous greedy +
+//!    rounding). This implementation's empirical performance is measured in
+//!    `bench/compare.py`; no tight worst-case ratio is claimed here.
 //!
 //! 2. **Multi-Resolution Knapsack (MRK)**
 //!    Each fragment has up to 3 representations:
