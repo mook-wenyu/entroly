@@ -1406,26 +1406,35 @@ def cmd_learn(args):
 
 
 def _recommend_quality(project: dict, file_count: int) -> str:
-    """Smart auto-config: recommend quality preset based on project characteristics."""
+    """Recommend a starting quality preset from project characteristics.
+
+    The heuristic has an information-theoretic basis, not a measured one —
+    treat it as a starting point and run `entroly autotune` to calibrate.
+
+    Size thresholds (5000 / 2000 / 500 files) are unvalidated defaults that
+    trade pipeline latency for selection fidelity.
+    """
     lang = project.get("primary", "unknown")
     langs = project.get("languages", [])
 
-    # Large codebases → speed/fast to keep latency low
+    # Larger codebases blow the latency budget on deeper presets; favor speed.
     if file_count > 5000:
         return "speed"
     if file_count > 2000:
         return "fast"
 
-    # Multi-language projects benefit from deeper analysis
+    # Heterogeneous repos mix semantic distributions (e.g. C infra + TS UI);
+    # a single retrieval pass over mixed embeddings benefits from more effort.
     if len(langs) >= 3:
         return "quality"
 
-    # Language-specific heuristics
+    # Typed signatures act as compressed semantic metadata: a Rust fn's
+    # `-> Result<Session, AuthError>` encodes intent the retriever can use
+    # without reading the body. Dynamic languages lack that, so retrieval
+    # precision at a fixed budget improves more from deeper analysis.
     if lang in ("rust", "go", "java"):
-        # Strongly typed → balanced is enough, types carry context
         return "balanced"
     if lang in ("python", "javascript", "typescript"):
-        # Dynamic/flexible → quality helps disambiguate
         return "quality" if file_count > 500 else "balanced"
 
     return "balanced"
@@ -1521,7 +1530,7 @@ def cmd_go(args):
 
 def cmd_demo(args):
     """entroly demo — quick-win demo mode: before/after comparison (Gap #41)."""
-    print(f"\n{C.CYAN}{C.BOLD}  Entroly Demo{C.RESET} -- see the value in 30 seconds\n")
+    print(f"\n{C.CYAN}{C.BOLD}  Entroly Demo{C.RESET} -- 3 sample queries, real measurements\n")
 
     from entroly.auto_index import auto_index
     from entroly.server import EntrolyEngine
@@ -1610,11 +1619,12 @@ def cmd_demo(args):
         print(f"  {C.GRAY}only relevant fragments instead of sending everything.{C.RESET}\n")
     else:
         print(f"  {C.GREEN}{C.BOLD}Average: {avg_pct}% fewer tokens per request{C.RESET}\n")
-    print(f"  {C.BOLD}Projected daily savings (100 requests/day):{C.RESET}")
+    per_query_saved = total_saved // max(len(sample_queries), 1)
+    print(f"  {C.BOLD}Per-query savings{C.RESET} (today's input rates, {per_query_saved:,} tokens saved/query):")
     for model in models:
-        daily_cost = estimate_cost(total_saved // len(sample_queries) * 100, model)
-        monthly_cost = daily_cost * 30
-        print(f"    {C.CYAN}{model:25s}{C.RESET} ${daily_cost:>6.2f}/day  ${monthly_cost:>7.2f}/month")
+        per_query_cost = estimate_cost(per_query_saved, model)
+        print(f"    {C.CYAN}{model:25s}{C.RESET} ${per_query_cost:.4f}/query")
+    print(f"  {C.GRAY}Multiply by your actual request volume. We don't know what that is.{C.RESET}")
 
     print(f"""
   {C.GREEN}{C.BOLD}Get started:{C.RESET}
@@ -2218,28 +2228,38 @@ def cmd_role(args):
     """entroly role — role-based weight presets for different developer types (Gap #49)."""
     print(f"\n{C.CYAN}{C.BOLD}  Entroly Role Presets{C.RESET}\n")
 
-    # Starting-point presets — not empirically calibrated. Run `entroly autotune`
-    # after applying to adapt weights to your codebase on bench/cases.json.
+    # Starting-point presets. The rationale under each is an information-
+    # theoretic argument, not a measurement — run `entroly autotune` after
+    # applying to calibrate against bench/cases.json for your codebase.
     roles = {
         "frontend": {
             "description": "Frontend developer (React, Vue, CSS)",
             "weights": {"recency": 0.25, "frequency": 0.30, "semantic": 0.30, "entropy": 0.15},
+            "note": "Component reuse is a repetition pattern — frequency captures it; "
+                    "semantic similarity finds the right component class at retrieval.",
         },
         "backend": {
             "description": "Backend developer (API, database, services)",
             "weights": {"recency": 0.30, "frequency": 0.20, "semantic": 0.25, "entropy": 0.25},
+            "note": "Backend work spans heterogeneous subsystems (HTTP, DB, auth, queues); "
+                    "entropy diversifies selection across them rather than collapsing into one.",
         },
         "sre": {
             "description": "SRE / DevOps (infra, CI/CD, monitoring)",
             "weights": {"recency": 0.35, "frequency": 0.15, "semantic": 0.20, "entropy": 0.30},
+            "note": "Infra state drifts fast (recency) and configs come from many distinct "
+                    "sources — k8s, Terraform, GHA, Dockerfiles — (entropy).",
         },
         "data": {
             "description": "Data engineer / ML (SQL, pipelines, notebooks)",
             "weights": {"recency": 0.20, "frequency": 0.30, "semantic": 0.30, "entropy": 0.20},
+            "note": "Pipelines reuse table/column/schema names heavily; frequency picks up "
+                    "the repetition, semantic matches the right transform or model.",
         },
         "fullstack": {
             "description": "Full-stack developer (balanced across all areas)",
             "weights": {"recency": 0.25, "frequency": 0.25, "semantic": 0.25, "entropy": 0.25},
+            "note": "Uniform priors when workload mix is unknown — maximum-entropy default.",
         },
     }
 
@@ -2257,9 +2277,10 @@ def cmd_role(args):
             w = info["weights"]
             print(f"  {C.CYAN}{name:12s}{C.RESET} {info['description']}")
             print(f"               R={w['recency']:.2f}  F={w['frequency']:.2f}  "
-                  f"S={w['semantic']:.2f}  E={w['entropy']:.2f}\n")
-        print(f"  {C.GRAY}Presets are starting points. Run {C.CYAN}entroly autotune{C.GRAY} after applying "
-              f"to calibrate on your codebase.{C.RESET}")
+                  f"S={w['semantic']:.2f}  E={w['entropy']:.2f}")
+            print(f"               {C.GRAY}{info['note']}{C.RESET}\n")
+        print(f"  {C.GRAY}Rationales are information-theoretic starting points, not measurements.{C.RESET}")
+        print(f"  {C.GRAY}Run {C.CYAN}entroly autotune{C.GRAY} after applying to calibrate on your codebase.{C.RESET}")
         print(f"  Apply with: {C.CYAN}entroly role apply <name>{C.RESET}\n")
 
     elif action == "apply":
@@ -2284,7 +2305,8 @@ def cmd_role(args):
         w = role["weights"]
         print(f"    R={w['recency']:.2f}  F={w['frequency']:.2f}  "
               f"S={w['semantic']:.2f}  E={w['entropy']:.2f}")
-        print(f"    {C.GRAY}Run {C.CYAN}entroly autotune{C.GRAY} to calibrate these on your codebase.{C.RESET}\n")
+        print(f"    {C.GRAY}{role['note']}{C.RESET}")
+        print(f"    {C.GRAY}Run {C.CYAN}entroly autotune{C.GRAY} to calibrate on your codebase.{C.RESET}\n")
 
 
 def cmd_completions(args):
