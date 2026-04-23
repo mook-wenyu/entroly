@@ -239,6 +239,7 @@ struct OptimizationSnapshot {
 struct FragmentScore {
     fragment_id: String,
     source: String,
+    token_count: u32,
     selected: bool,
     recency: f64,
     frequency: f64,
@@ -2087,6 +2088,22 @@ impl EntrolyEngine {
             };
 
             // ── Build Explainability Snapshot ──
+            let mut selected_token_counts: HashMap<String, u32> = HashMap::new();
+            for &idx in &final_indices {
+                let frag = &frags[idx];
+                selected_token_counts.insert(frag.fragment_id.clone(), frag.token_count);
+            }
+            for &idx in &skeleton_indices {
+                let frag = &frags[idx];
+                let resolution = ios_resolutions.get(&idx).copied().unwrap_or(Resolution::Skeleton);
+                let effective_tokens = match resolution {
+                    Resolution::Reference => (frag.source.len() as u32 / 4).clamp(3, 10),
+                    Resolution::Belief => frag.belief_token_count.unwrap_or(frag.token_count),
+                    _ => frag.skeleton_token_count.unwrap_or(frag.token_count),
+                };
+                selected_token_counts.insert(frag.fragment_id.clone(), effective_tokens);
+            }
+
             let mut fragment_scores: Vec<FragmentScore> = Vec::with_capacity(frags.len());
             for frag in frags.iter() {
                 let fm = feedback_mults.get(&frag.fragment_id).copied().unwrap_or(1.0);
@@ -2113,6 +2130,10 @@ impl EntrolyEngine {
                 fragment_scores.push(FragmentScore {
                     fragment_id: frag.fragment_id.clone(),
                     source: frag.source.clone(),
+                    token_count: selected_token_counts
+                        .get(&frag.fragment_id)
+                        .copied()
+                        .unwrap_or(frag.token_count),
                     selected: is_selected || is_explored,
                     recency: frag.recency_score,
                     frequency: frag.frequency_score,
@@ -3374,6 +3395,7 @@ impl EntrolyEngine {
                 let d = PyDict::new(py);
                 d.set_item("id", &fs.fragment_id)?;       // Bug fix: was "fragment_id", inconsistent with optimize's "id" key
                 d.set_item("source", &fs.source)?;
+                d.set_item("token_count", fs.token_count)?;
                 d.set_item("decision", if fs.selected { "included" } else { "excluded" })?;
                 let scores = PyDict::new(py);
                 scores.set_item("recency", (fs.recency * 10000.0).round() / 10000.0)?;

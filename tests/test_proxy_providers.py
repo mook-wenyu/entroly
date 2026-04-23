@@ -917,13 +917,35 @@ class TestOpenAIResponsesAPI:
             ]
         }
         result = inject_context_openai(body, "CONTEXT")
-        assert result["input"][0]["role"] == "system"
-        assert result["input"][0]["content"][0]["text"] == "CONTEXT"
+        assert result["instructions"] == "CONTEXT"
+        assert result["input"] == body["input"]
 
     def test_inject_context_openai_responses_string_input(self):
         body = {"input": "write a regression test"}
         result = inject_context_openai(body, "CONTEXT")
-        assert result["input"] == "CONTEXT\n\nwrite a regression test"
+        assert result["instructions"] == "CONTEXT"
+        assert result["input"] == "write a regression test"
+
+    def test_inject_context_openai_responses_merges_existing_instructions(self):
+        body = {"input": "write a regression test", "instructions": "EXISTING"}
+        result = inject_context_openai(body, "CONTEXT")
+        assert result["instructions"] == "CONTEXT\n\nEXISTING"
+
+    def test_inject_context_openai_responses_preserves_structured_instructions(self):
+        body = {
+            "input": "write a regression test",
+            "instructions": [
+                {
+                    "type": "message",
+                    "role": "developer",
+                    "content": [{"type": "input_text", "text": "EXISTING"}],
+                }
+            ],
+        }
+        result = inject_context_openai(body, "CONTEXT")
+        assert result["instructions"][0]["role"] == "developer"
+        assert result["instructions"][0]["content"][0]["text"] == "CONTEXT"
+        assert result["instructions"][1]["content"][0]["text"] == "EXISTING"
 
     def test_estimate_prompt_tokens_for_responses_input(self):
         body = {

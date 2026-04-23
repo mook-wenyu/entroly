@@ -652,6 +652,13 @@ class PromptCompilerProxy:
         self._last_tokens_saved_pct: float = 0.0
         self._total_original_tokens: int = 0
         self._total_optimized_tokens: int = 0
+        self._last_original_prompt_tokens: int = 0
+        self._last_optimized_prompt_tokens: int = 0
+        self._last_fragment_count: int = 0
+        self._last_confidence: float = 0.0
+        self._last_coverage_pct: float = 0.0
+        self._last_optimization_at: float = 0.0
+        self._has_successful_optimization: bool = False
         # Per-client trajectory isolation: each API key / auth header gets
         # its own turn counter. Prevents concurrent IDE clients from
         # corrupting each other's EGTC temperature calibration.
@@ -677,6 +684,17 @@ class PromptCompilerProxy:
         self._last_excluded_fragments: list = []  # Top rejected candidates for /explain
         self._last_pipeline_ms: float = 0.0
         self._last_query: str = ""
+        self._last_coverage: float = 0.0
+        self._last_coverage_confidence: float = 0.0
+        self._last_coverage_risk: str = "unknown"
+        self._last_coverage_gap: float = 0.0
+        self._last_resonance_pairs: int = 0
+        self._last_resonance_strength: float = 0.0
+        self._last_w_resonance: float = 0.0
+        self._last_causal_tracked: int = 0
+        self._last_causal_interventional: int = 0
+        self._last_causal_gravity_sources: int = 0
+        self._last_causal_mean_mass: float = 0.0
 
         # Gap #36: Confidence threshold — below this, pass through unmodified
         self._confidence_threshold = float(
@@ -737,6 +755,20 @@ class PromptCompilerProxy:
         if not is_streaming and "streamGenerateContent" in path:
             return True
         return bool(is_streaming)
+
+    def _circuit_breaker_response(self) -> JSONResponse:
+        return JSONResponse(
+            {
+                "error": "circuit_breaker_open",
+                "message": "Upstream API experiencing failures, retrying after cooldown",
+            },
+            status_code=503,
+            headers={
+                "Retry-After": str(int(self._breaker.cooldown_s)),
+                "X-Entroly-Source": "proxy",
+                "X-Entroly-Optimized": "false",
+            },
+        )
 
     async def startup(self) -> None:
         self._client = self._new_http_client()
@@ -806,6 +838,13 @@ class PromptCompilerProxy:
         path_with_query = merge_path_and_query(path, request.url.query)
         headers = {k: v for k, v in request.headers.items()}
         provider = detect_provider(path, headers, body)
+        request_observation = self._build_request_observation(
+            path=path,
+            provider=provider,
+            body=body,
+        )
+        optimized_applied = False
+        user_message = ""
 
         # Gap #28: Bypass mode — forward raw bytes, no request mutation.
         if self._bypass:
@@ -815,8 +854,20 @@ class PromptCompilerProxy:
             forward_headers = self._build_headers(headers)
             is_streaming = self._is_streaming_request(body, path)
             if is_streaming:
-                return await self._stream_response(target_url, forward_headers, body_bytes)
-            return await self._forward_response(target_url, forward_headers, body_bytes)
+                return await self._stream_response(
+                    target_url,
+                    forward_headers,
+                    body_bytes,
+                    request_observation=request_observation,
+                    optimized_applied=False,
+                )
+            return await self._forward_response(
+                target_url,
+                forward_headers,
+                body_bytes,
+                request_observation=request_observation,
+                optimized_applied=False,
+            )
 
         if "messages" in body:
             from .proxy_transform import compress_tool_messages
@@ -849,6 +900,8 @@ class PromptCompilerProxy:
         # Run the optimization pipeline (synchronous Rust, off the event loop)
         try:
             user_message = extract_user_message(body, provider)
+            if user_message:
+                request_observation["query"] = _sanitize_query(user_message)
             if user_message:
                 pipeline_result = await asyncio.to_thread(
                     self._run_pipeline, user_message, body, path
@@ -914,6 +967,14 @@ class PromptCompilerProxy:
                             self._last_excluded_fragments = []
                         self._last_pipeline_ms = pipeline_ms
                         self._last_query = _sanitize_query(user_message)
+                        self._last_original_prompt_tokens = original_tokens
+                        self._last_optimized_prompt_tokens = optimized_tokens
+                        self._last_fragment_count = len(selected_frags)
+                        self._last_confidence = avg_entropy if selected_frags else 0.0
+                        self._last_coverage_pct = max(0.0, min(100.0, self._last_coverage * 100))
+                        self._last_tokens_saved_pct = waste_ratio * 100 if original_tokens > 0 else 0.0
+                        self._last_optimization_at = time.time()
+                        self._has_successful_optimization = True
 
                     if provider == "gemini":
                         body = inject_context_gemini(body, context_text)
@@ -921,6 +982,7 @@ class PromptCompilerProxy:
                         body = inject_context_anthropic(body, context_text)
                     else:
                         body = inject_context_openai(body, context_text)
+                    optimized_applied = True
 
                     # Entropic Conversation Pruning
                     if provider != "gemini" and "messages" in body:
@@ -969,6 +1031,9 @@ class PromptCompilerProxy:
                         self._requests_optimized += 1
                         opt_count = self._requests_optimized
                         total_count = self._requests_total
+                        request_observation["tokens_in"] = original_tokens
+                        request_observation["tokens_saved"] = max(0, original_tokens - optimized_tokens)
+                        request_observation["optimized"] = True
 
                     # ── Persistent value tracking ──
                     try:
@@ -1081,11 +1146,21 @@ class PromptCompilerProxy:
 
         if is_streaming:
             return await self._stream_response(
-                target_url, forward_headers, body, _selected_frag_ids
+                target_url,
+                forward_headers,
+                body,
+                _selected_frag_ids,
+                request_observation=request_observation,
+                optimized_applied=optimized_applied,
             )
         else:
             return await self._forward_response(
-                target_url, forward_headers, body, _selected_frag_ids
+                target_url,
+                forward_headers,
+                body,
+                _selected_frag_ids,
+                request_observation=request_observation,
+                optimized_applied=optimized_applied,
             )
 
     def _run_pipeline(self, user_message: str, body: dict[str, Any], path: str = "") -> dict[str, Any]:
@@ -1306,6 +1381,8 @@ class PromptCompilerProxy:
     async def _stream_response(
         self, url: str, headers: dict[str, str], body: dict[str, Any] | bytes,
         selected_frag_ids: list | None = None,
+        request_observation: dict[str, Any] | None = None,
+        optimized_applied: bool = False,
     ) -> StreamingResponse | JSONResponse | Response:
         """Forward a streaming request and proxy the SSE response.
 
@@ -1315,11 +1392,14 @@ class PromptCompilerProxy:
         """
         # Check circuit breaker
         if not self._breaker.allow_request():
-            return JSONResponse(
-                {"error": "circuit_breaker_open", "message": "Upstream API experiencing failures, retrying after cooldown"},
+            self._record_request_observation(
+                request_observation,
                 status_code=503,
-                headers={"Retry-After": str(int(self._breaker.cooldown_s))},
+                source="proxy",
+                optimized_applied=optimized_applied,
+                error_type="circuit_breaker_open",
             )
+            return self._circuit_breaker_response()
 
         # Capture references for the async generator closure
         _tracker = self._feedback_tracker
@@ -1340,9 +1420,20 @@ class PromptCompilerProxy:
             for key_header in ("authorization", "x-api-key"):
                 if key_header in headers:
                     err_msg = err_msg.replace(headers[key_header], "[REDACTED]")
+            self._record_request_observation(
+                request_observation,
+                status_code=502,
+                source="proxy",
+                optimized_applied=optimized_applied,
+                error_type="upstream_unavailable",
+            )
             return JSONResponse(
                 {"error": "upstream_unavailable", "detail": err_msg},
                 status_code=502,
+                headers={
+                    "X-Entroly-Source": "proxy",
+                    "X-Entroly-Optimized": self._optimized_header_value(optimized_applied),
+                },
             )
 
         content_type = upstream.headers.get("content-type", "")
@@ -1361,6 +1452,14 @@ class PromptCompilerProxy:
                 await upstream.aclose()
             error_headers = build_downstream_headers(dict(upstream.headers))
             error_headers["X-Entroly-Source"] = "upstream"
+            error_headers["X-Entroly-Optimized"] = self._optimized_header_value(optimized_applied)
+            self._record_request_observation(
+                request_observation,
+                status_code=upstream.status_code,
+                source="upstream",
+                optimized_applied=optimized_applied,
+                error_type="upstream_http_error",
+            )
             return Response(
                 content=content,
                 status_code=upstream.status_code,
@@ -1378,17 +1477,44 @@ class PromptCompilerProxy:
                         buffer_size += len(chunk)
                     yield chunk
                 self._breaker.record_success()
+                self._record_request_observation(
+                    request_observation,
+                    status_code=upstream.status_code,
+                    source="upstream",
+                    optimized_applied=optimized_applied,
+                )
             except httpx.ReadError as e:
                 self._breaker.record_failure()
                 logger.warning(f"Upstream stream interrupted: {e}")
+                self._record_request_observation(
+                    request_observation,
+                    status_code=502,
+                    source="proxy",
+                    optimized_applied=optimized_applied,
+                    error_type="upstream_connection_lost",
+                )
                 yield b'data: {"error": "upstream_connection_lost"}\n\n'
             except httpx.TimeoutException as e:
                 self._breaker.record_failure()
                 logger.warning(f"Upstream stream timeout: {e}")
+                self._record_request_observation(
+                    request_observation,
+                    status_code=504,
+                    source="proxy",
+                    optimized_applied=optimized_applied,
+                    error_type="upstream_timeout",
+                )
                 yield b'data: {"error": "upstream_timeout"}\n\n'
             except Exception as e:
                 self._breaker.record_failure()
                 logger.warning(f"Unexpected stream error: {e}")
+                self._record_request_observation(
+                    request_observation,
+                    status_code=502,
+                    source="proxy",
+                    optimized_applied=optimized_applied,
+                    error_type="stream_error",
+                )
                 yield b'data: {"error": "stream_error"}\n\n'
             finally:
                 await upstream.aclose()
@@ -1440,7 +1566,7 @@ class PromptCompilerProxy:
         resp_headers = {
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Entroly-Optimized": "true",
+            "X-Entroly-Optimized": self._optimized_header_value(optimized_applied),
         }
         with self._stats_lock:
             if self._last_temperature is not None:
@@ -1496,11 +1622,20 @@ class PromptCompilerProxy:
     async def _forward_response(
         self, url: str, headers: dict[str, str], body: dict[str, Any] | bytes,
         selected_frag_ids: list | None = None,
+        request_observation: dict[str, Any] | None = None,
+        optimized_applied: bool = False,
     ) -> JSONResponse:
         """Forward a non-streaming request with circuit breaker, retry on 429/5xx, and response validation."""
         # Check circuit breaker
         if not self._breaker.allow_request():
-            logger.warning("Circuit breaker open -- forwarding unmodified")
+            self._record_request_observation(
+                request_observation,
+                status_code=503,
+                source="proxy",
+                optimized_applied=optimized_applied,
+                error_type="circuit_breaker_open",
+            )
+            return self._circuit_breaker_response()
 
         # Retry loop: 1 initial attempt + up to 2 retries on 429/5xx
         max_retries = 2
@@ -1520,9 +1655,20 @@ class PromptCompilerProxy:
                 for key_header in ("authorization", "x-api-key"):
                     if key_header in headers:
                         err_msg = err_msg.replace(headers[key_header], "[REDACTED]")
+                self._record_request_observation(
+                    request_observation,
+                    status_code=502,
+                    source="proxy",
+                    optimized_applied=optimized_applied,
+                    error_type="upstream_unavailable",
+                )
                 return JSONResponse(
                     {"error": "upstream_unavailable", "detail": err_msg},
                     status_code=502,
+                    headers={
+                        "X-Entroly-Source": "proxy",
+                        "X-Entroly-Optimized": self._optimized_header_value(optimized_applied),
+                    },
                 )
 
             # Retry on 429 (rate limit) and 5xx (server errors)
@@ -1539,6 +1685,13 @@ class PromptCompilerProxy:
                     await asyncio.sleep(min(retry_after, 10.0))
                     continue
                 # Out of retries — distinguish entroly error vs upstream error
+                self._record_request_observation(
+                    request_observation,
+                    status_code=response.status_code,
+                    source="upstream",
+                    optimized_applied=optimized_applied,
+                    error_type="upstream_http_error",
+                )
                 return JSONResponse(
                     {
                         "error": "upstream_error",
@@ -1547,13 +1700,18 @@ class PromptCompilerProxy:
                         "source": "upstream_api",
                     },
                     status_code=response.status_code,
-                    headers={"X-Entroly-Source": "upstream"},
+                    headers={
+                        "X-Entroly-Source": "upstream",
+                        "X-Entroly-Optimized": self._optimized_header_value(optimized_applied),
+                    },
                 )
 
             # Success — break out of retry loop
             break
 
-        resp_headers: dict[str, str] = {"X-Entroly-Optimized": "true"}
+        resp_headers: dict[str, str] = {
+            "X-Entroly-Optimized": self._optimized_header_value(optimized_applied)
+        }
         with self._stats_lock:
             if self._last_temperature is not None:
                 resp_headers["X-Entroly-Temperature"] = f"{self._last_temperature:.4f}"
@@ -1642,6 +1800,13 @@ class PromptCompilerProxy:
                         self.engine.record_reward(selected_frag_ids, reward)
             except Exception:
                 pass  # Never block response for feedback
+
+        self._record_request_observation(
+            request_observation,
+            status_code=response.status_code,
+            source="upstream",
+            optimized_applied=optimized_applied,
+        )
 
         # ── Response Distillation ──
         # Strip filler from LLM response (pleasantries, hedging, meta-commentary)
@@ -1760,6 +1925,90 @@ class PromptCompilerProxy:
     ) -> dict[str, str]:
         """构造转发头，保留 provider 自定义头与鉴权头。"""
         return build_forward_headers(original)
+
+    @staticmethod
+    def _optimized_header_value(optimized_applied: bool) -> str:
+        return "true" if optimized_applied else "false"
+
+    def _build_request_observation(
+        self,
+        *,
+        path: str,
+        provider: str,
+        body: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Capture request telemetry without affecting the forwarding path."""
+        model = ""
+        query = ""
+        tokens_in = 0
+
+        try:
+            model = extract_model(body, path) or ""
+        except Exception:
+            pass
+
+        try:
+            query = _sanitize_query(extract_user_message(body, provider))
+        except Exception:
+            pass
+
+        try:
+            tokens_in = estimate_prompt_tokens(body, provider)
+        except Exception:
+            pass
+
+        return {
+            "started_at": time.perf_counter(),
+            "path": path,
+            "provider": provider,
+            "model": model,
+            "query": query,
+            "tokens_in": tokens_in,
+            "tokens_saved": 0,
+            "dedup_hits": 0,
+            "sast_findings": 0,
+            "optimized": False,
+        }
+
+    def _record_request_observation(
+        self,
+        request_observation: dict[str, Any] | None,
+        *,
+        status_code: int,
+        source: str,
+        optimized_applied: bool,
+        error_type: str | None = None,
+    ) -> None:
+        if request_observation is None:
+            return
+
+        entry = {
+            "time": time.time(),
+            "path": request_observation.get("path", ""),
+            "provider": request_observation.get("provider", ""),
+            "model": request_observation.get("model", ""),
+            "query": request_observation.get("query", ""),
+            "tokens_in": request_observation.get("tokens_in", 0),
+            "tokens_saved": request_observation.get("tokens_saved", 0),
+            "dedup_hits": request_observation.get("dedup_hits", 0),
+            "sast_findings": request_observation.get("sast_findings", 0),
+            "optimized": optimized_applied,
+            "status_code": status_code,
+            "source": source,
+            "duration_ms": round(
+                (time.perf_counter() - request_observation.get("started_at", time.perf_counter())) * 1000,
+                1,
+            ),
+        }
+        if error_type:
+            entry["error_type"] = error_type
+
+        try:
+            from .dashboard import record_request
+
+            record_request(entry)
+        except Exception as exc:
+            logger.warning("Dashboard request telemetry failed: %s", exc)
 
     @staticmethod
     def _mask_key(value: str) -> str:
@@ -2252,6 +2501,7 @@ def create_proxy_app(
             port=9378,
             daemon=True,
             proxy_base_url=proxy_base_url,
+            proxy=proxy,
         )
         logger.info("Value dashboard live at http://localhost:9378")
     except Exception as e:

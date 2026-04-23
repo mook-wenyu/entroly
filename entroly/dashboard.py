@@ -28,6 +28,8 @@ logger = logging.getLogger("entroly.dashboard")
 
 # ── Engine reference (set by start_dashboard) ─────────────────────────────────
 _engine: Any | None = None
+_proxy: Any | None = None
+_seed_optimization: dict[str, Any] | None = None
 _proxy_base_url = "http://localhost:9377/v1"
 _lock = threading.Lock()
 
@@ -42,6 +44,56 @@ def record_request(entry: dict):
         _request_log.append(entry)
         if len(_request_log) > _MAX_LOG:
             del _request_log[: len(_request_log) - _MAX_LOG]
+
+
+def clear_request_log() -> None:
+    """Clear recorded proxy requests.
+
+    Tests use this to avoid cross-test contamination.
+    """
+    with _lock:
+        _request_log.clear()
+
+
+def get_recent_requests() -> list[dict]:
+    """Return a snapshot of recent proxy requests."""
+    with _lock:
+        return list(_request_log)
+
+
+def _snapshot_last_optimization() -> dict[str, Any]:
+    """Return the most recent optimization snapshot for the BA panel.
+
+    Priority:
+    1. Proxy runtime state from the last successful optimized request
+    2. Seeded engine-only snapshot from `entroly dashboard`
+    """
+    if _proxy is not None:
+        try:
+            with _proxy._stats_lock:
+                if getattr(_proxy, "_has_successful_optimization", False):
+                    return _safe_json(
+                        {
+                            "available": True,
+                            "source": "proxy",
+                            "original_tokens": getattr(_proxy, "_last_original_prompt_tokens", 0),
+                            "optimized_tokens": getattr(_proxy, "_last_optimized_prompt_tokens", 0),
+                            "tokens_saved_pct": round(getattr(_proxy, "_last_tokens_saved_pct", 0.0), 2),
+                            "fragment_count": getattr(_proxy, "_last_fragment_count", 0),
+                            "coverage_pct": round(getattr(_proxy, "_last_coverage_pct", 0.0), 2),
+                            "confidence": round(getattr(_proxy, "_last_confidence", 0.0), 4),
+                            "pipeline_ms": round(getattr(_proxy, "_last_pipeline_ms", 0.0), 2),
+                            "query": getattr(_proxy, "_last_query", ""),
+                            "optimized_at": getattr(_proxy, "_last_optimization_at", 0.0),
+                        }
+                    )
+        except Exception:
+            logger.debug("Failed to snapshot proxy optimization state", exc_info=True)
+
+    if _seed_optimization:
+        return _safe_json(_seed_optimization)
+
+    return {"available": False}
 
 
 def _safe_json(obj: Any) -> Any:
@@ -62,6 +114,8 @@ def _get_full_snapshot() -> dict:
     snap: dict[str, Any] = {
         "ts": time.time(),
         "engine_available": _engine is not None,
+        "proxy_base_url": _proxy_base_url,
+        "last_optimization": _snapshot_last_optimization(),
     }
 
     # Persistent value tracker (independent of engine — always available)
@@ -202,8 +256,7 @@ def _get_full_snapshot() -> dict:
         snap["causal"] = None
 
     # 9. Recent proxy requests
-    with _lock:
-        snap["recent_requests"] = list(_request_log)
+    snap["recent_requests"] = get_recent_requests()
 
     # 10. CogOps Epistemic Engine stats
     try:
@@ -489,7 +542,7 @@ tr:hover td{background:rgba(255,255,255,0.015);}
     <div class="ph"><h2>📡 Request Flow</h2><span id="rb" class="badge b-cyan">—</span></div>
     <div id="sparkarea" style="padding:12px 20px 0;"></div>
     <div style="overflow-x:auto;">
-      <table><thead><tr><th>Time</th><th>Model</th><th>Tokens In</th><th>Saved</th><th>Dedup</th><th>SAST</th><th>Query</th></tr></thead>
+      <table><thead><tr><th>Time</th><th>Status</th><th>Mode</th><th>Model</th><th>Tokens In</th><th>Saved</th><th>Dedup</th><th>SAST</th><th>Query</th></tr></thead>
       <tbody id="reqs"></tbody></table>
     </div>
   </div>
@@ -539,31 +592,39 @@ function renderHero(d){
 function renderBA(d){
   const s=d.stats||{},ss=s.session||{},sv=s.savings||{};
   const ex=d.explain||{};
+  const lastOpt=d.last_optimization||{};
   const totalTokens=ss.total_tokens_tracked||ss.total_token_count||ss.total_tokens_ingested||0;
   const selected=ex.included||[];
   const excluded=ex.excluded||[];
-  const selTokens=selected.reduce((a,f)=>a+(f.tokens||f.token_count||0),0);
-  const totalFrag=selected.length+excluded.length;
-  if(totalTokens===0&&selected.length===0){document.getElementById('ba').innerHTML='';return;}
-  const ratio=totalTokens>0&&selTokens>0?Math.round((1-selTokens/totalTokens)*100):0;
-  const coverPct=totalFrag>0?Math.round(selected.length/totalFrag*100):0;
+  const fallbackSelTokens=selected.reduce((a,f)=>a+(f.tokens||f.token_count||0),0);
+  const fallbackTotalFrag=selected.length+excluded.length;
+  const rawTokens=lastOpt.original_tokens||totalTokens;
+  const selTokens=lastOpt.optimized_tokens||fallbackSelTokens;
+  const selectedFragCount=lastOpt.fragment_count||selected.length;
+  const coverPct=lastOpt.coverage_pct||(fallbackTotalFrag>0?Math.round(selected.length/fallbackTotalFrag*100):0);
+  const optimizedReady=!!lastOpt.available||selTokens>0;
+  if(rawTokens===0&&selectedFragCount===0&&!optimizedReady){document.getElementById('ba').innerHTML='';return;}
+  const ratio=rawTokens>0&&selTokens>0?Math.round((1-selTokens/rawTokens)*100):0;
+  const pctText=optimizedReady?(ratio>0?ratio+'%':'0%'):'—';
+  const pctLabel=optimizedReady?(ratio>0?'reduction':'optimized'):'awaiting optimize';
+  const queryDetail=lastOpt.query?`Last query: ${lastOpt.query}`:'Top-K: ~5 files visible to LLM';
 
   document.getElementById('ba').innerHTML=`<div class="ba-panel">
     <div class="ba-side ba-left">
       <div class="ba-title">Without Entroly (Raw)</div>
-      <div class="ba-val" style="color:var(--rose);">${fmt(totalTokens)} tokens</div>
-      <div class="ba-detail">${totalFrag} fragments · no dedup · no scoring</div>
-      <div class="ba-detail" style="margin-top:4px;">Top-K: ~5 files visible to LLM</div>
+      <div class="ba-val" style="color:var(--rose);">${fmt(rawTokens)} tokens</div>
+      <div class="ba-detail">${selectedFragCount} fragments · no dedup · no scoring</div>
+      <div class="ba-detail" style="margin-top:4px;">${queryDetail}</div>
     </div>
     <div class="ba-center">
       <div class="ba-arrow">→</div>
-      <div class="ba-pct">${ratio>0?ratio+'%':'—'}</div>
-      <div class="ba-pct-label">${ratio>0?'reduction':'awaiting optimize'}</div>
+      <div class="ba-pct">${pctText}</div>
+      <div class="ba-pct-label">${pctLabel}</div>
     </div>
     <div class="ba-side">
       <div class="ba-title">With Entroly (Optimized)</div>
       <div class="ba-val" style="color:var(--emerald);">${selTokens>0?fmt(selTokens)+' tokens':'—'}</div>
-      <div class="ba-detail">${selected.length} fragments · knapsack-optimal · deduped</div>
+      <div class="ba-detail">${selectedFragCount} fragments · knapsack-optimal · deduped</div>
       <div class="ba-detail" style="margin-top:4px;">Coverage: ${coverPct}% of codebase at variable resolution</div>
     </div>
   </div>`;
@@ -696,13 +757,17 @@ function renderSecAndKnapsack(d){
 let sparkData=[];
 function renderRequests(d){
   const reqs=d.recent_requests||[],tbody=document.getElementById('reqs'),b=document.getElementById('rb');
+  const proxyBaseUrl=d.proxy_base_url||'http://localhost:9377/v1';
   b.textContent=reqs.length+' recent';
   if(reqs.length>0){reqs.forEach(r=>{if(sparkData.length>=30)sparkData.shift();sparkData.push(r.tokens_saved||0);});
     const mx=Math.max(...sparkData,1);
     document.getElementById('sparkarea').innerHTML='<div class="sparkline">'+sparkData.map(v=>'<div class="bar" style="height:'+Math.max(2,v/mx*40)+'px;"></div>').join('')+'</div>';}
-  if(reqs.length===0){tbody.innerHTML='<tr><td colspan="7" class="empty">No requests yet — route LLM calls through proxy on :9377</td></tr>';return;}
+  if(reqs.length===0){tbody.innerHTML='<tr><td colspan="9" class="empty">No requests yet — route LLM calls through proxy on '+proxyBaseUrl+'</td></tr>';return;}
   tbody.innerHTML=reqs.slice().reverse().slice(0,15).map(r=>`<tr>
-    <td>${ago(r.time||0)}</td><td>${r.model||'—'}</td><td class="mono">${fmt(r.tokens_in||0)}</td>
+    <td>${ago(r.time||0)}</td>
+    <td>${(() => { const status = r.status_code || '—'; const klass = status >= 500 ? 't-rose' : status >= 400 ? 't-amber' : 't-green'; return '<span class="tag '+klass+'">'+status+' · '+(r.source||'proxy')+'</span>'; })()}</td>
+    <td>${r.optimized?'<span class="tag t-green">optimized</span>':'<span class="tag t-amber">pass-through</span>'}</td>
+    <td>${r.model||'—'}</td><td class="mono">${fmt(r.tokens_in||0)}</td>
     <td><span class="tag t-green">−${fmt(r.tokens_saved||0)}</span></td>
     <td>${(r.dedup_hits||0)>0?'<span class="tag t-amber">'+r.dedup_hits+'</span>':'<span style="color:var(--dim2)">0</span>'}</td>
     <td>${(r.sast_findings||0)>0?'<span class="tag t-rose">'+r.sast_findings+'</span>':'<span style="color:var(--dim2)">0</span>'}</td>
@@ -784,7 +849,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
         """Add security headers to prevent clickjacking and MIME sniffing."""
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
-        self.send_header("Content-Security-Policy", "default-src 'self' 'unsafe-inline'")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com data:",
+        )
         self.send_header("Referrer-Policy", "no-referrer")
 
     def do_GET(self):
@@ -794,7 +864,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-cache")
             self._send_security_headers()
             self.end_headers()
-            self.wfile.write(DASHBOARD_HTML.encode())
+            html = DASHBOARD_HTML.replace("{_proxy_base_url}", _proxy_base_url)
+            self.wfile.write(html.encode())
+        elif self.path == "/favicon.ico":
+            self.send_response(204)
+            self.send_header("Cache-Control", "no-cache")
+            self._send_security_headers()
+            self.end_headers()
         elif self.path == "/api/metrics":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -846,6 +922,8 @@ def start_dashboard(
     port: int = 9378,
     daemon: bool = True,
     proxy_base_url: str = "http://localhost:9377/v1",
+    proxy: Any = None,
+    seed_optimization: dict[str, Any] | None = None,
 ):
     """
     Start the dashboard HTTP server in a background thread.
@@ -858,9 +936,11 @@ def start_dashboard(
     Returns:
         The HTTPServer instance.
     """
-    global _engine, _proxy_base_url
+    global _engine, _proxy, _proxy_base_url, _seed_optimization
     _engine = engine
+    _proxy = proxy
     _proxy_base_url = proxy_base_url
+    _seed_optimization = seed_optimization
 
     class _ReuseAddrHTTPServer(HTTPServer):
         allow_reuse_address = True

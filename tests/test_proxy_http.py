@@ -63,6 +63,36 @@ def test_join_target_url_joins_origin_and_request_path():
     )
 
 
+def test_join_target_url_avoids_duplicate_default_v1_prefix():
+    assert (
+        join_target_url(
+            "https://api.openai.com/v1",
+            "/v1/responses",
+        )
+        == "https://api.openai.com/v1/responses"
+    )
+
+
+def test_join_target_url_avoids_duplicate_provider_prefix_and_preserves_query():
+    assert (
+        join_target_url(
+            "https://example.openai.azure.com/openai",
+            "/openai/responses?api-version=2025-04-01-preview",
+        )
+        == "https://example.openai.azure.com/openai/responses?api-version=2025-04-01-preview"
+    )
+
+
+def test_join_target_url_supports_prefixed_base_with_unprefixed_request_path():
+    assert (
+        join_target_url(
+            "https://example.openai.azure.com/openai/v1",
+            "/chat/completions",
+        )
+        == "https://example.openai.azure.com/openai/v1/chat/completions"
+    )
+
+
 def test_split_origin_and_path_prefix_handles_prefixed_base_url():
     origin, path_prefix = split_origin_and_path_prefix(
         "https://example.openai.azure.com/openai"

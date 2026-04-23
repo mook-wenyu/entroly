@@ -739,10 +739,7 @@ def inject_context_openai(
     body = copy.deepcopy(body)
     input_key = _responses_input_key(body)
     if input_key:
-        body[input_key] = _inject_context_openai_responses(
-            body.get(input_key), context_text
-        )
-        return body
+        return _inject_context_openai_responses(body, context_text)
 
     messages = body.get("messages", [])
 
@@ -766,45 +763,39 @@ def inject_context_openai(
     return body
 
 
-def _inject_context_openai_responses(input_value: Any, context_text: str) -> Any:
-    if isinstance(input_value, str):
-        return f"{context_text}\n\n{input_value}"
+def _inject_context_openai_responses(
+    body: dict[str, Any], context_text: str
+) -> dict[str, Any]:
+    """Inject context into Responses API requests via top-level instructions.
 
-    if isinstance(input_value, dict):
-        items = [copy.deepcopy(input_value)]
-    elif isinstance(input_value, list):
-        items = copy.deepcopy(input_value)
-    else:
-        return input_value
+    OpenAI's Responses API supports dedicated `instructions` for system-level
+    guidance. This keeps `input` untouched, which is more compatible with
+    OpenAI-compatible providers that reject synthetic `system` items inside
+    the `input` array.
+    """
+    existing = body.get("instructions")
+    if isinstance(existing, str):
+        body["instructions"] = (
+            f"{context_text}\n\n{existing}" if existing else context_text
+        )
+        return body
 
-    if items:
-        first = items[0]
-        if (
-            isinstance(first, dict)
-            and first.get("type") in (None, "message")
-            and first.get("role") in {"system", "developer"}
-        ):
-            content = first.get("content", "")
-            if isinstance(content, str):
-                first["content"] = f"{context_text}\n\n{content}"
-            elif isinstance(content, list):
-                first["content"] = [
-                    {"type": "input_text", "text": context_text},
-                    *content,
-                ]
-            else:
-                first["content"] = [{"type": "input_text", "text": context_text}]
-            return items
+    developer_message = {
+        "type": "message",
+        "role": "developer",
+        "content": [{"type": "input_text", "text": context_text}],
+    }
 
-    items.insert(
-        0,
-        {
-            "type": "message",
-            "role": "system",
-            "content": [{"type": "input_text", "text": context_text}],
-        },
-    )
-    return items
+    if isinstance(existing, list):
+        body["instructions"] = [developer_message, *copy.deepcopy(existing)]
+        return body
+
+    if isinstance(existing, dict):
+        body["instructions"] = [developer_message, copy.deepcopy(existing)]
+        return body
+
+    body["instructions"] = context_text
+    return body
 
 
 def estimate_prompt_tokens(body: dict[str, Any], provider: str) -> int:

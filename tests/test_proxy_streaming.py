@@ -130,3 +130,44 @@ async def test_bypass_forwards_chat_request_body_without_mutation():
     assert captured["body"] == raw_body
 
     await proxy._client.aclose()
+
+
+@pytest.mark.anyio
+async def test_non_streaming_circuit_breaker_short_circuits_before_upstream():
+    called = {"count": 0}
+
+    async def upstream_handler(request: httpx.Request) -> httpx.Response:
+        called["count"] += 1
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/json"},
+            json={"id": "resp_mock", "choices": []},
+        )
+
+    proxy = PromptCompilerProxy(
+        engine=SimpleNamespace(),
+        config=ProxyConfig(openai_base_url="https://api.mookbot.com"),
+    )
+    proxy._bypass = True
+    proxy._client = httpx.AsyncClient(transport=httpx.MockTransport(upstream_handler))
+    for _ in range(proxy._breaker.failure_threshold):
+        proxy._breaker.record_failure()
+
+    app = Starlette(routes=[Route("/responses", proxy.handle_proxy, methods=["POST"])])
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post(
+            "/responses",
+            json={"model": "gpt-5.4", "input": "hello", "stream": False},
+            headers={"authorization": "Bearer test"},
+        )
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == str(int(proxy._breaker.cooldown_s))
+    assert response.json()["error"] == "circuit_breaker_open"
+    assert called["count"] == 0
+
+    await proxy._client.aclose()

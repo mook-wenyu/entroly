@@ -516,8 +516,28 @@ def cmd_dashboard(args):
     elif result["status"] == "skipped":
         print(f"  {C.GRAY}Using persistent index ({result['existing_fragments']} fragments){C.RESET}")
 
-    # Run an optimize to populate all engine subsystems
-    engine.optimize_context(token_budget=128000, query="project overview")
+    # Run an optimize to populate all engine subsystems and seed the BA panel.
+    overview = engine.optimize_context(token_budget=128000, query="project overview")
+    stats = engine.stats()
+    session = stats.get("session", {}) if isinstance(stats, dict) else {}
+    selected = overview.get("selected_fragments", []) if isinstance(overview, dict) else []
+    seed_optimization = {
+        "available": bool(selected),
+        "source": "engine",
+        "original_tokens": (
+            session.get("total_tokens_tracked")
+            or session.get("total_token_count")
+            or session.get("total_tokens_ingested")
+            or 0
+        ),
+        "optimized_tokens": sum(int(f.get("token_count", 0)) for f in selected if isinstance(f, dict)),
+        "fragment_count": len(selected),
+        "coverage_pct": 0.0,
+        "confidence": 0.0,
+        "pipeline_ms": None,
+        "query": "project overview",
+        "optimized_at": 0.0,
+    }
 
     # Free dashboard port from any stale process
     if not _free_port(args.port):
@@ -526,7 +546,12 @@ def cmd_dashboard(args):
         return
 
     # Start web dashboard
-    start_dashboard(engine=engine, port=args.port, daemon=False)
+    start_dashboard(
+        engine=engine,
+        port=args.port,
+        daemon=False,
+        seed_optimization=seed_optimization,
+    )
     print(f"\n  {C.GREEN}{C.BOLD}Dashboard live at http://localhost:{args.port}{C.RESET}")
     print(f"  {C.GRAY}Showing: tokens saved, PRISM weights, health grade, SAST, dep graph, knapsack decisions{C.RESET}")
     print(f"  {C.GRAY}Press Ctrl+C to stop{C.RESET}\n")

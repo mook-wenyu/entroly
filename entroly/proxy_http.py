@@ -60,9 +60,25 @@ def join_target_url(base_url: str, path_with_query: str) -> str:
     if not base_url:
         raise ValueError("upstream base_url 不能为空")
 
-    base = base_url.rstrip("/")
-    path = path_with_query if path_with_query.startswith("/") else f"/{path_with_query}"
-    return f"{base}{path}"
+    origin, path_prefix = split_origin_and_path_prefix(base_url)
+    parsed_origin = urlsplit(origin)
+    request = urlsplit(path_with_query)
+    request_path = request.path or "/"
+    if not request_path.startswith("/"):
+        request_path = f"/{request_path}"
+
+    # 当本地 proxy URL 已经带上 provider 前缀时，避免把同一前缀重复拼回上游。
+    suffix_path = request_path
+    if path_prefix:
+        if request_path == path_prefix:
+            suffix_path = "/"
+        elif request_path.startswith(f"{path_prefix}/"):
+            suffix_path = request_path[len(path_prefix):]
+
+    full_path = f"{path_prefix}{suffix_path}" if path_prefix else suffix_path
+    return urlunsplit(
+        (parsed_origin.scheme, parsed_origin.netloc, full_path, request.query, "")
+    )
 
 
 def split_origin_and_path_prefix(base_url: str) -> tuple[str, str]:
