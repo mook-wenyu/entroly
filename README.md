@@ -172,7 +172,7 @@ Zero cloud dependencies. Zero data exfiltration risk. Everything runs on your CP
 | **GitHub Copilot** | `entroly init` → MCP server |
 | **Codex CLI** | `entroly wrap codex`（读取现有 Codex provider 配置，并在当前会话临时重定向到 Entroly） |
 | **Windsurf / Cline / Cody** | `entroly init` |
-| **Any LLM API** | `entroly proxy` → HTTP proxy on `localhost:9377` |
+| **Any LLM API** | `entroly proxy` → HTTP proxy on `localhost:9377`（会打印当前应使用的精确本地 base URL） |
 
 Also: OpenAI API • Anthropic API • LangChain • LlamaIndex • MCP-native
 

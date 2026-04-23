@@ -113,7 +113,7 @@ entroly init    # auto-detects your IDE</pre>
 <pre>pip install entroly[full]
 entroly proxy</pre>
 
-<p>Then point your API calls to <code>http://localhost:9377/v1</code> instead of the provider's URL. Entroly intercepts, optimizes context, forwards to the real API.</p>
+<p>Then point your API calls to the local proxy URL printed by Entroly instead of the provider's URL. For the OpenAI platform this is usually <code>http://localhost:9377/v1</code>, but provider-specific prefixes are preserved when needed.</p>
 
 <h3>Option C: Docker</h3>
 <pre>docker run --rm -p 9377:9377 -v .:/workspace:ro ghcr.io/juyterman1000/entroly:latest</pre>

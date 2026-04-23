@@ -44,6 +44,17 @@ class CodexWrapPlan:
     env_updates: dict[str, str]
 
 
+@dataclass(frozen=True)
+class OpenAIProxyRoute:
+    upstream_base_url: str
+    upstream_origin: str
+    path_prefix: str
+    proxy_base_url: str
+    provider_id: str | None
+    wire_api: str | None
+    source: str
+
+
 def prepare_codex_wrap(
     agent_args: list[str],
     *,
@@ -76,16 +87,54 @@ def prepare_codex_wrap(
             "Entroly 目前只支持 Responses API。"
         )
 
-    upstream_origin, upstream_path_prefix = split_origin_and_path_prefix(provider.base_url)
-    proxy_base_url = f"http://127.0.0.1:{port}{upstream_path_prefix}"
-    override_args = build_codex_override_args(provider, proxy_base_url)
+    route = _build_openai_proxy_route(
+        provider.base_url,
+        port,
+        provider_id=provider.provider_id,
+        wire_api=provider.wire_api,
+        source="codex-provider",
+    )
+    override_args = build_codex_override_args(provider, route.proxy_base_url)
 
     return CodexWrapPlan(
         provider=provider,
-        proxy_base_url=proxy_base_url,
-        upstream_origin=upstream_origin,
+        proxy_base_url=route.proxy_base_url,
+        upstream_origin=route.upstream_origin,
         override_args=override_args,
-        env_updates={"ENTROLY_OPENAI_BASE": upstream_origin},
+        env_updates={"ENTROLY_OPENAI_BASE": route.upstream_origin},
+    )
+
+
+def resolve_openai_proxy_route(
+    *,
+    port: int,
+    env: dict[str, str] | None = None,
+    selection: CodexCliSelection | None = None,
+) -> OpenAIProxyRoute:
+    """解析 OpenAI 兼容上游及其对应的本地代理入口。"""
+    effective_env = env or os.environ
+    explicit_base = effective_env.get("ENTROLY_OPENAI_BASE")
+    if explicit_base:
+        return _build_openai_proxy_route(explicit_base, port, source="env")
+
+    provider = load_active_codex_provider(
+        effective_env, selection or CodexCliSelection()
+    )
+    source = "codex-provider"
+    if (
+        provider.provider_id == "openai"
+        and provider.base_url == _DEFAULT_OPENAI_BASE_URL
+        and provider.config_path is None
+        and provider.profile is None
+    ):
+        source = "default-openai"
+
+    return _build_openai_proxy_route(
+        provider.base_url,
+        port,
+        provider_id=provider.provider_id,
+        wire_api=provider.wire_api,
+        source=source,
     )
 
 
@@ -287,3 +336,24 @@ def _parse_toml_string(value: str) -> str:
 def _toml_string(value: str) -> str:
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
     return f'"{escaped}"'
+
+
+def _build_openai_proxy_route(
+    base_url: str,
+    port: int,
+    *,
+    provider_id: str | None = None,
+    wire_api: str | None = None,
+    source: str,
+) -> OpenAIProxyRoute:
+    upstream_origin, path_prefix = split_origin_and_path_prefix(base_url)
+    proxy_base_url = f"http://127.0.0.1:{port}{path_prefix}"
+    return OpenAIProxyRoute(
+        upstream_base_url=base_url,
+        upstream_origin=upstream_origin,
+        path_prefix=path_prefix,
+        proxy_base_url=proxy_base_url,
+        provider_id=provider_id,
+        wire_api=wire_api,
+        source=source,
+    )

@@ -2183,7 +2183,7 @@ async def _proxy_stats(request: Request) -> JSONResponse:
 
 
 def create_proxy_app(
-    engine: Any, config: ProxyConfig | None = None
+    engine: Any, config: ProxyConfig | None = None, *, proxy_base_url: str = "http://localhost:9377/v1"
 ) -> Starlette:
     """Create the Starlette ASGI app for the prompt compiler proxy."""
     proxy = PromptCompilerProxy(engine, config)
@@ -2191,7 +2191,12 @@ def create_proxy_app(
     # Auto-start the live value dashboard alongside the proxy
     try:
         from .dashboard import start_dashboard
-        start_dashboard(engine=engine, port=9378, daemon=True)
+        start_dashboard(
+            engine=engine,
+            port=9378,
+            daemon=True,
+            proxy_base_url=proxy_base_url,
+        )
         logger.info("Value dashboard live at http://localhost:9378")
     except Exception as e:
         logger.warning(f"Dashboard failed to start: {e}")

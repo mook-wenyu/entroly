@@ -14,6 +14,7 @@ from entroly.codex_integration import (  # noqa: E402
     build_codex_override_args,
     parse_codex_cli_selection,
     prepare_codex_wrap,
+    resolve_openai_proxy_route,
 )
 from entroly.launching import resolve_launch_cmd, resolve_python_cmd  # noqa: E402
 
@@ -121,6 +122,90 @@ def test_prepare_codex_wrap_supports_explicit_provider_without_config():
     assert plan.env_updates["ENTROLY_OPENAI_BASE"] == "https://api.mookbot.com"
 
 
+def test_resolve_openai_proxy_route_uses_active_codex_provider(tmp_path: Path, monkeypatch):
+    codex_home = tmp_path / ".codex"
+    codex_home.mkdir()
+    (codex_home / "config.toml").write_text(
+        """
+model_provider = "sub2api"
+
+[model_providers.sub2api]
+name = "sub2api"
+base_url = "https://api.mookbot.com"
+wire_api = "responses"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    monkeypatch.delenv("ENTROLY_OPENAI_BASE", raising=False)
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+
+    route = resolve_openai_proxy_route(port=9377, env={"CODEX_HOME": str(codex_home)})
+
+    assert route.upstream_base_url == "https://api.mookbot.com"
+    assert route.upstream_origin == "https://api.mookbot.com"
+    assert route.proxy_base_url == "http://127.0.0.1:9377"
+    assert route.provider_id == "sub2api"
+    assert route.source == "codex-provider"
+
+
+def test_resolve_openai_proxy_route_prefers_explicit_env(monkeypatch):
+    route = resolve_openai_proxy_route(
+        port=9377,
+        env={"ENTROLY_OPENAI_BASE": "https://example.openai.azure.com/openai"},
+    )
+
+    assert route.upstream_base_url == "https://example.openai.azure.com/openai"
+    assert route.upstream_origin == "https://example.openai.azure.com"
+    assert route.proxy_base_url == "http://127.0.0.1:9377/openai"
+    assert route.provider_id is None
+    assert route.source == "env"
+
+
+def test_resolve_openai_proxy_route_accepts_non_responses_provider_for_generic_proxy(tmp_path: Path):
+    codex_home = tmp_path / ".codex"
+    codex_home.mkdir()
+    (codex_home / "config.toml").write_text(
+        """
+model_provider = "sub2api"
+
+[model_providers.sub2api]
+name = "sub2api"
+base_url = "https://api.mookbot.com/openai"
+wire_api = "chat_completions"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    route = resolve_openai_proxy_route(port=9377, env={"CODEX_HOME": str(codex_home)})
+
+    assert route.upstream_base_url == "https://api.mookbot.com/openai"
+    assert route.proxy_base_url == "http://127.0.0.1:9377/openai"
+    assert route.provider_id == "sub2api"
+    assert route.wire_api == "chat_completions"
+
+
+def test_resolve_openai_proxy_route_defaults_to_openai_when_config_missing(tmp_path: Path):
+    route = resolve_openai_proxy_route(
+        port=9377,
+        env={"CODEX_HOME": str(tmp_path / ".missing-codex")},
+    )
+
+    assert route.upstream_base_url == "https://api.openai.com/v1"
+    assert route.upstream_origin == "https://api.openai.com"
+    assert route.proxy_base_url == "http://127.0.0.1:9377/v1"
+    assert route.provider_id == "openai"
+    assert route.source == "default-openai"
+
+
+def test_resolve_openai_proxy_route_rejects_invalid_env_base_url():
+    with pytest.raises(ValueError, match="provider base_url"):
+        resolve_openai_proxy_route(
+            port=9377,
+            env={"ENTROLY_OPENAI_BASE": "not-a-url"},
+        )
+
+
 def test_resolve_launch_cmd_resolves_bare_executable(monkeypatch):
     monkeypatch.setattr("entroly.launching.shutil.which", lambda name: r"C:\tools\codex.cmd")
     resolved = resolve_launch_cmd(["codex", "--version"])
@@ -208,3 +293,61 @@ def test_cmd_wrap_codex_passes_upstream_env_to_proxy(monkeypatch):
         "--config",
         'model_providers.sub2api.base_url="http://127.0.0.1:9377"',
     ]
+
+
+def test_cmd_wrap_aider_uses_dynamic_openai_proxy_base(monkeypatch):
+    popen_calls: list[dict] = []
+    run_calls: list[dict] = []
+    state = {"proxy_started": False}
+
+    class FakeSocket:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def settimeout(self, timeout):
+            return None
+
+        def connect_ex(self, address):
+            return 0 if state["proxy_started"] else 1
+
+    def fake_popen(cmd, **kwargs):
+        popen_calls.append({"cmd": cmd, "kwargs": kwargs})
+        state["proxy_started"] = True
+        return SimpleNamespace()
+
+    def fake_run(cmd, **kwargs):
+        run_calls.append({"cmd": cmd, "kwargs": kwargs})
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(
+        "entroly.cli.resolve_openai_proxy_route",
+        lambda **kwargs: SimpleNamespace(
+            proxy_base_url="http://127.0.0.1:9377/openai/v1",
+            upstream_base_url="https://example.openai.azure.com/openai/v1",
+            source="env",
+            provider_id=None,
+        ),
+    )
+    monkeypatch.setattr("entroly.cli.resolve_python_cmd", lambda: r"D:\venv\Scripts\python.exe")
+    monkeypatch.setattr("entroly.cli.resolve_launch_cmd", lambda cmd: cmd)
+    monkeypatch.setattr("entroly.cli.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("entroly.cli.subprocess.run", fake_run)
+    monkeypatch.setattr("socket.socket", lambda *args, **kwargs: FakeSocket())
+    monkeypatch.setattr("entroly.cli.os.environ", {"PATH": r"C:\tools"})
+
+    args = SimpleNamespace(
+        agent="aider",
+        port=9377,
+        codex_provider_id=None,
+        codex_base_url=None,
+        agent_args=["--model", "gpt-5.4"],
+    )
+
+    cmd_wrap(args)
+
+    assert popen_calls
+    assert run_calls
+    assert run_calls[0]["kwargs"]["env"]["OPENAI_API_BASE"] == "http://127.0.0.1:9377/openai/v1"

@@ -17,8 +17,10 @@ entroly start
 ```
 
 **2. Point your AI Agent**
-Change your AI tool's API base URL (in Cursor, Cline, or Claude Code) to:
-`http://localhost:9377/v1`
+Change your AI tool's API base URL (in Cursor, Cline, or Claude Code) to the
+local proxy URL printed by Entroly. For the OpenAI platform this is usually
+`http://localhost:9377/v1`, but provider-specific prefixes are preserved when
+needed.
 
 **3. Watch the Magic**
 Open **`http://localhost:9378`** in your browser. Entroly comes with a gorgeous live intelligence dashboard. Watch the PRISM caching engine work in real-time, see which files are being excluded to prevent hallucination, and watch a live ticker of how much money you are saving.

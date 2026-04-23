@@ -136,7 +136,7 @@ npx entroly-wasm demo      # see savings on YOUR codebase
 
 The WASM package runs the full Rust engine natively in Node.js — **no Python required**.
 
-**That's it.** `entroly go` (Python) or `npx entroly-wasm serve` (Node.js) auto-detects your IDE, starts the engine, and begins optimizing. Point your AI tool to `http://localhost:9377/v1`.
+**That's it.** `entroly go` (Python) or `npx entroly-wasm serve` (Node.js) auto-detects your IDE, starts the engine, and begins optimizing. Point your AI tool to the local proxy URL printed by Entroly. For the OpenAI platform this is usually `http://localhost:9377/v1`, but provider-specific prefixes such as `/openai/v1` are preserved.
 
 ### Or step by step
 

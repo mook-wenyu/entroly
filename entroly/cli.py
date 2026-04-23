@@ -42,7 +42,7 @@ try:
 except ImportError:
     __version__ = "0.8.2"
 
-from .codex_integration import prepare_codex_wrap
+from .codex_integration import prepare_codex_wrap, resolve_openai_proxy_route
 from .launching import resolve_launch_cmd, resolve_python_cmd
 
 # ── Force UTF-8 output on Windows ──
@@ -72,6 +72,18 @@ class C:
 
 _ENTROLY_DIR = Path.home() / ".entroly"
 _FIRST_RUN_MARKER = _ENTROLY_DIR / ".welcome_shown"
+
+
+def _display_local_proxy_base_url(url: str) -> str:
+    return url.replace("127.0.0.1", "localhost")
+
+
+def _describe_openai_proxy_route(route) -> str | None:
+    if route.source == "env":
+        return f"沿用 ENTROLY_OPENAI_BASE 指定的上游：{route.upstream_base_url}"
+    if route.source == "codex-provider" and route.provider_id:
+        return f"沿用 Codex provider `{route.provider_id}` 的上游：{route.upstream_base_url}"
+    return None
 
 
 def _free_port(port: int) -> bool:
@@ -664,8 +676,16 @@ def cmd_proxy(args):
     from entroly.proxy_config import ProxyConfig, resolve_quality
     from entroly.server import EntrolyEngine
 
+    requested_port = args.port or int(os.environ.get("ENTROLY_PROXY_PORT", "9377"))
+    try:
+        openai_route = resolve_openai_proxy_route(port=requested_port, env=os.environ)
+    except ValueError as e:
+        print(f"  {C.RED}{e}{C.RESET}")
+        return
+
     # Load config from environment
     config = ProxyConfig.from_env()
+    config.openai_base_url = openai_route.upstream_origin
     if args.port:
         config.port = args.port
     if args.host:
@@ -718,15 +738,23 @@ def cmd_proxy(args):
     # Upstream connectivity check — fast-fail if the LLM API is unreachable
     _check_upstream(config)
 
+    route_message = _describe_openai_proxy_route(openai_route)
+    if route_message:
+        print(f"  {C.GRAY}{route_message}{C.RESET}")
+
     # Create the ASGI app (this also starts the dashboard on :9378)
-    app = create_proxy_app(engine, config)
+    app = create_proxy_app(
+        engine,
+        config,
+        proxy_base_url=_display_local_proxy_base_url(openai_route.proxy_base_url),
+    )
 
     print(f"""
   {C.GREEN}{C.BOLD}Proxy live at http://{config.host}:{config.port}{C.RESET}
   {C.GREEN}{C.BOLD}Dashboard at http://localhost:9378{C.RESET}
 
   {C.BOLD}To use:{C.RESET} Set your AI tool's API base URL to:
-    {C.CYAN}http://localhost:{config.port}/v1{C.RESET}
+    {C.CYAN}{_display_local_proxy_base_url(openai_route.proxy_base_url)}{C.RESET}
 
   {C.GRAY}Every LLM request is intercepted -> optimized -> forwarded.{C.RESET}
   {C.GRAY}Live pipeline latency: http://localhost:9378 — or `entroly status`.{C.RESET}
@@ -1237,13 +1265,13 @@ _WRAP_AGENTS = {
     "codex": {
         "cmd": ["codex"],
         "env_key": "OPENAI_BASE_URL",
-        "env_val": "http://localhost:{port}/v1",
+        "env_val": None,
         "name": "OpenAI Codex CLI",
     },
     "aider": {
         "cmd": ["aider"],
         "env_key": "OPENAI_API_BASE",
-        "env_val": "http://localhost:{port}/v1",
+        "env_val": None,
         "name": "Aider",
     },
     "cursor": {
@@ -1276,17 +1304,22 @@ def cmd_wrap(args):
 
     env = os.environ.copy()
     extra_args: list[str] = []
+    openai_route = None
 
     if agent == "codex":
         # `wrap codex` 的 proxy 启动时就需要知道真实上游入口，
         # 不能等到子进程起来之后再补环境变量。
-        plan = prepare_codex_wrap(
-            args.agent_args,
-            port=port,
-            env=env,
-            provider_id=args.codex_provider_id,
-            base_url=args.codex_base_url,
-        )
+        try:
+            plan = prepare_codex_wrap(
+                args.agent_args,
+                port=port,
+                env=env,
+                provider_id=args.codex_provider_id,
+                base_url=args.codex_base_url,
+            )
+        except ValueError as e:
+            print(f"\n  {C.RED}{e}{C.RESET}\n")
+            return
         env.update(plan.env_updates)
         extra_args.extend(plan.override_args)
 
@@ -1294,8 +1327,23 @@ def cmd_wrap(args):
         print(f"  {C.GRAY}读取 Codex provider: {plan.provider.provider_id}{C.RESET}")
         print(f"  {C.GRAY}配置来源: {config_path}{C.RESET}")
         print(f"  {C.GRAY}上游入口: {plan.provider.base_url}{C.RESET}")
-        print(f"  {C.GRAY}代理入口: {plan.proxy_base_url}{C.RESET}")
+        print(f"  {C.GRAY}代理入口: {_display_local_proxy_base_url(plan.proxy_base_url)}{C.RESET}")
         print(f"  {C.GRAY}会话覆盖: {' '.join(plan.override_args)}{C.RESET}")
+    elif agent in {"aider", "cursor"}:
+        try:
+            openai_route = resolve_openai_proxy_route(port=port, env=env)
+        except ValueError as e:
+            print(f"\n  {C.RED}{e}{C.RESET}\n")
+            return
+        route_message = _describe_openai_proxy_route(openai_route)
+        if route_message:
+            print(f"  {C.GRAY}{route_message}{C.RESET}")
+        if spec["env_key"]:
+            env[spec["env_key"]] = openai_route.proxy_base_url
+            print(
+                f"  {C.GRAY}Set {spec['env_key']}="
+                f"{_display_local_proxy_base_url(openai_route.proxy_base_url)}{C.RESET}"
+            )
     else:
         env[spec["env_key"]] = spec["env_val"].format(port=port)
         print(f"  {C.GRAY}Set {spec['env_key']}={spec['env_val'].format(port=port)}{C.RESET}")
@@ -1337,7 +1385,11 @@ def cmd_wrap(args):
     if agent == "cursor":
         print(f"\n  {C.BOLD}Cursor Configuration:{C.RESET}")
         print("  Open Cursor Settings → Models → Override OpenAI Base URL:")
-        print(f"    {C.CYAN}http://localhost:{port}/v1{C.RESET}")
+        print(
+            f"    {C.CYAN}"
+            f"{_display_local_proxy_base_url(openai_route.proxy_base_url)}"
+            f"{C.RESET}"
+        )
         print(f"\n  {C.GRAY}All Cursor requests will be automatically optimized.{C.RESET}\n")
         return
 
@@ -1514,7 +1566,14 @@ def cmd_go(args):
         print(f"  {C.GRAY}Using persistent index ({file_count} fragments){C.RESET}")
 
     # Step 4: Smart quality recommendation
+    requested_port = args.port or int(os.environ.get("ENTROLY_PROXY_PORT", "9377"))
+    try:
+        openai_route = resolve_openai_proxy_route(port=requested_port, env=os.environ)
+    except ValueError as e:
+        print(f"  {C.RED}{e}{C.RESET}")
+        return
     config = ProxyConfig.from_env()
+    config.openai_base_url = openai_route.upstream_origin
     recommended = _recommend_quality(project, file_count)
     quality_val = resolve_quality(getattr(args, "quality", None) or recommended)
     config.quality = quality_val
@@ -1537,12 +1596,20 @@ def cmd_go(args):
     _free_port(9378)  # dashboard port
 
     # Start proxy + dashboard
-    app = create_proxy_app(engine, config)
+    app = create_proxy_app(
+        engine,
+        config,
+        proxy_base_url=_display_local_proxy_base_url(openai_route.proxy_base_url),
+    )
+
+    route_message = _describe_openai_proxy_route(openai_route)
+    if route_message:
+        print(f"  {C.GRAY}{route_message}{C.RESET}")
 
     print(f"""
   {C.GREEN}{C.BOLD}Ready!{C.RESET}
 
-  {C.GREEN}Proxy:{C.RESET}      http://localhost:{config.port}/v1
+  {C.GREEN}Proxy:{C.RESET}      {_display_local_proxy_base_url(openai_route.proxy_base_url)}
   {C.GREEN}Dashboard:{C.RESET}  http://localhost:9378
 
   {C.BOLD}Point your AI tool's API base URL to the proxy URL above.{C.RESET}

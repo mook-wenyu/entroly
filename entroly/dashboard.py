@@ -28,6 +28,7 @@ logger = logging.getLogger("entroly.dashboard")
 
 # ── Engine reference (set by start_dashboard) ─────────────────────────────────
 _engine: Any | None = None
+_proxy_base_url = "http://localhost:9377/v1"
 _lock = threading.Lock()
 
 # Per-request tracking (populated by proxy integration)
@@ -459,7 +460,7 @@ tr:hover td{background:rgba(255,255,255,0.015);}
 </div>
 <div class="main">
   <div class="whisper" id="whisper">
-    💡 Point your AI tool's API base URL to <code>http://localhost:9377/v1</code> to start optimizing every LLM call.
+    💡 Point your AI tool's API base URL to <code>{_proxy_base_url}</code> to start optimizing every LLM call.
     <span class="dismiss" onclick="this.parentElement.style.display='none'">✕</span>
   </div>
   <div class="hero" id="hero"></div>
@@ -840,7 +841,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
 
-def start_dashboard(engine: Any = None, port: int = 9378, daemon: bool = True):
+def start_dashboard(
+    engine: Any = None,
+    port: int = 9378,
+    daemon: bool = True,
+    proxy_base_url: str = "http://localhost:9377/v1",
+):
     """
     Start the dashboard HTTP server in a background thread.
 
@@ -852,8 +858,9 @@ def start_dashboard(engine: Any = None, port: int = 9378, daemon: bool = True):
     Returns:
         The HTTPServer instance.
     """
-    global _engine
+    global _engine, _proxy_base_url
     _engine = engine
+    _proxy_base_url = proxy_base_url
 
     class _ReuseAddrHTTPServer(HTTPServer):
         allow_reuse_address = True
