@@ -2408,13 +2408,18 @@ def cmd_optimize(args):
         return
 
     engine.advance_turn()
-    selector = getattr(args, "selector", "knapsack")
-    if selector == "dopt":
-        # Bayesian D-optimal re-selection over the full fragment store.
-        # recall() caps at ~25 items and biases toward stale stubs; we bypass
-        # it and run log-det greedy directly on export_fragments. See
-        # entroly/dopt_selector.py for the objective and algorithm.
-        from entroly.dopt_selector import select as dopt_select
+    selector = getattr(args, "selector", "auto")
+    # "auto" — QCCR when a query is present (sentence-level extractive wins
+    # head-to-head in quality_eval on code-retrieval tasks); fall back to
+    # knapsack when there's no query to condition on.
+    if selector == "auto":
+        selector = "qccr" if task else "knapsack"
+    if selector in ("dopt", "qccr"):
+        # Query-aware re-selection over the full fragment store, bypassing
+        # recall() (which caps at ~25 items and biases toward stale stubs).
+        #   dopt — file-level BM25 with log-det diversity (experimental)
+        #   qccr — sentence-level query-conditioned extractive summarization
+        #          with MMR diversity; emits synthetic per-file excerpts.
         candidates = [dict(f) for f in engine._rust.export_fragments()]
         exclude_patterns = getattr(args, "exclude", []) or []
         if exclude_patterns:
@@ -2422,7 +2427,12 @@ def cmd_optimize(args):
                 c for c in candidates
                 if not any(p in (c.get("source") or "") for p in exclude_patterns)
             ]
-        selected = dopt_select(candidates, token_budget=budget, query=task)
+        if selector == "qccr":
+            from entroly.qccr import select as qccr_select
+            selected = qccr_select(candidates, token_budget=budget, query=task)
+        else:
+            from entroly.dopt_selector import select as dopt_select
+            selected = dopt_select(candidates, token_budget=budget, query=task)
         opt = {
             "selected_fragments": selected,
             "total_tokens": sum(f.get("token_count") or (len(f.get("content", "")) // 4) for f in selected),
@@ -3027,8 +3037,8 @@ def main():
         help="Suppress progress output (only emit the snapshot)",
     )
     optimize_parser.add_argument(
-        "--selector", type=str, choices=["knapsack", "dopt"], default="knapsack",
-        help="Selection objective: knapsack (linear score) or dopt (Bayesian D-optimal log-det)",
+        "--selector", type=str, choices=["auto", "knapsack", "dopt", "qccr"], default="auto",
+        help="Selection objective. auto (default): qccr if task given, else knapsack. knapsack (linear), dopt (BM25 + log-det), qccr (sentence-level query-conditioned extractive + MMR).",
     )
     optimize_parser.add_argument(
         "--exclude", type=str, action="append", default=[],

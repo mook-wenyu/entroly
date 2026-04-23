@@ -164,7 +164,7 @@ def gather_entroly_context(query: str) -> str:
                 "entroly", "optimize",
                 "--task", query,
                 "--budget", str(ENTROLY_TOKEN_BUDGET),
-                "--selector", "dopt",
+                "--selector", "qccr",
                 "--exclude", "quality_eval",
                 "--quiet",
             ],
