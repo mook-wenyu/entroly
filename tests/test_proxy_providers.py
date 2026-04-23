@@ -36,6 +36,7 @@ sys.path.insert(0, str(REPO))
 from entroly.proxy_transform import (  # noqa: E402
     apply_temperature,
     detect_provider,
+    estimate_prompt_tokens,
     extract_model,
     extract_user_message,
     inject_context_gemini,
@@ -68,6 +69,9 @@ class TestDetectProviderPath:
 
     def test_openai_chat_completions(self):
         assert detect_provider("/v1/chat/completions", {}) == "openai"
+
+    def test_openai_responses(self):
+        assert detect_provider("/v1/responses", {}) == "openai"
 
     def test_openai_completions(self):
         assert detect_provider("/v1/completions", {}) == "openai"
@@ -882,3 +886,53 @@ class TestEndToEndFormatChain:
         temped = apply_temperature(injected, 0.4, provider)
         assert temped["temperature"] == 0.4  # top-level, not generationConfig
         assert "generationConfig" not in temped
+
+
+class TestOpenAIResponsesAPI:
+    def test_extract_user_message_from_responses_input_items(self):
+        body = {
+            "input": [
+                {
+                    "type": "message",
+                    "role": "developer",
+                    "content": [{"type": "input_text", "text": "You are Codex."}],
+                },
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "fix the failing test"}],
+                },
+            ]
+        }
+        assert extract_user_message(body, "openai") == "fix the failing test"
+
+    def test_inject_context_openai_responses_input_items(self):
+        body = {
+            "input": [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "refactor this module"}],
+                }
+            ]
+        }
+        result = inject_context_openai(body, "CONTEXT")
+        assert result["input"][0]["role"] == "system"
+        assert result["input"][0]["content"][0]["text"] == "CONTEXT"
+
+    def test_inject_context_openai_responses_string_input(self):
+        body = {"input": "write a regression test"}
+        result = inject_context_openai(body, "CONTEXT")
+        assert result["input"] == "CONTEXT\n\nwrite a regression test"
+
+    def test_estimate_prompt_tokens_for_responses_input(self):
+        body = {
+            "input": [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "make this deterministic"}],
+                }
+            ]
+        }
+        assert estimate_prompt_tokens(body, "openai") > 0

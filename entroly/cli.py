@@ -42,6 +42,9 @@ try:
 except ImportError:
     __version__ = "0.8.2"
 
+from .codex_integration import prepare_codex_wrap
+from .launching import resolve_launch_cmd, resolve_python_cmd
+
 # ── Force UTF-8 output on Windows ──
 # Windows terminals default to cp1252 which can't encode ✓/✗/─/⚡.
 # Reconfigure stdout/stderr to UTF-8 with error replacement so print()
@@ -1264,8 +1267,38 @@ def cmd_wrap(args):
         print(f"  {C.GRAY}Supported: {', '.join(_WRAP_AGENTS.keys())}{C.RESET}\n")
         return
 
+    if agent != "codex" and (args.codex_provider_id or args.codex_base_url):
+        print(f"\n  {C.RED}`--codex-provider-id` 和 `--codex-base-url` 只能与 `entroly wrap codex` 一起使用。{C.RESET}\n")
+        return
+
     spec = _WRAP_AGENTS[agent]
     port = args.port or 9377
+
+    env = os.environ.copy()
+    extra_args: list[str] = []
+
+    if agent == "codex":
+        # `wrap codex` 的 proxy 启动时就需要知道真实上游入口，
+        # 不能等到子进程起来之后再补环境变量。
+        plan = prepare_codex_wrap(
+            args.agent_args,
+            port=port,
+            env=env,
+            provider_id=args.codex_provider_id,
+            base_url=args.codex_base_url,
+        )
+        env.update(plan.env_updates)
+        extra_args.extend(plan.override_args)
+
+        config_path = str(plan.provider.config_path) if plan.provider.config_path else "Codex 默认配置"
+        print(f"  {C.GRAY}读取 Codex provider: {plan.provider.provider_id}{C.RESET}")
+        print(f"  {C.GRAY}配置来源: {config_path}{C.RESET}")
+        print(f"  {C.GRAY}上游入口: {plan.provider.base_url}{C.RESET}")
+        print(f"  {C.GRAY}代理入口: {plan.proxy_base_url}{C.RESET}")
+        print(f"  {C.GRAY}会话覆盖: {' '.join(plan.override_args)}{C.RESET}")
+    else:
+        env[spec["env_key"]] = spec["env_val"].format(port=port)
+        print(f"  {C.GRAY}Set {spec['env_key']}={spec['env_val'].format(port=port)}{C.RESET}")
 
     print(f"\n{C.CYAN}{C.BOLD}  Entroly Wrap — {spec['name']}{C.RESET}\n")
 
@@ -1277,9 +1310,10 @@ def cmd_wrap(args):
 
     if not proxy_running:
         print(f"  {C.GRAY}Starting proxy on port {port}...{C.RESET}")
-        proxy_cmd = [sys.executable, "-m", "entroly", "proxy", "--port", str(port)]
+        proxy_cmd = [resolve_python_cmd(), "-m", "entroly.cli", "proxy", "--port", str(port)]
         subprocess.Popen(
             proxy_cmd,
+            env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -1307,13 +1341,10 @@ def cmd_wrap(args):
         print(f"\n  {C.GRAY}All Cursor requests will be automatically optimized.{C.RESET}\n")
         return
 
-    env = os.environ.copy()
-    env[spec["env_key"]] = spec["env_val"].format(port=port)
-    print(f"  {C.GRAY}Set {spec['env_key']}={spec['env_val'].format(port=port)}{C.RESET}")
     print(f"  {C.GREEN}Launching {spec['name']}...{C.RESET}\n")
 
     try:
-        agent_cmd = spec["cmd"] + args.agent_args
+        agent_cmd = resolve_launch_cmd(spec["cmd"]) + extra_args + args.agent_args
         subprocess.run(agent_cmd, env=env)
     except FileNotFoundError:
         print(f"\n  {C.RED}{spec['name']} not found.{C.RESET}")
@@ -3190,6 +3221,14 @@ def main():
     wrap_parser.add_argument(
         "--port", type=int, default=None,
         help="Proxy port (default: 9377)",
+    )
+    wrap_parser.add_argument(
+        "--codex-provider-id", type=str, default=None,
+        help="Codex provider id override used only for `entroly wrap codex`.",
+    )
+    wrap_parser.add_argument(
+        "--codex-base-url", type=str, default=None,
+        help="Codex upstream base_url override used only for `entroly wrap codex`.",
     )
     wrap_parser.add_argument(
         "agent_args", nargs=argparse.REMAINDER,

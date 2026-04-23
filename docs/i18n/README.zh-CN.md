@@ -170,7 +170,7 @@ LLM响应包含约40%的填充内容——"当然！我很乐意帮忙！"、含
 | **Cursor** | `entroly init` → MCP server |
 | **Claude Code** | `claude mcp add entroly -- entroly` |
 | **GitHub Copilot** | `entroly init` → MCP server |
-| **Codex CLI** | `entroly wrap codex` |
+| **Codex CLI** | `entroly wrap codex`（读取当前 Codex provider 配置，并仅在本次会话中临时重定向到 Entroly） |
 | **Windsurf / Cline / Cody** | `entroly init` |
 | **任意LLM API** | `entroly proxy` → HTTP代理 `localhost:9377` |
 

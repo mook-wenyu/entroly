@@ -48,6 +48,7 @@ from .epistemic_router import (
 from .evolution_daemon import EvolutionDaemon
 from .evolution_logger import EvolutionLogger
 from .flow_orchestrator import FlowOrchestrator
+from .long_term_memory import LongTermMemory
 from .multimodal import ingest_diagram as _mm_diagram
 from .multimodal import ingest_diff as _mm_diff
 from .multimodal import ingest_voice as _mm_voice
@@ -405,6 +406,10 @@ class EntrolyEngine:
     def __init__(self, config: EntrolyConfig | None = None):
         self.config = config or EntrolyConfig()
         self._use_rust = _RUST_AVAILABLE
+        # Long-term memory is an optional subsystem, but the engine should
+        # always expose a stable attribute so downstream callers never have to
+        # branch on object shape.
+        self._ltm = LongTermMemory()
 
         if self._use_rust:
             self._rust = RustEngine(

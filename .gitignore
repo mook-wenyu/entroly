@@ -18,6 +18,7 @@ bench/results.tsv
 *.restored
 .tmp/
 .test_vault/
+.verify-artifacts/
 
 # Build & lint logs (keep CI clean)
 *_errors.txt

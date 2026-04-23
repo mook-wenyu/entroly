@@ -603,7 +603,7 @@ While Entroly was built for codebases, its core relies on **Shannon Entropy and 
 |---------|---|
 | `entroly go` | **One command** — auto-detect, init, proxy, dashboard |
 | `entroly wrap claude` | Start proxy + launch Claude Code in one command |
-| `entroly wrap codex` | Start proxy + launch Codex CLI |
+| `entroly wrap codex` | Start proxy, read the active Codex provider config, and launch Codex CLI with session-only overrides |
 | `entroly wrap aider` | Start proxy + launch Aider |
 | `entroly wrap cursor` | Start proxy + print Cursor config |
 | `entroly demo` | Before/after comparison with dollar savings on YOUR project |
@@ -623,12 +623,12 @@ While Entroly was built for codebases, its core relies on **Shannon Entropy and 
 
 ```bash
 entroly wrap claude              # Starts proxy + launches Claude Code
-entroly wrap codex               # Starts proxy + launches Codex CLI
+entroly wrap codex               # Starts proxy, reads the active Codex provider, and launches Codex CLI
 entroly wrap aider               # Starts proxy + launches Aider
 entroly wrap cursor              # Starts proxy + prints Cursor config
 ```
 
-Entroly starts the proxy, sets the base URL environment variable, and launches your tool. Zero configuration.
+For Codex CLI, Entroly reads the active provider from `config.toml`, keeps that provider's upstream as the source of truth, and applies a session-only base_url override so traffic flows through the local proxy without mutating the user's saved config.
 
 ---
 
@@ -664,7 +664,7 @@ Content-type auto-detection routes each input to the best compressor — JSON, l
 | LangChain | `EntrolyCompressor` | `chain = compressor \| llm` |
 | Multi-agent | `MultiAgentContext` | `ctx = MultiAgentContext(...)` |
 | Claude Code | `entroly wrap claude` | One command |
-| Codex / Aider | `entroly wrap codex` | One command |
+| Codex / Aider | `entroly wrap codex` | One command with session-only redirect through the local proxy |
 | MCP tools | `entroly init` | Auto-config |
 
 ### LangChain Integration

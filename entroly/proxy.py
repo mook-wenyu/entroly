@@ -37,6 +37,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, StreamingResponse
 from starlette.routing import Route
 
+from .proxy_http import build_forward_headers, join_target_url, merge_path_and_query
 from .proxy_config import ProxyConfig
 from .proxy_transform import (
     apply_temperature,
@@ -45,6 +46,7 @@ from .proxy_transform import (
     compute_optimal_temperature,
     compute_token_budget,
     detect_provider,
+    estimate_prompt_tokens,
     extract_model,
     extract_user_message,
     format_context_block,
@@ -642,6 +644,7 @@ class PromptCompilerProxy:
         self._temperature_sum: float = 0.0
         self._temperature_count: int = 0
         self._last_temperature: float | None = None
+        self._last_tokens_saved_pct: float = 0.0
         self._total_original_tokens: int = 0
         self._total_optimized_tokens: int = 0
         # Per-client trajectory isolation: each API key / auth header gets
@@ -773,6 +776,7 @@ class PromptCompilerProxy:
             return await self._forward_raw(request, body_bytes)
 
         path = request.url.path
+        path_with_query = merge_path_and_query(path, request.url.query)
         headers = {k: v for k, v in request.headers.items()}
         provider = detect_provider(path, headers, body)
 
@@ -792,8 +796,8 @@ class PromptCompilerProxy:
         if self._bypass:
             with self._stats_lock:
                 self._requests_bypassed += 1
-            target_url = self._resolve_target(provider, path)
-            forward_headers = self._build_headers(headers, provider)
+            target_url = self._resolve_target(provider, path_with_query)
+            forward_headers = self._build_headers(headers)
             is_streaming = body.get("stream", False)
             if not is_streaming and "streamGenerateContent" in path:
                 is_streaming = True
@@ -805,7 +809,7 @@ class PromptCompilerProxy:
         # Start HTTP connection pool warmup concurrently with the
         # Rust optimization. For persistent connections this is nearly
         # free; for cold starts it saves the TLS handshake time (~50ms).
-        target_url = self._resolve_target(provider, path)
+        target_url = self._resolve_target(provider, path_with_query)
         warmup_task = asyncio.create_task(self._warmup_connection(target_url))
 
         # Per-client key for trajectory isolation (hash of auth header)
@@ -856,19 +860,7 @@ class PromptCompilerProxy:
 
                 if context_text:
                     # Gap #27 & #29: Track original vs optimized tokens
-                    if provider == "gemini":
-                        # Gemini uses contents/parts instead of messages
-                        original_tokens = sum(
-                            len(p.get("text", "").split())
-                            for item in body.get("contents", [])
-                            for p in item.get("parts", [])
-                            if isinstance(p, dict) and "text" in p
-                        ) * 4 // 3
-                    else:
-                        original_tokens = sum(
-                            len(m.get("content", "").split())
-                            for m in body.get("messages", [])
-                        ) * 4 // 3
+                    original_tokens = estimate_prompt_tokens(body, provider)
                     optimized_tokens = len(context_text.split()) * 4 // 3
                     with self._stats_lock:
                         self._total_original_tokens += original_tokens
@@ -906,7 +898,7 @@ class PromptCompilerProxy:
                         body = inject_context_openai(body, context_text)
 
                     # Entropic Conversation Pruning
-                    if provider != "gemini":
+                    if provider != "gemini" and "messages" in body:
                         try:
                             from .proxy_transform import entropic_conversation_prune
                             ecp_messages = body.get("messages", [])
@@ -1059,7 +1051,7 @@ class PromptCompilerProxy:
                 pass  # Never block the request for feedback
 
         # Forward to real API (target_url already resolved above)
-        forward_headers = self._build_headers(headers, provider)
+        forward_headers = self._build_headers(headers)
         is_streaming = body.get("stream", False)
         # Gemini: streaming is determined by URL path, not a body field.
         # streamGenerateContent returns SSE — must be handled as streaming.
@@ -1702,25 +1694,16 @@ class PromptCompilerProxy:
 
     def _resolve_target(self, provider: str, path: str) -> str:
         if provider == "anthropic":
-            return f"{self.config.anthropic_base_url}{path}"
+            return join_target_url(self.config.anthropic_base_url, path)
         if provider == "gemini":
-            return f"{self.config.gemini_base_url}{path}"
-        return f"{self.config.openai_base_url}{path}"
+            return join_target_url(self.config.gemini_base_url, path)
+        return join_target_url(self.config.openai_base_url, path)
 
     def _build_headers(
-        self, original: dict[str, str], provider: str
+        self, original: dict[str, str]
     ) -> dict[str, str]:
-        """Build headers for the forwarded request. Pass through auth."""
-        forward: dict[str, str] = {"Content-Type": "application/json"}
-        if "authorization" in original:
-            forward["Authorization"] = original["authorization"]
-        if "x-api-key" in original:
-            forward["x-api-key"] = original["x-api-key"]
-        if "anthropic-version" in original:
-            forward["anthropic-version"] = original["anthropic-version"]
-        if "x-goog-api-key" in original:
-            forward["x-goog-api-key"] = original["x-goog-api-key"]
-        return forward
+        """构造转发头，保留 provider 自定义头与鉴权头。"""
+        return build_forward_headers(original)
 
     @staticmethod
     def _mask_key(value: str) -> str:
@@ -2087,9 +2070,10 @@ async def _catch_all(request: Request) -> StreamingResponse | JSONResponse:
     """
     proxy = request.app.state.proxy
     headers = {k: v for k, v in request.headers.items()}
+    path_with_query = merge_path_and_query(request.url.path, request.url.query)
     provider = detect_provider(request.url.path, headers)
-    target_url = proxy._resolve_target(provider, request.url.path)
-    forward_headers = proxy._build_headers(headers, provider)
+    target_url = proxy._resolve_target(provider, path_with_query)
+    forward_headers = proxy._build_headers(headers)
 
     if request.method == "GET":
         try:
@@ -2120,8 +2104,8 @@ async def _catch_all(request: Request) -> StreamingResponse | JSONResponse:
 
     # Re-detect provider with body for model-name-based detection
     provider = detect_provider(request.url.path, headers, body if isinstance(body, dict) else None)
-    target_url = proxy._resolve_target(provider, request.url.path)
-    forward_headers = proxy._build_headers(headers, provider)
+    target_url = proxy._resolve_target(provider, path_with_query)
+    forward_headers = proxy._build_headers(headers)
 
     try:
         client = await proxy._ensure_client()
@@ -2234,6 +2218,12 @@ def create_proxy_app(
 
     app = Starlette(
         routes=[
+            Route("/responses", proxy.handle_proxy, methods=["POST"]),
+            Route("/{prefix:path}/responses", proxy.handle_proxy, methods=["POST"]),
+            Route("/chat/completions", proxy.handle_proxy, methods=["POST"]),
+            Route("/{prefix:path}/chat/completions", proxy.handle_proxy, methods=["POST"]),
+            Route("/messages", proxy.handle_proxy, methods=["POST"]),
+            Route("/{prefix:path}/messages", proxy.handle_proxy, methods=["POST"]),
             Route("/v1/chat/completions", proxy.handle_proxy, methods=["POST"]),
             Route("/v1/messages", proxy.handle_proxy, methods=["POST"]),
             # Gemini: model name is embedded in the URL path

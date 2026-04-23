@@ -122,6 +122,7 @@ class LongTermMemory:
 
     def __init__(
         self,
+        enabled: bool = True,
         capacity: int = 10_000,
         consolidation_interval: int = 50,
         recall_reinforcement: float = 1.3,
@@ -132,7 +133,7 @@ class LongTermMemory:
         self._total_recalled = 0
         self._active = False
 
-        if not _HIPPOCAMPUS_AVAILABLE:
+        if not enabled or not _HIPPOCAMPUS_AVAILABLE:
             return
 
         try:

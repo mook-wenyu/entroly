@@ -150,6 +150,21 @@ class TestFormatHierarchicalContext:
         text = format_hierarchical_context(result, [], [], None)
         assert "Full Code" not in text
 
+    def test_accepts_coverage_signals(self):
+        """Hierarchical formatter should accept coverage metadata used by proxy."""
+        result = self._make_hcc_result()
+        text = format_hierarchical_context(
+            result,
+            [],
+            [],
+            None,
+            task_type="BugTracing",
+            vagueness=0.7,
+            coverage_risk="high",
+            coverage=0.2,
+        )
+        assert "Context coverage is 20%" in text
+
 
 # ═══════════════════════════════════════════════════════════════
 # Config tests

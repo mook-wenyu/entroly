@@ -43,6 +43,8 @@ def detect_provider(
         return "anthropic"
     if "generateContent" in path or "streamGenerateContent" in path:
         return "gemini"
+    if path.endswith("/responses") or "/responses?" in path:
+        return "openai"
 
     # Header-based
     if "x-goog-api-key" in headers:
@@ -59,6 +61,60 @@ def detect_provider(
             return "gemini"
 
     return "openai"
+
+
+def _responses_input_key(body: dict[str, Any]) -> str | None:
+    if "input" in body:
+        return "input"
+    if "input_items" in body:
+        return "input_items"
+    return None
+
+
+def _collect_text_segments(content: Any, *, text_types: tuple[str, ...]) -> list[str]:
+    if isinstance(content, str):
+        return [content]
+    if not isinstance(content, list):
+        return []
+
+    texts: list[str] = []
+    for block in content:
+        if isinstance(block, str):
+            texts.append(block)
+            continue
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") in text_types and isinstance(block.get("text"), str):
+            texts.append(block["text"])
+    return texts
+
+
+def _extract_last_user_text_from_responses_input(items: Any) -> str:
+    if isinstance(items, str):
+        return items
+
+    if isinstance(items, dict):
+        items = [items]
+
+    if not isinstance(items, list):
+        return ""
+
+    for item in reversed(items):
+        if isinstance(item, str):
+            return item
+        if not isinstance(item, dict):
+            continue
+        if item.get("role") != "user":
+            continue
+        if item.get("type") not in (None, "message"):
+            continue
+        texts = _collect_text_segments(
+            item.get("content", ""),
+            text_types=("input_text", "output_text", "text"),
+        )
+        if texts:
+            return " ".join(texts)
+    return ""
 
 
 def extract_user_message(body: dict[str, Any], provider: str) -> str:
@@ -79,6 +135,10 @@ def extract_user_message(body: dict[str, Any], provider: str) -> str:
                 return " ".join(texts)
         return ""
 
+    input_key = _responses_input_key(body)
+    if provider == "openai" and input_key:
+        return _extract_last_user_text_from_responses_input(body.get(input_key))
+
     # OpenAI / Anthropic: standard "messages" array
     messages = body.get("messages", [])
     if not messages:
@@ -96,7 +156,7 @@ def extract_user_message(body: dict[str, Any], provider: str) -> str:
             texts = [
                 block.get("text", "")
                 for block in content
-                if isinstance(block, dict) and block.get("type") == "text"
+                if isinstance(block, dict) and block.get("type") in {"text", "input_text"}
             ]
             return " ".join(texts)
     return ""
@@ -565,6 +625,8 @@ def format_hierarchical_context(
     *,
     task_type: str = "Unknown",
     vagueness: float = 0.0,
+    coverage_risk: str = "",
+    coverage: float = 1.0,
 ) -> str:
     """Format hierarchical compression result into context for LLM injection.
 
@@ -584,7 +646,13 @@ def format_hierarchical_context(
     parts.append("")
 
     # Task-aware preamble (conditional — only when signals warrant it)
-    preamble = _build_preamble(task_type, vagueness, len(security_issues))
+    preamble = _build_preamble(
+        task_type,
+        vagueness,
+        len(security_issues),
+        coverage_risk=coverage_risk,
+        coverage=coverage,
+    )
     if preamble:
         parts.append(preamble)
         parts.append("")
@@ -669,18 +737,103 @@ def inject_context_openai(
     prepended to its content.
     """
     body = copy.deepcopy(body)
+    input_key = _responses_input_key(body)
+    if input_key:
+        body[input_key] = _inject_context_openai_responses(
+            body.get(input_key), context_text
+        )
+        return body
+
     messages = body.get("messages", [])
 
     if messages and messages[0].get("role") == "system":
         # Prepend context to existing system message
         existing = messages[0].get("content", "")
-        messages[0]["content"] = f"{context_text}\n\n{existing}"
+        if isinstance(existing, str):
+            messages[0]["content"] = f"{context_text}\n\n{existing}"
+        elif isinstance(existing, list):
+            messages[0]["content"] = [
+                {"type": "text", "text": context_text},
+                *existing,
+            ]
+        else:
+            messages[0]["content"] = context_text
     else:
         # Insert new system message at position 0
         messages.insert(0, {"role": "system", "content": context_text})
 
     body["messages"] = messages
     return body
+
+
+def _inject_context_openai_responses(input_value: Any, context_text: str) -> Any:
+    if isinstance(input_value, str):
+        return f"{context_text}\n\n{input_value}"
+
+    if isinstance(input_value, dict):
+        items = [copy.deepcopy(input_value)]
+    elif isinstance(input_value, list):
+        items = copy.deepcopy(input_value)
+    else:
+        return input_value
+
+    if items:
+        first = items[0]
+        if (
+            isinstance(first, dict)
+            and first.get("type") in (None, "message")
+            and first.get("role") in {"system", "developer"}
+        ):
+            content = first.get("content", "")
+            if isinstance(content, str):
+                first["content"] = f"{context_text}\n\n{content}"
+            elif isinstance(content, list):
+                first["content"] = [
+                    {"type": "input_text", "text": context_text},
+                    *content,
+                ]
+            else:
+                first["content"] = [{"type": "input_text", "text": context_text}]
+            return items
+
+    items.insert(
+        0,
+        {
+            "type": "message",
+            "role": "system",
+            "content": [{"type": "input_text", "text": context_text}],
+        },
+    )
+    return items
+
+
+def estimate_prompt_tokens(body: dict[str, Any], provider: str) -> int:
+    """粗略估算请求文本 token，用于价值统计而不是计费。"""
+    if provider == "gemini":
+        total_words = sum(
+            len(p.get("text", "").split())
+            for item in body.get("contents", [])
+            for p in item.get("parts", [])
+            if isinstance(p, dict) and "text" in p
+        )
+        return total_words * 4 // 3
+
+    input_key = _responses_input_key(body)
+    if provider == "openai" and input_key:
+        prompt = _extract_last_user_text_from_responses_input(body.get(input_key))
+        return len(prompt.split()) * 4 // 3
+
+    total_words = 0
+    for message in body.get("messages", []):
+        content = message.get("content", "")
+        total_words += sum(
+            len(text.split())
+            for text in _collect_text_segments(
+                content,
+                text_types=("text", "input_text"),
+            )
+        )
+    return total_words * 4 // 3
 
 
 def inject_context_anthropic(

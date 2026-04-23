@@ -170,7 +170,7 @@ Zero cloud dependencies. Zero data exfiltration risk. Everything runs on your CP
 | **Cursor** | `entroly init` → MCP server |
 | **Claude Code** | `claude mcp add entroly -- entroly` |
 | **GitHub Copilot** | `entroly init` → MCP server |
-| **Codex CLI** | `entroly wrap codex` |
+| **Codex CLI** | `entroly wrap codex`（读取现有 Codex provider 配置，并在当前会话临时重定向到 Entroly） |
 | **Windsurf / Cline / Cody** | `entroly init` |
 | **Any LLM API** | `entroly proxy` → HTTP proxy on `localhost:9377` |
 
