@@ -238,6 +238,7 @@ class ProxyConfig:
     egtc_epsilon: float = 0.5     # dispersion coefficient
     trajectory_c_min: float = 0.6
     trajectory_lambda: float = 0.07
+    trust_env_proxy: bool = False
 
     @classmethod
     def from_env(cls) -> ProxyConfig:
@@ -283,6 +284,9 @@ class ProxyConfig:
             ),
             trajectory_lambda=float(
                 os.environ.get("ENTROLY_TRAJECTORY_LAMBDA", "0.07")
+            ),
+            trust_env_proxy=(
+                os.environ.get("ENTROLY_TRUST_ENV_PROXY", "0") == "1"
             ),
         )
 

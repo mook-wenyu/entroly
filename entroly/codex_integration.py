@@ -101,7 +101,7 @@ def prepare_codex_wrap(
         proxy_base_url=route.proxy_base_url,
         upstream_origin=route.upstream_origin,
         override_args=override_args,
-        env_updates={"ENTROLY_OPENAI_BASE": route.upstream_origin},
+        env_updates={"ENTROLY_OPENAI_BASE": route.upstream_base_url},
     )
 
 
@@ -243,13 +243,21 @@ def load_active_codex_provider(
 def build_codex_override_args(provider: CodexProviderConfig, proxy_base_url: str) -> list[str]:
     """构造只影响当前会话的 Codex 配置覆盖参数。"""
     override_value = _toml_string(proxy_base_url)
+    entries: list[str] = []
 
     if provider.provider_id == "openai":
-        entry = f"openai_base_url={override_value}"
+        entries.append(f"openai_base_url={override_value}")
     else:
-        entry = f"model_providers.{provider.provider_id}.base_url={override_value}"
+        entries.append(f"model_providers.{provider.provider_id}.base_url={override_value}")
+        entries.append(f"model_providers.{provider.provider_id}.responses_websockets_v2=false")
+        entries.append(f"model_providers.{provider.provider_id}.supports_websockets=false")
 
-    return ["--config", entry]
+    entries.append("features.responses_websockets_v2=false")
+
+    args: list[str] = []
+    for entry in entries:
+        args.extend(["--config", entry])
+    return args
 
 
 def _load_codex_config(config_path: Path) -> dict:

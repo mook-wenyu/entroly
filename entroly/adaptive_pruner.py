@@ -16,24 +16,58 @@ Falls back to no-op if ebbiforge_core is not installed.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 
 logger = logging.getLogger(__name__)
 
 try:
     from ebbiforge_core import AdaptivePruner as _RustPruner
-    from ebbiforge_core import ContextFragment
     _PRUNER_AVAILABLE = True
-except ImportError:
+    _PRUNER_IMPORT_ERROR: str | None = None
+except ImportError as exc:
     _PRUNER_AVAILABLE = False
+    _PRUNER_IMPORT_ERROR = str(exc)
     _RustPruner = None
 
 try:
     from ebbiforge_core import CodeQualityGuard as _RustGuard
     _GUARD_AVAILABLE = True
-except ImportError:
+    _GUARD_IMPORT_ERROR: str | None = None
+except ImportError as exc:
     _GUARD_AVAILABLE = False
+    _GUARD_IMPORT_ERROR = str(exc)
     _RustGuard = None
+
+
+@dataclass(frozen=True)
+class OptionalComponentStatus:
+    name: str
+    available: bool
+    detail: str
+
+
+def get_optional_component_status() -> dict[str, OptionalComponentStatus]:
+    return {
+        "adaptive_pruner": OptionalComponentStatus(
+            name="AdaptivePruner",
+            available=_PRUNER_AVAILABLE,
+            detail=(
+                "ebbiforge_core.AdaptivePruner 可用"
+                if _PRUNER_AVAILABLE
+                else (_PRUNER_IMPORT_ERROR or "未安装 ebbiforge_core")
+            ),
+        ),
+        "fragment_guard": OptionalComponentStatus(
+            name="FragmentGuard",
+            available=_GUARD_AVAILABLE,
+            detail=(
+                "ebbiforge_core.CodeQualityGuard 可用"
+                if _GUARD_AVAILABLE
+                else (_GUARD_IMPORT_ERROR or "未安装 ebbiforge_core")
+            ),
+        ),
+    }
 
 
 class EntrolyPruner:
@@ -53,7 +87,7 @@ class EntrolyPruner:
         if _PRUNER_AVAILABLE:
             logger.info("AdaptivePruner: ebbiforge_core available -- RL weight learning active")
         else:
-            logger.info("AdaptivePruner: ebbiforge_core not available -- using static weights")
+            logger.debug("AdaptivePruner 未启用：%s", _PRUNER_IMPORT_ERROR or "未安装 ebbiforge_core")
 
     @property
     def available(self) -> bool:

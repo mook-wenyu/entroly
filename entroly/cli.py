@@ -86,6 +86,20 @@ def _describe_openai_proxy_route(route) -> str | None:
     return None
 
 
+def _ensure_loopback_no_proxy(env: dict[str, str]) -> None:
+    bypass_hosts = ["127.0.0.1", "localhost", "::1"]
+    raw = env.get("NO_PROXY") or env.get("no_proxy") or ""
+    entries = [item.strip() for item in raw.split(",") if item.strip()]
+
+    for host in bypass_hosts:
+        if host not in entries:
+            entries.append(host)
+
+    merged = ",".join(entries)
+    env["NO_PROXY"] = merged
+    env["no_proxy"] = merged
+
+
 def _free_port(port: int) -> bool:
     """Kill any stale entroly process occupying *port*. Returns True if the port is now free."""
     import signal
@@ -685,7 +699,7 @@ def cmd_proxy(args):
 
     # Load config from environment
     config = ProxyConfig.from_env()
-    config.openai_base_url = openai_route.upstream_origin
+    config.openai_base_url = openai_route.upstream_base_url
     if args.port:
         config.port = args.port
     if args.host:
@@ -1303,6 +1317,7 @@ def cmd_wrap(args):
     port = args.port or 9377
 
     env = os.environ.copy()
+    _ensure_loopback_no_proxy(env)
     extra_args: list[str] = []
     openai_route = None
 
@@ -1573,7 +1588,7 @@ def cmd_go(args):
         print(f"  {C.RED}{e}{C.RESET}")
         return
     config = ProxyConfig.from_env()
-    config.openai_base_url = openai_route.upstream_origin
+    config.openai_base_url = openai_route.upstream_base_url
     recommended = _recommend_quality(project, file_count)
     quality_val = resolve_quality(getattr(args, "quality", None) or recommended)
     config.quality = quality_val
@@ -2086,6 +2101,25 @@ def cmd_doctor(args):
         checks_passed += 1
     except ImportError:
         print(f"  {C.RED}x{C.RESET} Rust engine not installed (pip install entroly-core)")
+
+    # 2b. Check optional learning components
+    checks_total += 1
+    try:
+        from entroly.adaptive_pruner import get_optional_component_status
+
+        optional_status = get_optional_component_status()
+        unavailable = [status for status in optional_status.values() if not status.available]
+        if unavailable:
+            names = ", ".join(status.name for status in unavailable)
+            details = " | ".join(f"{status.name}: {status.detail}" for status in unavailable)
+            print(f"  {C.YELLOW}!{C.RESET} Optional learning components unavailable ({names})")
+            print(f"  {C.GRAY}    {details}{C.RESET}")
+            print(f"  {C.GRAY}    RL 权重学习与片段质量扫描已停用；索引、压缩、代理主链路仍可用。{C.RESET}")
+        else:
+            print(f"  {C.GREEN}+{C.RESET} Optional learning components loaded")
+        checks_passed += 1
+    except Exception as e:
+        print(f"  {C.YELLOW}!{C.RESET} Optional learning component check failed: {e}")
 
     # 3. Check config validity
     checks_total += 1

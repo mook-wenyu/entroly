@@ -34,10 +34,15 @@ from typing import Any
 import httpx
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import JSONResponse, StreamingResponse
+from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
-from .proxy_http import build_forward_headers, join_target_url, merge_path_and_query
+from .proxy_http import (
+    build_downstream_headers,
+    build_forward_headers,
+    join_target_url,
+    merge_path_and_query,
+)
 from .proxy_config import ProxyConfig
 from .proxy_transform import (
     apply_temperature,
@@ -705,11 +710,36 @@ class PromptCompilerProxy:
             os.environ.get("ENTROLY_PASSIVE_FEEDBACK", "1") != "0"
         )
 
-    async def startup(self) -> None:
-        self._client = httpx.AsyncClient(
+    def _new_http_client(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
             timeout=httpx.Timeout(connect=10.0, read=120.0, write=10.0, pool=10.0),
             follow_redirects=True,
+            trust_env=self.config.trust_env_proxy,
         )
+
+    @staticmethod
+    def _request_body_kwargs(body: dict[str, Any] | bytes) -> dict[str, Any]:
+        if isinstance(body, bytes):
+            return {"content": body}
+        return {"json": body}
+
+    @staticmethod
+    def _should_trip_stream_breaker(status_code: int, is_sse: bool) -> bool:
+        if status_code == 429 or status_code >= 500:
+            return True
+        if 200 <= status_code < 300 and not is_sse:
+            return True
+        return False
+
+    @staticmethod
+    def _is_streaming_request(body: dict[str, Any], path: str) -> bool:
+        is_streaming = body.get("stream", False)
+        if not is_streaming and "streamGenerateContent" in path:
+            return True
+        return bool(is_streaming)
+
+    async def startup(self) -> None:
+        self._client = self._new_http_client()
         logger.info("Prompt compiler proxy ready")
 
     async def _ensure_client(self) -> httpx.AsyncClient:
@@ -719,10 +749,7 @@ class PromptCompilerProxy:
         """
         if self._client is None or self._client.is_closed:
             logger.info("Reconnecting HTTP client (previous connection dropped)")
-            self._client = httpx.AsyncClient(
-                timeout=httpx.Timeout(connect=10.0, read=120.0, write=10.0, pool=10.0),
-                follow_redirects=True,
-            )
+            self._client = self._new_http_client()
         return self._client
 
     async def shutdown(self) -> None:
@@ -780,6 +807,17 @@ class PromptCompilerProxy:
         headers = {k: v for k, v in request.headers.items()}
         provider = detect_provider(path, headers, body)
 
+        # Gap #28: Bypass mode — forward raw bytes, no request mutation.
+        if self._bypass:
+            with self._stats_lock:
+                self._requests_bypassed += 1
+            target_url = self._resolve_target(provider, path_with_query)
+            forward_headers = self._build_headers(headers)
+            is_streaming = self._is_streaming_request(body, path)
+            if is_streaming:
+                return await self._stream_response(target_url, forward_headers, body_bytes)
+            return await self._forward_response(target_url, forward_headers, body_bytes)
+
         if "messages" in body:
             from .proxy_transform import compress_tool_messages
             body["messages"], tool_tokens_saved = compress_tool_messages(body["messages"])
@@ -791,19 +829,6 @@ class PromptCompilerProxy:
                 body["messages"],
                 context_window=getattr(self.config, "context_window", 128_000),
             )
-
-        # Gap #28: Bypass mode — forward unmodified, no optimization
-        if self._bypass:
-            with self._stats_lock:
-                self._requests_bypassed += 1
-            target_url = self._resolve_target(provider, path_with_query)
-            forward_headers = self._build_headers(headers)
-            is_streaming = body.get("stream", False)
-            if not is_streaming and "streamGenerateContent" in path:
-                is_streaming = True
-            if is_streaming:
-                return await self._stream_response(target_url, forward_headers, body)
-            return await self._forward_response(target_url, forward_headers, body)
 
         # ── Pipelined: warmup connection while Rust pipeline runs ──
         # Start HTTP connection pool warmup concurrently with the
@@ -1052,11 +1077,7 @@ class PromptCompilerProxy:
 
         # Forward to real API (target_url already resolved above)
         forward_headers = self._build_headers(headers)
-        is_streaming = body.get("stream", False)
-        # Gemini: streaming is determined by URL path, not a body field.
-        # streamGenerateContent returns SSE — must be handled as streaming.
-        if not is_streaming and "streamGenerateContent" in path:
-            is_streaming = True
+        is_streaming = self._is_streaming_request(body, path)
 
         if is_streaming:
             return await self._stream_response(
@@ -1283,9 +1304,9 @@ class PromptCompilerProxy:
         }
 
     async def _stream_response(
-        self, url: str, headers: dict[str, str], body: dict[str, Any],
+        self, url: str, headers: dict[str, str], body: dict[str, Any] | bytes,
         selected_frag_ids: list | None = None,
-    ) -> StreamingResponse:
+    ) -> StreamingResponse | JSONResponse | Response:
         """Forward a streaming request and proxy the SSE response.
 
         When passive feedback is enabled, tees response chunks into a buffer
@@ -1309,20 +1330,53 @@ class PromptCompilerProxy:
         # Capture selected fragments for per-variant utilization tracking (Change 4)
         _selected_frags = getattr(self, '_last_context_fragments', []) if _feedback_enabled else []
 
+        client = await self._ensure_client()
+        request = client.build_request("POST", url, headers=headers, **self._request_body_kwargs(body))
+        try:
+            upstream = await client.send(request, stream=True)
+        except (httpx.TimeoutException, httpx.ConnectError) as e:
+            self._breaker.record_failure()
+            err_msg = str(e)
+            for key_header in ("authorization", "x-api-key"):
+                if key_header in headers:
+                    err_msg = err_msg.replace(headers[key_header], "[REDACTED]")
+            return JSONResponse(
+                {"error": "upstream_unavailable", "detail": err_msg},
+                status_code=502,
+            )
+
+        content_type = upstream.headers.get("content-type", "")
+        is_sse = "text/event-stream" in content_type.lower()
+        if upstream.status_code >= 400 or not is_sse:
+            if self._should_trip_stream_breaker(upstream.status_code, is_sse):
+                self._breaker.record_failure()
+            logger.warning(
+                "Upstream stream rejected or changed protocol: status=%s content-type=%s",
+                upstream.status_code,
+                content_type or "<missing>",
+            )
+            try:
+                content = await upstream.aread()
+            finally:
+                await upstream.aclose()
+            error_headers = build_downstream_headers(dict(upstream.headers))
+            error_headers["X-Entroly-Source"] = "upstream"
+            return Response(
+                content=content,
+                status_code=upstream.status_code,
+                headers=error_headers,
+            )
+
         async def event_generator():
             buffer = [] if _feedback_enabled else None
             buffer_size = 0
             try:
-                client = await self._ensure_client()
-                async with client.stream(
-                    "POST", url, json=body, headers=headers
-                ) as response:
-                    async for chunk in response.aiter_bytes():
-                        # Tee: pass through AND accumulate for analysis
-                        if buffer is not None and buffer_size < _buffer_cap:
-                            buffer.append(chunk)
-                            buffer_size += len(chunk)
-                        yield chunk
+                async for chunk in upstream.aiter_bytes():
+                    # Tee: pass through AND accumulate for analysis
+                    if buffer is not None and buffer_size < _buffer_cap:
+                        buffer.append(chunk)
+                        buffer_size += len(chunk)
+                    yield chunk
                 self._breaker.record_success()
             except httpx.ReadError as e:
                 self._breaker.record_failure()
@@ -1336,6 +1390,8 @@ class PromptCompilerProxy:
                 self._breaker.record_failure()
                 logger.warning(f"Unexpected stream error: {e}")
                 yield b'data: {"error": "stream_error"}\n\n'
+            finally:
+                await upstream.aclose()
 
             # ── Signal 1: Assess response after stream completes ──
             # REVOLUTIONARY FIX: Eliminate the dead zone.
@@ -1438,7 +1494,7 @@ class PromptCompilerProxy:
         )
 
     async def _forward_response(
-        self, url: str, headers: dict[str, str], body: dict[str, Any],
+        self, url: str, headers: dict[str, str], body: dict[str, Any] | bytes,
         selected_frag_ids: list | None = None,
     ) -> JSONResponse:
         """Forward a non-streaming request with circuit breaker, retry on 429/5xx, and response validation."""
@@ -1452,7 +1508,7 @@ class PromptCompilerProxy:
         for attempt in range(max_retries + 1):
             try:
                 client = await self._ensure_client()
-                response = await client.post(url, json=body, headers=headers)
+                response = await client.post(url, headers=headers, **self._request_body_kwargs(body))
                 self._breaker.record_success()
             except (httpx.TimeoutException, httpx.ConnectError) as e:
                 self._breaker.record_failure()

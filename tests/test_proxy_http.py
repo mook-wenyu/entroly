@@ -32,6 +32,20 @@ def test_build_forward_headers_keeps_custom_provider_headers():
     assert "content-length" not in headers
 
 
+def test_build_forward_headers_deduplicates_content_type_case_insensitively():
+    headers = build_forward_headers(
+        {
+            "content-type": "application/json",
+            "Content-Type": "application/json",
+            "authorization": "Bearer test",
+        }
+    )
+
+    assert list(headers.keys()).count("content-type") == 1
+    assert "Content-Type" not in headers
+    assert headers["content-type"] == "application/json"
+
+
 def test_merge_path_and_query_preserves_query_string():
     assert (
         merge_path_and_query("/openai/responses", "api-version=2025-04-01-preview")

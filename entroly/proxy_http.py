@@ -20,14 +20,32 @@ _HOP_BY_HOP_HEADERS = {
 def build_forward_headers(original: dict[str, str]) -> dict[str, str]:
     """保留上游 provider 所需请求头，同时剔除逐跳头。"""
     forward: dict[str, str] = {}
+    seen_lower: set[str] = set()
+
+    for key, value in original.items():
+        lower_key = key.lower()
+        if lower_key in _HOP_BY_HOP_HEADERS:
+            continue
+        if lower_key in seen_lower:
+            continue
+        seen_lower.add(lower_key)
+        forward[key] = value
+
+    if "content-type" not in seen_lower:
+        forward["Content-Type"] = "application/json"
+    return forward
+
+
+def build_downstream_headers(original: dict[str, str]) -> dict[str, str]:
+    """过滤逐跳头，保留可安全返回给调用方的上游响应头。"""
+    downstream: dict[str, str] = {}
 
     for key, value in original.items():
         if key.lower() in _HOP_BY_HOP_HEADERS:
             continue
-        forward[key] = value
+        downstream[key] = value
 
-    forward.setdefault("Content-Type", "application/json")
-    return forward
+    return downstream
 
 
 def merge_path_and_query(path: str, query: str) -> str:

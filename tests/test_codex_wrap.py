@@ -9,7 +9,7 @@ import pytest
 REPO = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO))
 
-from entroly.cli import cmd_wrap  # noqa: E402
+from entroly.cli import _ensure_loopback_no_proxy, cmd_wrap  # noqa: E402
 from entroly.codex_integration import (  # noqa: E402
     build_codex_override_args,
     parse_codex_cli_selection,
@@ -43,7 +43,12 @@ def test_build_codex_override_args_for_openai():
         )(),
         proxy_base_url="http://127.0.0.1:9377/v1",
     )
-    assert args == ["--config", 'openai_base_url="http://127.0.0.1:9377/v1"']
+    assert args == [
+        "--config",
+        'openai_base_url="http://127.0.0.1:9377/v1"',
+        "--config",
+        "features.responses_websockets_v2=false",
+    ]
 
 
 def test_prepare_codex_wrap_reads_custom_provider_from_config(tmp_path: Path):
@@ -74,6 +79,12 @@ wire_api = "responses"
     assert plan.override_args == [
         "--config",
         'model_providers.sub2api.base_url="http://127.0.0.1:9377"',
+        "--config",
+        "model_providers.sub2api.responses_websockets_v2=false",
+        "--config",
+        "model_providers.sub2api.supports_websockets=false",
+        "--config",
+        "features.responses_websockets_v2=false",
     ]
 
 
@@ -103,10 +114,16 @@ wire_api = "responses"
 
     assert plan.provider.provider_id == "azure"
     assert plan.proxy_base_url == "http://127.0.0.1:9377/openai"
-    assert plan.env_updates["ENTROLY_OPENAI_BASE"] == "https://example.openai.azure.com"
+    assert plan.env_updates["ENTROLY_OPENAI_BASE"] == "https://example.openai.azure.com/openai"
     assert plan.override_args == [
         "--config",
         'model_providers.azure.base_url="http://127.0.0.1:9377/openai"',
+        "--config",
+        "model_providers.azure.responses_websockets_v2=false",
+        "--config",
+        "model_providers.azure.supports_websockets=false",
+        "--config",
+        "features.responses_websockets_v2=false",
     ]
 
 
@@ -119,7 +136,7 @@ def test_prepare_codex_wrap_supports_explicit_provider_without_config():
     )
 
     assert plan.proxy_base_url == "http://127.0.0.1:9377/v1"
-    assert plan.env_updates["ENTROLY_OPENAI_BASE"] == "https://api.mookbot.com"
+    assert plan.env_updates["ENTROLY_OPENAI_BASE"] == "https://api.mookbot.com/v1"
 
 
 def test_resolve_openai_proxy_route_uses_active_codex_provider(tmp_path: Path, monkeypatch):
@@ -225,6 +242,15 @@ def test_resolve_python_cmd_prefers_real_python_sibling(tmp_path: Path):
     assert resolved == str(python)
 
 
+def test_ensure_loopback_no_proxy_merges_existing_entries():
+    env = {"NO_PROXY": "example.com,internal.local"}
+
+    _ensure_loopback_no_proxy(env)
+
+    assert env["NO_PROXY"] == "example.com,internal.local,127.0.0.1,localhost,::1"
+    assert env["no_proxy"] == env["NO_PROXY"]
+
+
 def test_cmd_wrap_codex_passes_upstream_env_to_proxy(monkeypatch):
     popen_calls: list[dict] = []
     run_calls: list[dict] = []
@@ -254,7 +280,16 @@ def test_cmd_wrap_codex_passes_upstream_env_to_proxy(monkeypatch):
 
     plan = SimpleNamespace(
         env_updates={"ENTROLY_OPENAI_BASE": "https://api.mookbot.com"},
-        override_args=["--config", 'model_providers.sub2api.base_url="http://127.0.0.1:9377"'],
+        override_args=[
+            "--config",
+            'model_providers.sub2api.base_url="http://127.0.0.1:9377"',
+            "--config",
+            "model_providers.sub2api.responses_websockets_v2=false",
+            "--config",
+            "model_providers.sub2api.supports_websockets=false",
+            "--config",
+            "features.responses_websockets_v2=false",
+        ],
         provider=SimpleNamespace(
             provider_id="sub2api",
             config_path=Path(r"C:\Users\WenYu\.codex\config.toml"),
@@ -284,14 +319,22 @@ def test_cmd_wrap_codex_passes_upstream_env_to_proxy(monkeypatch):
     assert popen_calls
     proxy_env = popen_calls[0]["kwargs"]["env"]
     assert proxy_env["ENTROLY_OPENAI_BASE"] == "https://api.mookbot.com"
+    assert proxy_env["NO_PROXY"].endswith("127.0.0.1,localhost,::1")
     assert popen_calls[0]["cmd"][:4] == [r"D:\venv\Scripts\python.exe", "-m", "entroly.cli", "proxy"]
     assert popen_calls[0]["cmd"][-2:] == ["--port", "9377"]
 
     assert run_calls
+    assert run_calls[0]["kwargs"]["env"]["NO_PROXY"].endswith("127.0.0.1,localhost,::1")
     assert run_calls[0]["cmd"] == [
         "codex",
         "--config",
         'model_providers.sub2api.base_url="http://127.0.0.1:9377"',
+        "--config",
+        "model_providers.sub2api.responses_websockets_v2=false",
+        "--config",
+        "model_providers.sub2api.supports_websockets=false",
+        "--config",
+        "features.responses_websockets_v2=false",
     ]
 
 
