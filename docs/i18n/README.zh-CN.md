@@ -204,8 +204,9 @@ LLM响应包含约40%的填充内容——"当然！我很乐意帮忙！"、含
 | MMLU | 82.0% [73.3–88.3%] | 85.0% [76.7–90.7%] | **103.7%** |
 | TruthfulQA (MC1) | 72.0% [62.5–79.9%] | 73.0% [63.6–80.7%] | **101.4%** |
 | LongBench (HotpotQA) | 57.0% [47.2–66.3%] | 59.8% [49.8–69.0%] | **104.9%** |
+| Berkeley Function Calling | 99.0% [94.5–99.8%] | 100.0% [96.3–100.0%] | **101.0%** |
 
-> 6项基准测试的置信区间全部重叠——准确率与基线在统计学上无法区分。LongBench（唯一上下文超出预算的基准）在节省3.6%token的同时，保持率反而**提升**。复现：`python -m bench.accuracy --benchmark all --model gpt-4o-mini --samples 100`
+> 7项基准测试的置信区间全部重叠——准确率与基线在统计学上无法区分。LongBench（唯一上下文超出预算的基准）在节省3.6%token的同时，保持率反而**提升**。复现：`python -m bench.accuracy --benchmark all --model gpt-4o-mini --samples 100`
 
 ### CI/CD集成
 
