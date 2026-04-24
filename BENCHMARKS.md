@@ -102,11 +102,31 @@ Model: `gpt-4o-mini` | Budget: 50,000 tokens | Wilson 95% Confidence Intervals
 | **NeedleInAHaystack** | 20 | 100.0% [83.9–100%] | 100.0% [83.9–100%] | **100.0%** | 0.0% |
 | **GSM8K** | 100 | 85.0% [76.7–90.7%] | 86.0% [77.9–91.5%] | **101.2%** | 3.6% |
 | **SQuAD 2.0** | 100 | 84.0% [75.6–89.9%] | 83.0% [74.5–89.1%] | **98.8%** | 0.8% |
+| **MMLU** (4-way MCQ) | _pending_ | _pending_ | _pending_ | _pending_ | _pending_ |
+| **TruthfulQA** (MC1) | _pending_ | _pending_ | _pending_ | _pending_ | _pending_ |
+| **LongBench** (HotpotQA) | _pending_ | _pending_ | _pending_ | _pending_ | _pending_ |
+
+### Benchmark Coverage
+
+The harness now covers 7 public benchmarks across five evaluation axes:
+
+| Axis | Benchmark | Tests |
+|---|---|---|
+| Retrieval | NeedleInAHaystack | Finding a fact in long context |
+| Reasoning | GSM8K | Multi-step grade-school math |
+| Code | HumanEval | Python function completion |
+| Reading | SQuAD 2.0 | Short-passage QA |
+| Knowledge | MMLU | 57-subject 4-way MCQ |
+| Truthfulness | TruthfulQA MC1 | Resistance to common misconceptions |
+| Long context | LongBench HotpotQA | Multi-hop QA over 10K–60K-token docs |
+
+> **BFCL (Berkeley Function Calling)** is intentionally omitted — requires function-calling scaffolding with per-sample tool schemas and AST validation, and BFCL prompts are short enough that the compression selector passes through unchanged. Poor signal-to-noise fit for an accuracy-retention benchmark.
 
 ### Interpretation
 
-- **All CIs overlap** — accuracy is statistically indistinguishable from baseline
-- GSM8K and SQuAD have no system context to compress, so Entroly correctly passes through (no artificial noise injection)
+- **All CIs overlap on completed benchmarks** — accuracy is statistically indistinguishable from baseline
+- GSM8K, SQuAD, MMLU, and TruthfulQA have no long system context to compress, so Entroly correctly passes through (no artificial noise injection). These serve as **regression guards** against the selector corrupting short-context prompts.
+- LongBench HotpotQA is the primary compression-signal benchmark: contexts are 10K–60K tokens, well above the 50K budget for a subset of samples, forcing the selector to actually run.
 - Needle contexts (4K–32K tokens) fit within the 50K budget, so compression is not triggered
 - Real token savings appear on codebases with 100K+ token contexts (typical: 70–95% savings)
 
@@ -114,7 +134,14 @@ Model: `gpt-4o-mini` | Budget: 50,000 tokens | Wilson 95% Confidence Intervals
 
 ```bash
 export OPENAI_API_KEY=...
+
+# Run everything (7 benchmarks, ~5–10 min on gpt-4o-mini at n=100)
 python -m bench.accuracy --benchmark all --model gpt-4o-mini --samples 100
+
+# Run one at a time
+python -m bench.accuracy --benchmark mmlu       --samples 100
+python -m bench.accuracy --benchmark truthfulqa --samples 100
+python -m bench.accuracy --benchmark longbench  --samples 100
 ```
 
-Engine version: `entroly-core v0.8.4` (BM25+GGCR retrieval, IOS selection)
+Engine version: `entroly-core v0.8.5` (BM25+GGCR retrieval, IOS selection)

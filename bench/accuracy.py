@@ -7,13 +7,17 @@ Tests: does the LLM still give correct answers after compression?
 
 Benchmarks (ordered by visibility / traffic):
   1. NeedleInAHaystack — info retrieval from long context
-  2. LongBench         — multi-task long context (THUDM)
+  2. LongBench         — multi-task long context (THUDM/LongBench, HotpotQA subtask)
   3. HumanEval         — code generation (OpenAI)
   4. GSM8K             — grade school math reasoning
   5. MMLU              — massive multitask knowledge
-  6. BFCL              — Berkeley function calling
-  7. TruthfulQA        — truthfulness under compression
-  8. SQuAD 2.0         — reading comprehension
+  6. TruthfulQA        — truthfulness under compression (MC1)
+  7. SQuAD 2.0         — reading comprehension
+
+BFCL (Berkeley Function Calling) is intentionally omitted — it requires a
+function-calling harness with per-sample tool schemas and AST validation, and
+its prompts are short enough that compression pass-through dominates the
+signal. Not a good fit for an accuracy-retention benchmark.
 
 Each benchmark runs in two modes:
   - Baseline: raw context → LLM → answer → score
@@ -443,6 +447,178 @@ def _load_squad(samples: int = 50) -> list[dict]:
     return results
 
 
+# ── HuggingFace datasets-server fetch helper ─────────────────────────
+
+
+def _fetch_hf_rows(dataset: str, config: str, split: str, limit: int) -> list[dict]:
+    """Fetch rows from HuggingFace datasets-server (paginated; max 100/req).
+
+    No auth needed for public datasets. Returns the `row` payload of each entry.
+    """
+    import urllib.parse
+    import urllib.request
+
+    rows: list[dict] = []
+    offset = 0
+    while len(rows) < limit:
+        batch = min(100, limit - len(rows))
+        qs = urllib.parse.urlencode({
+            "dataset": dataset,
+            "config": config,
+            "split": split,
+            "offset": offset,
+            "length": batch,
+        })
+        url = f"https://datasets-server.huggingface.co/rows?{qs}"
+        resp = urllib.request.urlopen(url, timeout=30)
+        payload = json.loads(resp.read())
+        new_rows = payload.get("rows", [])
+        if not new_rows:
+            break
+        rows.extend(r["row"] for r in new_rows)
+        offset += batch
+    return rows[:limit]
+
+
+# ── Benchmark: MMLU ──────────────────────────────────────────────────
+
+
+def _load_mmlu(samples: int = 50) -> list[dict]:
+    """Load MMLU (all subjects) via HuggingFace datasets-server."""
+    cache_path = Path(__file__).parent / ".cache" / "mmlu.json"
+
+    if cache_path.exists():
+        with open(cache_path) as f:
+            data = json.load(f)
+    else:
+        try:
+            data = _fetch_hf_rows("cais/mmlu", "all", "test", max(samples * 4, 800))
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(cache_path, "w") as f:
+                json.dump(data, f)
+        except Exception as e:
+            print(f"  Warning: could not download MMLU: {e}")
+            return []
+
+    random.seed(42)
+    selected = random.sample(data, min(samples, len(data)))
+    letters = ["A", "B", "C", "D"]
+    results = []
+    for item in selected:
+        choices = item.get("choices") or []
+        if len(choices) != 4:
+            continue
+        answer_idx = item.get("answer", 0)
+        if not isinstance(answer_idx, int) or answer_idx >= len(letters):
+            continue
+        question = item.get("question", "")
+        prompt = (
+            f"{question}\n\n"
+            f"A) {choices[0]}\nB) {choices[1]}\nC) {choices[2]}\nD) {choices[3]}\n\n"
+            "Answer with only the letter (A, B, C, or D)."
+        )
+        results.append({
+            "context": "",
+            "question": prompt,
+            "expected": letters[answer_idx],
+            "metadata": {"source": "mmlu", "subject": item.get("subject", "")},
+        })
+    return results
+
+
+# ── Benchmark: TruthfulQA (MC1) ──────────────────────────────────────
+
+
+def _load_truthfulqa(samples: int = 50) -> list[dict]:
+    """Load TruthfulQA multiple-choice (MC1) via HuggingFace datasets-server."""
+    cache_path = Path(__file__).parent / ".cache" / "truthfulqa.json"
+
+    if cache_path.exists():
+        with open(cache_path) as f:
+            data = json.load(f)
+    else:
+        try:
+            data = _fetch_hf_rows("truthfulqa/truthful_qa", "multiple_choice", "validation", 800)
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(cache_path, "w") as f:
+                json.dump(data, f)
+        except Exception as e:
+            print(f"  Warning: could not download TruthfulQA: {e}")
+            return []
+
+    random.seed(42)
+    selected = random.sample(data, min(samples, len(data)))
+    letters = list("ABCDEFGHIJKLMNOP")
+    results = []
+    for item in selected:
+        mc1 = item.get("mc1_targets") or {}
+        choices = mc1.get("choices") or []
+        labels = mc1.get("labels") or []
+        if not choices or len(choices) != len(labels) or 1 not in labels:
+            continue
+        correct_idx = labels.index(1)
+        if correct_idx >= len(letters) or len(choices) > len(letters):
+            continue
+        choices_text = "\n".join(f"{letters[i]}) {c}" for i, c in enumerate(choices))
+        prompt = (
+            f"{item.get('question', '')}\n\n{choices_text}\n\n"
+            "Answer with only the letter."
+        )
+        results.append({
+            "context": "",
+            "question": prompt,
+            "expected": letters[correct_idx],
+            "metadata": {"source": "truthfulqa"},
+        })
+    return results
+
+
+# ── Benchmark: LongBench (HotpotQA subtask) ──────────────────────────
+
+
+def _load_longbench(samples: int = 50) -> list[dict]:
+    """Load LongBench HotpotQA subtask — multi-hop QA with long context.
+
+    HotpotQA chosen as the primary LongBench subtask: QA format matches the
+    existing substring-scoring path, and the 10k+ token contexts are exactly
+    the regime where Entroly compression is supposed to pay off.
+
+    Uses the Xnhyacinth/LongBench mirror (THUDM original isn't indexed by
+    the HF datasets-server).
+    """
+    cache_path = Path(__file__).parent / ".cache" / "longbench_hotpotqa.json"
+
+    if cache_path.exists():
+        with open(cache_path) as f:
+            data = json.load(f)
+    else:
+        try:
+            data = _fetch_hf_rows("Xnhyacinth/LongBench", "hotpotqa", "test", 200)
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(cache_path, "w") as f:
+                json.dump(data, f)
+        except Exception as e:
+            print(f"  Warning: could not download LongBench: {e}")
+            return []
+
+    random.seed(42)
+    selected = random.sample(data, min(samples, len(data)))
+    results = []
+    for item in selected:
+        context = item.get("context", "")
+        question = item.get("question", "")
+        answers = item.get("answers") or []
+        if not answers or not question or not context:
+            continue
+        results.append({
+            "context": context,
+            "question": question,
+            "expected": answers[0],
+            "metadata": {"source": "longbench_hotpotqa", "all_answers": answers},
+        })
+    return results
+
+
 # ── Generic runner ────────────────────────────────────────────────────
 
 
@@ -463,6 +639,17 @@ def _check_answer(response: str, expected: str, benchmark: str, metadata: dict |
 
     if benchmark == "squad":
         # Check if any accepted answer appears
+        all_answers = (metadata or {}).get("all_answers", [expected])
+        return any(a.lower() in response_lower for a in all_answers)
+
+    if benchmark in ("mmlu", "truthfulqa"):
+        # Match the last standalone A-P letter (word boundary). Models usually
+        # conclude with the answer; taking the last avoids stray matches on
+        # pronouns like "I" at the start of rationales.
+        matches = re.findall(r"\b([A-P])\b", response.upper())
+        return bool(matches) and matches[-1] == expected.upper()
+
+    if benchmark == "longbench":
         all_answers = (metadata or {}).get("all_answers", [expected])
         return any(a.lower() in response_lower for a in all_answers)
 
@@ -488,6 +675,9 @@ def run_benchmark(
         "gsm8k": lambda: _load_gsm8k(samples),
         "humaneval": lambda: _load_humaneval(min(samples, 30)),
         "squad": lambda: _load_squad(samples),
+        "mmlu": lambda: _load_mmlu(samples),
+        "truthfulqa": lambda: _load_truthfulqa(samples),
+        "longbench": lambda: _load_longbench(samples),
     }
 
     if benchmark not in loaders:
@@ -605,11 +795,15 @@ Benchmarks:
   gsm8k       GSM8K — grade school math reasoning
   humaneval   HumanEval — code generation
   squad       SQuAD 2.0 — reading comprehension
+  mmlu        MMLU — massive multitask knowledge (4-way MCQ)
+  truthfulqa  TruthfulQA MC1 — truthfulness under compression
+  longbench   LongBench HotpotQA — multi-hop QA with long context
   all         Run all benchmarks
 
 Examples:
   python -m bench.accuracy --benchmark needle --model gemini-2.0-flash --samples 20
   python -m bench.accuracy --benchmark gsm8k --model claude-sonnet-4-5-20250929
+  python -m bench.accuracy --benchmark longbench --model gpt-4o-mini --samples 100
   python -m bench.accuracy --benchmark all --model gpt-4o-mini
 """,
     )
@@ -635,7 +829,11 @@ Examples:
     )
     args = parser.parse_args()
 
-    benchmarks = ["needle", "gsm8k", "humaneval", "squad"] if args.benchmark == "all" else [args.benchmark]
+    benchmarks = (
+        ["needle", "gsm8k", "humaneval", "squad", "mmlu", "truthfulqa", "longbench"]
+        if args.benchmark == "all"
+        else [args.benchmark]
+    )
 
     all_reports = []
     for bench in benchmarks:
