@@ -76,3 +76,6 @@ ignore = ["E501", "E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "live_provider: 需要真实上游 provider 与 API Key",
+]

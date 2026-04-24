@@ -812,6 +812,9 @@ entroly proxy --port 9378
 | `ENTROLY_CONTEXT_REPORT` | `1` | Inline context report in LLM prompts (0 to disable) |
 | `ENTROLY_CACHE_ALIGN` | `1` | Provider KV cache prefix stabilization (0 to disable) |
 | `ENTROLY_STRICT_OPTIMIZATION` | `0` | 设为 `1` 时，优化管线失败会返回代理错误，不再原样转发到上游 |
+| `ENTROLY_LIVE_RESPONSES_BASE_URL` | *(none)* | 真实 Responses provider E2E 测试的上游 base URL |
+| `ENTROLY_LIVE_RESPONSES_MODEL` | *(none)* | 真实 Responses provider E2E 测试使用的模型 |
+| `ENTROLY_LIVE_RESPONSES_API_KEY` | *(none)* | 真实 Responses provider E2E 测试使用的 API Key |
 | `ENTROLY_FEDERATION` | `0` | Enable federated swarm learning (1 to enable) |
 | `ENTROLY_FEDERATION_BOT` | *(none)* | Shared GitHub bot token for anonymous federation writes |
 | `ENTROLY_DISTILL` | `0` | Enable response distillation / output compression (1 to enable) |
