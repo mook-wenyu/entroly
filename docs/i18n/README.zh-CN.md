@@ -274,5 +274,5 @@ python -m entroly.integrations.agentskills ./dist/agentskills
 <p align="center">
   <a href="https://github.com/juyterman1000/entroly/discussions">讨论</a> •
   <a href="https://github.com/juyterman1000/entroly/issues">问题</a> •
-  MIT 许可证
+  Apache 2.0 许可证
 </p>
