@@ -129,6 +129,64 @@ async def test_pipeline_error_stays_pass_through_and_logs_unoptimized(monkeypatc
 
 
 @pytest.mark.anyio
+async def test_strict_optimization_error_stops_before_upstream(monkeypatch):
+    called = {"count": 0}
+
+    async def upstream_handler(request: httpx.Request) -> httpx.Response:
+        called["count"] += 1
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/json"},
+            json={"id": "resp_mock", "choices": []},
+        )
+
+    proxy = PromptCompilerProxy(
+        engine=SimpleNamespace(),
+        config=ProxyConfig(
+            openai_base_url="https://api.mookbot.com",
+            strict_optimization=True,
+        ),
+    )
+    proxy._client = httpx.AsyncClient(transport=httpx.MockTransport(upstream_handler))
+
+    def boom(user_message: str, body: dict[str, object], path: str) -> dict[str, object]:
+        raise RuntimeError("pipeline exploded")
+
+    monkeypatch.setattr(proxy, "_run_pipeline", boom)
+
+    app = Starlette(routes=[Route("/responses", proxy.handle_proxy, methods=["POST"])])
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post(
+            "/responses",
+            json={"model": "gpt-5.4", "input": "hello", "stream": False},
+            headers={"authorization": "Bearer test"},
+        )
+
+    assert response.status_code == 500
+    assert response.headers["x-entroly-source"] == "proxy"
+    assert response.headers["x-entroly-optimized"] == "false"
+    assert response.json() == {
+        "error": "optimization_failed",
+        "source": "entroly_proxy",
+    }
+    assert called["count"] == 0
+
+    recent = dashboard.get_recent_requests()
+    assert len(recent) == 1
+    entry = recent[0]
+    assert entry["status_code"] == 500
+    assert entry["source"] == "proxy"
+    assert entry["optimized"] is False
+    assert entry["error_type"] == "optimization_failed"
+
+    await proxy._client.aclose()
+
+
+@pytest.mark.anyio
 async def test_optimized_responses_request_uses_instructions_and_is_logged(monkeypatch):
     captured: dict[str, object] = {}
 

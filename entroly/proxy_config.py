@@ -239,6 +239,7 @@ class ProxyConfig:
     trajectory_c_min: float = 0.6
     trajectory_lambda: float = 0.07
     trust_env_proxy: bool = False
+    strict_optimization: bool = False
 
     @classmethod
     def from_env(cls) -> ProxyConfig:
@@ -287,6 +288,9 @@ class ProxyConfig:
             ),
             trust_env_proxy=(
                 os.environ.get("ENTROLY_TRUST_ENV_PROXY", "0") == "1"
+            ),
+            strict_optimization=(
+                os.environ.get("ENTROLY_STRICT_OPTIMIZATION", "0") == "1"
             ),
         )
 

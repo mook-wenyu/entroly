@@ -174,6 +174,8 @@ Zero cloud dependencies. Zero data exfiltration risk. Everything runs on your CP
 | **Windsurf / Cline / Cody** | `entroly init` |
 | **Any LLM API** | `entroly proxy` → HTTP proxy on `localhost:9377`（会打印当前应使用的精确本地 base URL） |
 
+第三方 provider 会走各自协议形状注入优化上下文；需要让优化失败显式中断时，设置 `ENTROLY_STRICT_OPTIMIZATION=1`。
+
 Also: OpenAI API • Anthropic API • LangChain • LlamaIndex • MCP-native
 
 ---

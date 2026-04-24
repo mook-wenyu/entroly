@@ -16,6 +16,8 @@ bench/results.tsv
 
 # Scratch / debug artifacts
 *.restored
+.omx/
+.playwright-mcp/
 .tmp/
 .test_vault/
 .verify-artifacts/

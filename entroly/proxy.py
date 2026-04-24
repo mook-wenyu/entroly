@@ -886,7 +886,11 @@ class PromptCompilerProxy:
         # Rust optimization. For persistent connections this is nearly
         # free; for cold starts it saves the TLS handshake time (~50ms).
         target_url = self._resolve_target(provider, path_with_query)
-        warmup_task = asyncio.create_task(self._warmup_connection(target_url))
+        warmup_task = (
+            None
+            if self.config.strict_optimization
+            else asyncio.create_task(self._warmup_connection(target_url))
+        )
 
         # Per-client key for trajectory isolation (hash of auth header)
         auth_raw = (headers.get("authorization", "")
@@ -1110,12 +1114,42 @@ class PromptCompilerProxy:
                         f"({opt_count}/{total_count} requests)"
                     )
         except Exception as e:
-            # Cardinal rule: never block a request due to entroly errors
-            logger.warning("Pipeline error (forwarding unmodified): %s: %s",
-                          type(e).__name__, str(e)[:200])
+            # 默认兼容模式记录错误后继续转发；严格模式把优化失败暴露为代理错误。
+            if self.config.strict_optimization:
+                logger.warning(
+                    "Pipeline error (strict optimization failed): %s: %s",
+                    type(e).__name__,
+                    str(e)[:200],
+                )
+                if warmup_task is not None:
+                    await warmup_task
+                self._record_request_observation(
+                    request_observation,
+                    status_code=500,
+                    source="proxy",
+                    optimized_applied=False,
+                    error_type="optimization_failed",
+                )
+                return JSONResponse(
+                    {
+                        "error": "optimization_failed",
+                        "source": "entroly_proxy",
+                    },
+                    status_code=500,
+                    headers={
+                        "X-Entroly-Source": "proxy",
+                        "X-Entroly-Optimized": "false",
+                    },
+                )
+            logger.warning(
+                "Pipeline error (forwarding unmodified): %s: %s",
+                type(e).__name__,
+                str(e)[:200],
+            )
 
         # Await warmup (usually completes during pipeline, essentially free)
-        await warmup_task
+        if warmup_task is not None:
+            await warmup_task
 
         # ── Signal 2: Query trajectory rephrase detection ──
         if self._enable_passive_feedback and user_message:

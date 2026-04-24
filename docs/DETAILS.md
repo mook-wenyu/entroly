@@ -811,6 +811,7 @@ entroly proxy --port 9378
 | `ENTROLY_MCP_TRANSPORT` | `stdio` | MCP transport (stdio/sse) |
 | `ENTROLY_CONTEXT_REPORT` | `1` | Inline context report in LLM prompts (0 to disable) |
 | `ENTROLY_CACHE_ALIGN` | `1` | Provider KV cache prefix stabilization (0 to disable) |
+| `ENTROLY_STRICT_OPTIMIZATION` | `0` | 设为 `1` 时，优化管线失败会返回代理错误，不再原样转发到上游 |
 | `ENTROLY_FEDERATION` | `0` | Enable federated swarm learning (1 to enable) |
 | `ENTROLY_FEDERATION_BOT` | *(none)* | Shared GitHub bot token for anonymous federation writes |
 | `ENTROLY_DISTILL` | `0` | Enable response distillation / output compression (1 to enable) |

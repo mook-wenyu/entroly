@@ -462,6 +462,11 @@ class TestProxyConfigGemini:
         config = ProxyConfig.from_env()
         assert config.gemini_base_url == "https://custom.gemini.api"
 
+    def test_from_env_strict_optimization(self, monkeypatch):
+        monkeypatch.setenv("ENTROLY_STRICT_OPTIMIZATION", "1")
+        config = ProxyConfig.from_env()
+        assert config.strict_optimization is True
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # T-14: IDE Realistic Scenarios
