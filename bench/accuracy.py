@@ -91,6 +91,10 @@ class RetentionReport:
     cost_savings_pct: float
 
 
+BENCHMARKS = ("needle", "gsm8k", "humaneval", "squad", "mmlu", "truthfulqa", "longbench", "bfcl")
+BENCHMARK_CHOICES_HELP = ", ".join((*BENCHMARKS, "all"))
+
+
 # ── LLM Client ────────────────────────────────────────────────────────
 
 
@@ -618,6 +622,15 @@ def _load_longbench(samples: int = 50) -> list[dict]:
 # ── Benchmark: BFCL (Berkeley Function Calling) ──────────────────────
 
 
+BFCL_DATASET_URL = (
+    "https://huggingface.co/datasets/gorilla-llm/Berkeley-Function-Calling-Leaderboard/"
+    "resolve/main/BFCL_v3_exec_simple.json"
+)
+BFCL_CACHE_PATH = Path(__file__).parent / ".cache" / "bfcl_simple.json"
+BFCL_RANDOM_SEED = 42
+BFCL_USER_AGENT = "python-urllib/3 entroly-benchmark/0.8"
+
+
 # Distractor tool schemas — realistic function signatures that pad the
 # system context so compression is exercised. These are NOT the target;
 # the model must pick the correct function from among these distractors.
@@ -645,88 +658,101 @@ _BFCL_DISTRACTORS = [
 ]
 
 
-def _load_bfcl(samples: int = 50) -> list[dict]:
-    """Load BFCL Simple function-calling samples (v3 exec subset).
+def _download_bfcl_records(url: str = BFCL_DATASET_URL) -> list[dict]:
+    """按官方 JSONL 形态读取 BFCL 数据；失败必须显式抛错。"""
+    import urllib.request
 
-    Downloads the gorilla-llm/Berkeley-Function-Calling-Leaderboard dataset
-    (exec_simple subset, 100 samples) from HuggingFace. Each sample has a
-    user query, candidate function schemas, and a ground-truth function call.
+    request = urllib.request.Request(url, headers={"User-Agent": BFCL_USER_AGENT})
+    with urllib.request.urlopen(request, timeout=60) as response:
+        lines = response.read().decode("utf-8").splitlines()
+    return [json.loads(line) for line in lines if line.strip()]
 
-    To make compression meaningful, we pad each sample with 20 distractor
-    tool schemas so the system context is large enough for Entroly to compress.
-    """
-    cache_path = Path(__file__).parent / ".cache" / "bfcl_simple.json"
 
+def _load_bfcl_records(cache_path: Path = BFCL_CACHE_PATH) -> list[dict]:
+    """读取 BFCL 原始记录，缓存只减少网络请求，不改变失败语义。"""
     if cache_path.exists():
-        with open(cache_path) as f:
-            data = json.load(f)
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
     else:
         try:
-            import urllib.request
-            url = "https://huggingface.co/datasets/gorilla-llm/Berkeley-Function-Calling-Leaderboard/resolve/main/BFCL_v3_exec_simple.json"
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
-            resp = urllib.request.urlopen(url, timeout=60)
-            lines = resp.read().decode().strip().split("\n")
-            data = [json.loads(line) for line in lines if line.strip()]
-            with open(cache_path, "w") as f:
-                json.dump(data, f)
-        except Exception as e:
-            print(f"  Warning: could not download BFCL: {e}")
-            return []
+            data = _download_bfcl_records()
+        except (OSError, TimeoutError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"Could not load BFCL dataset from {BFCL_DATASET_URL}") from exc
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
-    random.seed(42)
-    selected = random.sample(data, min(samples, len(data)))
+    if not isinstance(data, list):
+        raise ValueError("BFCL cache must contain a JSON array of records")
+    return data
+
+
+def _extract_bfcl_user_content(question: Any) -> str | None:
+    if not isinstance(question, list) or not question:
+        return None
+    messages = question[0] if isinstance(question[0], list) else question
+    if not isinstance(messages, list):
+        return None
+    for message in messages:
+        if isinstance(message, dict) and message.get("role") == "user":
+            content = message.get("content", "")
+            return content if isinstance(content, str) and content else None
+    return None
+
+
+def _extract_bfcl_expected_function(ground_truth: Any) -> tuple[str, str] | None:
+    if not ground_truth:
+        return None
+    call = ground_truth[0] if isinstance(ground_truth, list) else str(ground_truth)
+    match = re.match(r"([\w.]+)\(", str(call))
+    if not match:
+        return None
+    return match.group(1), str(call)
+
+
+def _normalize_bfcl_functions(functions: Any) -> list:
+    if isinstance(functions, str):
+        try:
+            functions = json.loads(functions)
+        except json.JSONDecodeError:
+            return []
+    if isinstance(functions, dict):
+        return [functions]
+    if isinstance(functions, list):
+        return functions
+    return []
+
+
+def _bfcl_records_to_items(records: list[dict], samples: int, seed: int = BFCL_RANDOM_SEED) -> list[dict]:
+    rng = random.Random(seed)
+    selected = rng.sample(records, min(samples, len(records)))
 
     results = []
     for item in selected:
-        # question is list[list[dict]] — take first conversation, first message
-        question_outer = item.get("question", [])
-        if not question_outer:
-            continue
-        question_inner = question_outer[0] if isinstance(question_outer[0], list) else question_outer
-        user_content = ""
-        for msg in question_inner:
-            if isinstance(msg, dict) and msg.get("role") == "user":
-                user_content = msg.get("content", "")
-                break
+        user_content = _extract_bfcl_user_content(item.get("question"))
         if not user_content:
             continue
 
-        # ground_truth is list[str] like ["func_name(arg1=val1, arg2=val2)"]
-        ground_truth = item.get("ground_truth", [])
-        if not ground_truth:
+        expected = _extract_bfcl_expected_function(item.get("ground_truth"))
+        if expected is None:
             continue
-        gt_call = ground_truth[0] if isinstance(ground_truth, list) else str(ground_truth)
+        expected_func, gt_call = expected
 
-        # Parse function name from ground truth
-        func_match = re.match(r"([\w.]+)\(", str(gt_call))
-        if not func_match:
-            continue
-        expected_func = func_match.group(1)
-
-        # Build tool schemas: real functions from the sample + distractors
-        real_functions = item.get("function", [])
-        if isinstance(real_functions, str):
-            try:
-                real_functions = json.loads(real_functions)
-            except json.JSONDecodeError:
-                real_functions = []
-        if isinstance(real_functions, dict):
-            real_functions = [real_functions]
-
-        # Combine real + distractor schemas and shuffle
-        all_tools = list(real_functions) + list(_BFCL_DISTRACTORS)
-        random.shuffle(all_tools)
+        all_tools = _normalize_bfcl_functions(item.get("function")) + list(_BFCL_DISTRACTORS)
+        rng.shuffle(all_tools)
         tools_text = json.dumps(all_tools, indent=2)
 
         results.append({
             "context": f"You have access to the following tools:\n\n{tools_text}",
             "question": f"{user_content}\n\nRespond with ONLY the function call in the format: function_name(arg1=value1, arg2=value2)",
             "expected": expected_func,
-            "metadata": {"source": "bfcl", "full_answer": str(gt_call)},
+            "metadata": {"source": "bfcl", "full_answer": gt_call},
         })
 
     return results
+
+
+def _load_bfcl(samples: int = 50, cache_path: Path = BFCL_CACHE_PATH) -> list[dict]:
+    """Load BFCL Simple function-calling samples (v3 exec subset)."""
+    return _bfcl_records_to_items(_load_bfcl_records(cache_path), samples)
 
 
 # ── Generic runner ────────────────────────────────────────────────────
@@ -764,13 +790,7 @@ def _check_answer(response: str, expected: str, benchmark: str, metadata: dict |
         return any(a.lower() in response_lower for a in all_answers)
 
     if benchmark == "bfcl":
-        # Check if the model called the correct function name
-        # Expected is just the function name (e.g., "get_weather")
-        func_match = re.search(r"([\w.]+)\(", response)
-        if func_match:
-            return func_match.group(1).lower() == expected_lower
-        # Also accept function name on its own line
-        return expected_lower in response_lower
+        return _check_bfcl_answer(response, expected_lower)
 
     if benchmark == "humaneval":
         # Basic: check if key parts of canonical solution appear
@@ -778,6 +798,28 @@ def _check_answer(response: str, expected: str, benchmark: str, metadata: dict |
 
     # Default: substring match
     return expected_lower in response_lower
+
+
+def _check_bfcl_answer(response: str, expected_lower: str) -> bool:
+    call_match = re.search(r"\b([A-Za-z_][\w.]*)\s*\(", response)
+    if call_match:
+        return call_match.group(1).lower() == expected_lower
+
+    standalone = response.strip().strip("`")
+    return bool(re.fullmatch(r"[A-Za-z_][\w.]*", standalone)) and standalone.lower() == expected_lower
+
+
+def _benchmark_loaders(model: str, samples: int) -> dict[str, Any]:
+    return {
+        "needle": lambda: bench_needle(model, samples),
+        "gsm8k": lambda: _load_gsm8k(samples),
+        "humaneval": lambda: _load_humaneval(min(samples, 30)),
+        "squad": lambda: _load_squad(samples),
+        "mmlu": lambda: _load_mmlu(samples),
+        "truthfulqa": lambda: _load_truthfulqa(samples),
+        "longbench": lambda: _load_longbench(samples),
+        "bfcl": lambda: _load_bfcl(samples),
+    }
 
 
 def run_benchmark(
@@ -789,16 +831,7 @@ def run_benchmark(
     """Run a benchmark, comparing baseline vs Entroly-compressed."""
 
     # Load benchmark data
-    loaders = {
-        "needle": lambda: bench_needle(model, samples),
-        "gsm8k": lambda: _load_gsm8k(samples),
-        "humaneval": lambda: _load_humaneval(min(samples, 30)),
-        "squad": lambda: _load_squad(samples),
-        "mmlu": lambda: _load_mmlu(samples),
-        "truthfulqa": lambda: _load_truthfulqa(samples),
-        "longbench": lambda: _load_longbench(samples),
-        "bfcl": lambda: _load_bfcl(samples),
-    }
+    loaders = _benchmark_loaders(model, samples)
 
     if benchmark not in loaders:
         raise ValueError(f"Unknown benchmark: {benchmark}. Available: {list(loaders.keys())}")
@@ -918,6 +951,7 @@ Benchmarks:
   mmlu        MMLU — massive multitask knowledge (4-way MCQ)
   truthfulqa  TruthfulQA MC1 — truthfulness under compression
   longbench   LongBench HotpotQA — multi-hop QA with long context
+  bfcl        Berkeley Function Calling — simple tool-call selection
   all         Run all benchmarks
 
 Examples:
@@ -929,7 +963,7 @@ Examples:
     )
     parser.add_argument(
         "--benchmark", "-b", type=str, default="needle",
-        help="Benchmark to run (needle, gsm8k, humaneval, squad, mmlu, truthfulqa, longbench, all)",
+        help=f"Benchmark to run ({BENCHMARK_CHOICES_HELP})",
     )
     parser.add_argument(
         "--model", "-m", type=str, default="gpt-4o-mini",
@@ -949,11 +983,7 @@ Examples:
     )
     args = parser.parse_args()
 
-    benchmarks = (
-        ["needle", "gsm8k", "humaneval", "squad", "mmlu", "truthfulqa", "longbench", "bfcl"]
-        if args.benchmark == "all"
-        else [args.benchmark]
-    )
+    benchmarks = list(BENCHMARKS) if args.benchmark == "all" else [args.benchmark]
 
     all_reports = []
     for bench in benchmarks:
