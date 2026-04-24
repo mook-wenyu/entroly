@@ -13,11 +13,7 @@ Benchmarks (ordered by visibility / traffic):
   5. MMLU              — massive multitask knowledge
   6. TruthfulQA        — truthfulness under compression (MC1)
   7. SQuAD 2.0         — reading comprehension
-
-BFCL (Berkeley Function Calling) is intentionally omitted — it requires a
-function-calling harness with per-sample tool schemas and AST validation, and
-its prompts are short enough that compression pass-through dominates the
-signal. Not a good fit for an accuracy-retention benchmark.
+  8. BFCL              — Berkeley Function Calling (gorilla-llm, Simple subset)
 
 Each benchmark runs in two modes:
   - Baseline: raw context → LLM → answer → score
@@ -619,6 +615,120 @@ def _load_longbench(samples: int = 50) -> list[dict]:
     return results
 
 
+# ── Benchmark: BFCL (Berkeley Function Calling) ──────────────────────
+
+
+# Distractor tool schemas — realistic function signatures that pad the
+# system context so compression is exercised. These are NOT the target;
+# the model must pick the correct function from among these distractors.
+_BFCL_DISTRACTORS = [
+    {"name": "get_weather_forecast", "description": "Get weather forecast for a location.", "parameters": {"type": "object", "properties": {"location": {"type": "string"}, "days": {"type": "integer", "default": 5}}, "required": ["location"]}},
+    {"name": "send_email", "description": "Send an email to a recipient.", "parameters": {"type": "object", "properties": {"to": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}, "cc": {"type": "array", "items": {"type": "string"}}}, "required": ["to", "subject", "body"]}},
+    {"name": "search_database", "description": "Search a database with a SQL-like query.", "parameters": {"type": "object", "properties": {"table": {"type": "string"}, "filter": {"type": "string"}, "limit": {"type": "integer", "default": 100}, "offset": {"type": "integer", "default": 0}}, "required": ["table"]}},
+    {"name": "create_calendar_event", "description": "Create a new calendar event.", "parameters": {"type": "object", "properties": {"title": {"type": "string"}, "start_time": {"type": "string"}, "end_time": {"type": "string"}, "attendees": {"type": "array", "items": {"type": "string"}}}, "required": ["title", "start_time"]}},
+    {"name": "translate_text", "description": "Translate text from one language to another.", "parameters": {"type": "object", "properties": {"text": {"type": "string"}, "source_lang": {"type": "string"}, "target_lang": {"type": "string"}}, "required": ["text", "target_lang"]}},
+    {"name": "resize_image", "description": "Resize an image to specified dimensions.", "parameters": {"type": "object", "properties": {"url": {"type": "string"}, "width": {"type": "integer"}, "height": {"type": "integer"}, "format": {"type": "string", "enum": ["png", "jpeg", "webp"]}}, "required": ["url", "width", "height"]}},
+    {"name": "generate_report", "description": "Generate a business report from data sources.", "parameters": {"type": "object", "properties": {"report_type": {"type": "string", "enum": ["sales", "inventory", "finance"]}, "date_range": {"type": "string"}, "format": {"type": "string", "enum": ["pdf", "csv", "xlsx"]}}, "required": ["report_type"]}},
+    {"name": "manage_subscription", "description": "Manage user subscription plan.", "parameters": {"type": "object", "properties": {"user_id": {"type": "string"}, "action": {"type": "string", "enum": ["upgrade", "downgrade", "cancel"]}, "plan": {"type": "string"}}, "required": ["user_id", "action"]}},
+    {"name": "analyze_sentiment", "description": "Analyze sentiment of a text passage.", "parameters": {"type": "object", "properties": {"text": {"type": "string"}, "language": {"type": "string", "default": "en"}, "granularity": {"type": "string", "enum": ["document", "sentence"]}}, "required": ["text"]}},
+    {"name": "deploy_service", "description": "Deploy a microservice to the cluster.", "parameters": {"type": "object", "properties": {"service_name": {"type": "string"}, "version": {"type": "string"}, "replicas": {"type": "integer", "default": 3}, "environment": {"type": "string", "enum": ["staging", "production"]}}, "required": ["service_name", "version"]}},
+    {"name": "query_knowledge_base", "description": "Query an internal knowledge base for articles.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "category": {"type": "string"}, "max_results": {"type": "integer", "default": 10}}, "required": ["query"]}},
+    {"name": "process_payment", "description": "Process a payment transaction.", "parameters": {"type": "object", "properties": {"amount": {"type": "number"}, "currency": {"type": "string", "default": "USD"}, "method": {"type": "string", "enum": ["credit_card", "bank_transfer", "crypto"]}, "recipient_id": {"type": "string"}}, "required": ["amount", "recipient_id"]}},
+    {"name": "schedule_backup", "description": "Schedule a database backup.", "parameters": {"type": "object", "properties": {"database": {"type": "string"}, "schedule": {"type": "string"}, "retention_days": {"type": "integer", "default": 30}, "compression": {"type": "boolean", "default": True}}, "required": ["database"]}},
+    {"name": "create_user_account", "description": "Create a new user account in the system.", "parameters": {"type": "object", "properties": {"username": {"type": "string"}, "email": {"type": "string"}, "role": {"type": "string", "enum": ["admin", "user", "viewer"]}, "team": {"type": "string"}}, "required": ["username", "email"]}},
+    {"name": "run_diagnostics", "description": "Run system diagnostics and health checks.", "parameters": {"type": "object", "properties": {"target": {"type": "string"}, "depth": {"type": "string", "enum": ["quick", "full", "deep"]}, "include_logs": {"type": "boolean", "default": False}}, "required": ["target"]}},
+    {"name": "configure_firewall", "description": "Configure firewall rules for a network.", "parameters": {"type": "object", "properties": {"network_id": {"type": "string"}, "rules": {"type": "array", "items": {"type": "object"}}, "mode": {"type": "string", "enum": ["append", "replace"]}}, "required": ["network_id", "rules"]}},
+    {"name": "extract_entities", "description": "Extract named entities from text.", "parameters": {"type": "object", "properties": {"text": {"type": "string"}, "entity_types": {"type": "array", "items": {"type": "string"}}, "language": {"type": "string", "default": "en"}}, "required": ["text"]}},
+    {"name": "convert_currency", "description": "Convert amount between currencies.", "parameters": {"type": "object", "properties": {"amount": {"type": "number"}, "from_currency": {"type": "string"}, "to_currency": {"type": "string"}, "date": {"type": "string"}}, "required": ["amount", "from_currency", "to_currency"]}},
+    {"name": "train_ml_model", "description": "Train a machine learning model on a dataset.", "parameters": {"type": "object", "properties": {"dataset_id": {"type": "string"}, "algorithm": {"type": "string", "enum": ["random_forest", "xgboost", "neural_net"]}, "hyperparameters": {"type": "object"}, "epochs": {"type": "integer", "default": 100}}, "required": ["dataset_id", "algorithm"]}},
+    {"name": "monitor_metrics", "description": "Set up monitoring for system metrics.", "parameters": {"type": "object", "properties": {"metric_name": {"type": "string"}, "threshold": {"type": "number"}, "alert_channel": {"type": "string", "enum": ["email", "slack", "pagerduty"]}, "interval_seconds": {"type": "integer", "default": 60}}, "required": ["metric_name", "threshold"]}},
+]
+
+
+def _load_bfcl(samples: int = 50) -> list[dict]:
+    """Load BFCL Simple function-calling samples (v3 exec subset).
+
+    Downloads the gorilla-llm/Berkeley-Function-Calling-Leaderboard dataset
+    (exec_simple subset, 100 samples) from HuggingFace. Each sample has a
+    user query, candidate function schemas, and a ground-truth function call.
+
+    To make compression meaningful, we pad each sample with 20 distractor
+    tool schemas so the system context is large enough for Entroly to compress.
+    """
+    cache_path = Path(__file__).parent / ".cache" / "bfcl_simple.json"
+
+    if cache_path.exists():
+        with open(cache_path) as f:
+            data = json.load(f)
+    else:
+        try:
+            import urllib.request
+            url = "https://huggingface.co/datasets/gorilla-llm/Berkeley-Function-Calling-Leaderboard/resolve/main/BFCL_v3_exec_simple.json"
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            resp = urllib.request.urlopen(url, timeout=60)
+            lines = resp.read().decode().strip().split("\n")
+            data = [json.loads(line) for line in lines if line.strip()]
+            with open(cache_path, "w") as f:
+                json.dump(data, f)
+        except Exception as e:
+            print(f"  Warning: could not download BFCL: {e}")
+            return []
+
+    random.seed(42)
+    selected = random.sample(data, min(samples, len(data)))
+
+    results = []
+    for item in selected:
+        # question is list[list[dict]] — take first conversation, first message
+        question_outer = item.get("question", [])
+        if not question_outer:
+            continue
+        question_inner = question_outer[0] if isinstance(question_outer[0], list) else question_outer
+        user_content = ""
+        for msg in question_inner:
+            if isinstance(msg, dict) and msg.get("role") == "user":
+                user_content = msg.get("content", "")
+                break
+        if not user_content:
+            continue
+
+        # ground_truth is list[str] like ["func_name(arg1=val1, arg2=val2)"]
+        ground_truth = item.get("ground_truth", [])
+        if not ground_truth:
+            continue
+        gt_call = ground_truth[0] if isinstance(ground_truth, list) else str(ground_truth)
+
+        # Parse function name from ground truth
+        func_match = re.match(r"([\w.]+)\(", str(gt_call))
+        if not func_match:
+            continue
+        expected_func = func_match.group(1)
+
+        # Build tool schemas: real functions from the sample + distractors
+        real_functions = item.get("function", [])
+        if isinstance(real_functions, str):
+            try:
+                real_functions = json.loads(real_functions)
+            except json.JSONDecodeError:
+                real_functions = []
+        if isinstance(real_functions, dict):
+            real_functions = [real_functions]
+
+        # Combine real + distractor schemas and shuffle
+        all_tools = list(real_functions) + list(_BFCL_DISTRACTORS)
+        random.shuffle(all_tools)
+        tools_text = json.dumps(all_tools, indent=2)
+
+        results.append({
+            "context": f"You have access to the following tools:\n\n{tools_text}",
+            "question": f"{user_content}\n\nRespond with ONLY the function call in the format: function_name(arg1=value1, arg2=value2)",
+            "expected": expected_func,
+            "metadata": {"source": "bfcl", "full_answer": str(gt_call)},
+        })
+
+    return results
+
+
 # ── Generic runner ────────────────────────────────────────────────────
 
 
@@ -653,6 +763,15 @@ def _check_answer(response: str, expected: str, benchmark: str, metadata: dict |
         all_answers = (metadata or {}).get("all_answers", [expected])
         return any(a.lower() in response_lower for a in all_answers)
 
+    if benchmark == "bfcl":
+        # Check if the model called the correct function name
+        # Expected is just the function name (e.g., "get_weather")
+        func_match = re.search(r"([\w.]+)\(", response)
+        if func_match:
+            return func_match.group(1).lower() == expected_lower
+        # Also accept function name on its own line
+        return expected_lower in response_lower
+
     if benchmark == "humaneval":
         # Basic: check if key parts of canonical solution appear
         return expected_lower[:50] in response_lower or response_lower[:50] in expected_lower
@@ -678,6 +797,7 @@ def run_benchmark(
         "mmlu": lambda: _load_mmlu(samples),
         "truthfulqa": lambda: _load_truthfulqa(samples),
         "longbench": lambda: _load_longbench(samples),
+        "bfcl": lambda: _load_bfcl(samples),
     }
 
     if benchmark not in loaders:
@@ -830,7 +950,7 @@ Examples:
     args = parser.parse_args()
 
     benchmarks = (
-        ["needle", "gsm8k", "humaneval", "squad", "mmlu", "truthfulqa", "longbench"]
+        ["needle", "gsm8k", "humaneval", "squad", "mmlu", "truthfulqa", "longbench", "bfcl"]
         if args.benchmark == "all"
         else [args.benchmark]
     )

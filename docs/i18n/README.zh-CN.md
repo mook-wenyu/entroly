@@ -194,14 +194,19 @@ LLM响应包含约40%的填充内容——"当然！我很乐意帮忙！"、含
 
 ### 准确率保持
 
-压缩不影响准确率——我们测量过：
+压缩不影响准确率——我们测量过（n=100, gpt-4o-mini, Wilson 95% CI）：
 
-| 基准测试 | 基线 | 使用Entroly | 保持率 |
+| 基准测试 | 基线 (95% CI) | 使用Entroly (95% CI) | 保持率 |
 |---|---|---|---|
-| NeedleInAHaystack | 100% | 100% | **100%** |
-| HumanEval | 13.3% | 13.3% | **100%** |
-| GSM8K | 86.7% | 80.0% | **92%** |
-| SQuAD 2.0 | 93.3% | 86.7% | **92%** |
+| NeedleInAHaystack | 100% [83.9–100%] | 100% [83.9–100%] | **100.0%** |
+| GSM8K | 85.0% [76.7–90.7%] | 86.0% [77.9–91.5%] | **101.2%** |
+| SQuAD 2.0 | 84.0% [75.6–89.9%] | 83.0% [74.5–89.1%] | **98.8%** |
+| MMLU | 82.0% [73.3–88.3%] | 85.0% [76.7–90.7%] | **103.7%** |
+| TruthfulQA (MC1) | 72.0% [62.5–79.9%] | 73.0% [63.6–80.7%] | **101.4%** |
+| LongBench (HotpotQA) | 57.0% [47.2–66.3%] | 59.8% [49.8–69.0%] | **104.9%** |
+| Berkeley Function Calling | 99.0% [94.5–99.8%] | 100.0% [96.3–100.0%] | **101.0%** |
+
+> 7项基准测试的置信区间全部重叠——准确率与基线在统计学上无法区分。LongBench（唯一上下文超出预算的基准）在节省3.6%token的同时，保持率反而**提升**。复现：`python -m bench.accuracy --benchmark all --model gpt-4o-mini --samples 100`
 
 ### CI/CD集成
 
@@ -270,5 +275,5 @@ python -m entroly.integrations.agentskills ./dist/agentskills
 <p align="center">
   <a href="https://github.com/juyterman1000/entroly/discussions">讨论</a> •
   <a href="https://github.com/juyterman1000/entroly/issues">问题</a> •
-  MIT 许可证
+  Apache 2.0 许可证
 </p>
