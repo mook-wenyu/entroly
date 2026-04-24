@@ -32,7 +32,7 @@ except ImportError:  # pragma: no cover - Python <3.8 compatibility
     PackageNotFoundError = Exception  # type: ignore[assignment]
     version = None  # type: ignore[assignment]
 
-_FALLBACK_VERSION = "0.8.4"
+_FALLBACK_VERSION = "0.8.5"
 
 
 def _read_source_version() -> str | None:

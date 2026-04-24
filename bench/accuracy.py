@@ -691,7 +691,7 @@ def run_benchmark(
     print(f"  Loaded {len(items)} samples. Model: {model}")
 
     # Run baseline
-    print(f"\n  [1/2] Running baseline (no compression)...")
+    print("\n  [1/2] Running baseline (no compression)...")
     baseline = _run_mode(items, benchmark, model, "baseline", budget=None)
 
     # Run with Entroly compression
@@ -809,7 +809,7 @@ Examples:
     )
     parser.add_argument(
         "--benchmark", "-b", type=str, default="needle",
-        help="Benchmark to run (needle, gsm8k, humaneval, squad, all)",
+        help="Benchmark to run (needle, gsm8k, humaneval, squad, mmlu, truthfulqa, longbench, all)",
     )
     parser.add_argument(
         "--model", "-m", type=str, default="gpt-4o-mini",
