@@ -112,6 +112,15 @@ def _free_port(port: int) -> bool:
             return True  # port is free
 
     killed = False
+    if os.name == "nt":
+        killed = _free_windows_port(port)
+        if killed:
+            _time.sleep(0.5)
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(0.3)
+                return s.connect_ex(("127.0.0.1", port)) != 0
+        return False
+
     try:
         result = subprocess.run(
             ["fuser", f"{port}/tcp"],
@@ -147,6 +156,77 @@ def _free_port(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(0.3)
         return s.connect_ex(("127.0.0.1", port)) != 0
+
+
+def _free_windows_port(port: int) -> bool:
+    """Windows 通过 netstat + taskkill 清理本项目旧代理进程。"""
+
+    killed = False
+    for proc_id in _windows_listening_pids(port):
+        if proc_id == os.getpid():
+            continue
+        command_line = _windows_process_command_line(proc_id)
+        if not _is_entroly_process_command(command_line):
+            continue
+        result = subprocess.run(
+            ["taskkill", "/PID", str(proc_id), "/T", "/F"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        killed = killed or result.returncode == 0
+    return killed
+
+
+def _windows_listening_pids(port: int) -> list[int]:
+    try:
+        result = subprocess.run(
+            ["netstat", "-ano", "-p", "tcp"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return []
+    return _parse_netstat_listening_pids(result.stdout, port)
+
+
+def _parse_netstat_listening_pids(output: str, port: int) -> list[int]:
+    pids: list[int] = []
+    port_suffix = f":{port}"
+    for line in output.splitlines():
+        parts = line.split()
+        if len(parts) < 5:
+            continue
+        local_address, state, pid_text = parts[1], parts[-2].upper(), parts[-1]
+        if state != "LISTENING" or not local_address.endswith(port_suffix) or not pid_text.isdigit():
+            continue
+        pid = int(pid_text)
+        if pid not in pids:
+            pids.append(pid)
+    return pids
+
+
+def _windows_process_command_line(proc_id: int) -> str:
+    command = (
+        "$p=Get-CimInstance Win32_Process -Filter "
+        f"\"ProcessId={proc_id}\"; if($p){{ $p.CommandLine }}"
+    )
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", command],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return ""
+    return result.stdout.strip()
+
+
+def _is_entroly_process_command(command_line: str) -> bool:
+    lowered = command_line.lower()
+    return "entroly" in lowered and (" go" in lowered or " proxy" in lowered or " dashboard" in lowered)
 
 
 def _check_first_run() -> None:

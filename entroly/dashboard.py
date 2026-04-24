@@ -24,6 +24,8 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
 
+from entroly.runtime_status import resolve_runtime_paths, snapshot_belief_vault
+
 logger = logging.getLogger("entroly.dashboard")
 
 # ── Engine reference (set by start_dashboard) ─────────────────────────────────
@@ -109,6 +111,91 @@ def _safe_json(obj: Any) -> Any:
     return obj
 
 
+def _snapshot_cogops() -> dict[str, Any]:
+    """读取当前运行时认知 vault 的真实状态。"""
+
+    paths = resolve_runtime_paths(_engine)
+    vault = snapshot_belief_vault(paths.vault_path)
+    engine = "rust"
+    engine_error = ""
+    try:
+        from entroly_core import CogOpsEngine
+
+        CogOpsEngine(str(paths.vault_path))
+    except ImportError as exc:
+        engine = "unavailable"
+        engine_error = f"entroly_core import failed: {exc}"
+    except Exception as exc:
+        engine = "unavailable"
+        engine_error = f"CogOpsEngine initialization failed: {exc}"
+
+    vault.update(
+        {
+            "engine": engine,
+            "engine_error": engine_error,
+            "project_dir": str(paths.project_dir),
+            "checkpoint_dir": str(paths.checkpoint_dir) if paths.checkpoint_dir else "",
+            "vault_source": paths.vault_source,
+            "seed_command": "entroly compile . --max-files 0",
+        }
+    )
+    return _safe_json(vault)
+
+
+def _snapshot_capabilities(snap: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """把 dashboard 依赖的能力显式标成 available/degraded/unavailable。"""
+
+    capabilities: dict[str, dict[str, Any]] = {
+        "engine": _capability(bool(snap.get("engine_available")), "engine not attached"),
+        "optimization": _capability(
+            bool(snap.get("last_optimization", {}).get("available")),
+            "no optimized request has completed in this runtime",
+            degraded=True,
+        ),
+        "value_tracking": _capability(
+            snap.get("value_trends") is not None and snap.get("value_confidence") is not None,
+            "value tracker unavailable",
+        ),
+        "stats": _capability(snap.get("stats") is not None, "engine stats unavailable"),
+        "prism": _capability(snap.get("prism_weights") is not None, "PRISM weights unavailable"),
+        "health_analysis": _capability(snap.get("health") is not None, "code health analysis unavailable"),
+        "security_scan": _capability(snap.get("security") is not None, "SAST security report unavailable"),
+        "knapsack_explain": _capability(snap.get("explain") is not None, "selection explainability unavailable"),
+        "dep_graph": _capability(snap.get("dep_graph") is not None, "dependency graph unavailable"),
+        "cache_intelligence": _capability(
+            snap.get("cache_intelligence") is not None,
+            "cache intelligence unavailable",
+        ),
+        "resonance": _capability(snap.get("resonance") is not None, "context resonance unavailable"),
+        "consolidation": _capability(snap.get("consolidation") is not None, "consolidation stats unavailable"),
+        "causal": _capability(snap.get("causal") is not None, "causal graph stats unavailable"),
+    }
+
+    cogops = snap.get("cogops")
+    if not cogops:
+        capabilities["cogops"] = _capability(False, "cognitive vault status unavailable")
+    elif cogops.get("total_beliefs", 0) == 0:
+        capabilities["cogops"] = {
+            "status": "degraded",
+            "reason": f"no belief files under {cogops.get('vault_path')}",
+        }
+    elif cogops.get("read_error_count", 0) > 0 or cogops.get("engine_error"):
+        capabilities["cogops"] = {
+            "status": "degraded",
+            "reason": cogops.get("engine_error") or "some belief files could not be read",
+        }
+    else:
+        capabilities["cogops"] = {"status": "available", "reason": ""}
+
+    return capabilities
+
+
+def _capability(available: bool, reason: str, *, degraded: bool = False) -> dict[str, Any]:
+    if available:
+        return {"status": "available", "reason": ""}
+    return {"status": "degraded" if degraded else "unavailable", "reason": reason}
+
+
 def _get_full_snapshot() -> dict:
     """Pull ALL real data from the engine subsystems."""
     snap: dict[str, Any] = {
@@ -129,6 +216,8 @@ def _get_full_snapshot() -> dict:
         snap["value_confidence"] = None
 
     if _engine is None:
+        snap["cogops"] = _snapshot_cogops()
+        snap["capabilities"] = _snapshot_capabilities(snap)
         return snap
 
     try:
@@ -259,72 +348,8 @@ def _get_full_snapshot() -> dict:
     snap["recent_requests"] = get_recent_requests()
 
     # 10. CogOps Epistemic Engine stats
-    try:
-        import os
-
-        from entroly_core import CogOpsEngine
-        vault_base = os.environ.get(
-            "ENTROLY_VAULT",
-            os.path.join(os.environ.get("ENTROLY_DIR", os.path.join(os.getcwd(), ".entroly")), "vault"),
-        )
-        _cogops = CogOpsEngine(vault_base)  # noqa: F841 — side-effect: initializes vault
-
-        # Read all beliefs for summary stats
-        from pathlib import Path
-        beliefs_dir = Path(vault_base) / "beliefs"
-        total_beliefs = 0
-        verified = 0
-        stale = 0
-        doc_beliefs = 0
-        avg_confidence = 0.0
-        entities = []
-        if beliefs_dir.exists():
-            for md in beliefs_dir.rglob("*.md"):
-                try:
-                    content = md.read_text(encoding="utf-8", errors="replace")
-                    parts = content.split("---", 2)
-                    if len(parts) >= 3:
-                        fm = parts[1]
-                        total_beliefs += 1
-                        entity = ""
-                        conf = 0.5
-                        status = "inferred"
-                        for line in fm.splitlines():
-                            t = line.strip()
-                            if t.startswith("entity:"):
-                                entity = t[7:].strip()
-                            elif t.startswith("confidence:"):
-                                try:
-                                    conf = float(t[11:].strip())
-                                except ValueError:
-                                    pass
-                            elif t.startswith("status:"):
-                                status = t[7:].strip()
-                        avg_confidence += conf
-                        if status == "verified":
-                            verified += 1
-                        elif status == "stale":
-                            stale += 1
-                        if entity.startswith("doc/"):
-                            doc_beliefs += 1
-                        entities.append(entity)
-                except Exception:
-                    pass
-        if total_beliefs > 0:
-            avg_confidence /= total_beliefs
-
-        snap["cogops"] = _safe_json({
-            "total_beliefs": total_beliefs,
-            "verified": verified,
-            "stale": stale,
-            "doc_beliefs": doc_beliefs,
-            "avg_confidence": avg_confidence,
-            "freshness_pct": round((1 - stale / max(total_beliefs, 1)) * 100, 1),
-            "entity_count": len(set(entities)),
-            "engine": "rust",
-        })
-    except Exception:
-        snap["cogops"] = None
+    snap["cogops"] = _snapshot_cogops()
+    snap["capabilities"] = _snapshot_capabilities(snap)
 
     return snap
 
@@ -818,7 +843,7 @@ function renderCogops(d){
   const tb=c.total_beliefs||0,ver=c.verified||0,st=c.stale||0,db=c.doc_beliefs||0;
   const conf=c.avg_confidence||0,fresh=c.freshness_pct||0,ents=c.entity_count||0;
   if(b){b.textContent=(c.engine||'cogops')+' · '+tb+' beliefs';b.className='badge '+(tb>0?'b-violet':'b-blue');}
-  if(tb===0){el.innerHTML='<div class="empty">No beliefs yet — run <code>compile_beliefs</code> to seed the vault</div>';return;}
+  if(tb===0){el.innerHTML=`<div class="empty">No beliefs in <code>${c.vault_path||'vault'}</code><br>Run <code>${c.seed_command||'entroly compile . --max-files 0'}</code></div>`;return;}
   el.innerHTML=`<div class="cache-kpis">
     <div class="cache-kpi"><div class="cache-kpi-label">Total Beliefs</div><div class="cache-kpi-val hv-blue">${fmt(tb)}</div><div class="cache-kpi-sub">${ents} distinct entities · ${db} doc-linked</div></div>
     <div class="cache-kpi"><div class="cache-kpi-label">Avg Confidence</div><div class="cache-kpi-val hv-green">${(conf*100).toFixed(1)}%</div><div class="cache-kpi-sub">${ver} verified · ${tb-ver-st} inferred</div></div>

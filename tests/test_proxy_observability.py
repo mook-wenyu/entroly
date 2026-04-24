@@ -14,7 +14,7 @@ REPO = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO))
 
 import entroly.dashboard as dashboard  # noqa: E402
-from entroly.proxy import PromptCompilerProxy  # noqa: E402
+from entroly.proxy import PromptCompilerProxy, _health  # noqa: E402
 from entroly.proxy_config import ProxyConfig  # noqa: E402
 
 
@@ -34,6 +34,38 @@ def test_dashboard_snapshot_reports_proxy_base_url(monkeypatch):
     monkeypatch.setattr(dashboard, "_proxy_base_url", "http://127.0.0.1:9377/openai")
     snapshot = dashboard._get_full_snapshot()
     assert snapshot["proxy_base_url"] == "http://127.0.0.1:9377/openai"
+
+
+@pytest.mark.anyio
+async def test_proxy_health_reports_runtime_identity(monkeypatch, tmp_path):
+    monkeypatch.setenv("ENTROLY_SOURCE", str(tmp_path))
+    monkeypatch.delenv("ENTROLY_VAULT", raising=False)
+    monkeypatch.delenv("ENTROLY_DIR", raising=False)
+    engine = SimpleNamespace(
+        _use_rust=False,
+        _fragments={"one": object(), "two": object()},
+        config=SimpleNamespace(checkpoint_dir=tmp_path / ".checkpoint"),
+    )
+    proxy = PromptCompilerProxy(
+        engine=engine,
+        config=ProxyConfig(openai_base_url="https://api.mookbot.com"),
+    )
+    app = Starlette(routes=[Route("/health", _health)])
+    app.state.proxy = proxy
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/health")
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["project_dir"] == str(tmp_path)
+    assert payload["vault_path"] == str(tmp_path / ".entroly" / "vault")
+    assert payload["openai_base_url"] == "https://api.mookbot.com"
+    assert payload["fragments"] == 2
+    assert payload["beliefs"]["status"] == "unseeded"
 
 
 @pytest.mark.anyio

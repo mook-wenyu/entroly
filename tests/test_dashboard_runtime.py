@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import threading
+import builtins
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -25,6 +26,65 @@ def reset_dashboard_state():
     dashboard._proxy = None
     dashboard._seed_optimization = None
     dashboard.clear_request_log()
+
+
+def _write_belief(path: Path, entity: str, status: str = "inferred", confidence: float = 0.8) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        f"---\nentity: {entity}\nstatus: {status}\nconfidence: {confidence}\n---\n\n# {entity}\n",
+        encoding="utf-8",
+    )
+
+
+def test_dashboard_snapshot_reads_project_vault_without_engine(monkeypatch, tmp_path):
+    monkeypatch.delenv("ENTROLY_VAULT", raising=False)
+    monkeypatch.delenv("ENTROLY_DIR", raising=False)
+    monkeypatch.delenv("ENTROLY_SOURCE", raising=False)
+    monkeypatch.chdir(tmp_path)
+    _write_belief(tmp_path / ".entroly" / "vault" / "beliefs" / "runtime.md", "runtime", "verified", 0.9)
+
+    snapshot = dashboard._get_full_snapshot()
+
+    assert snapshot["engine_available"] is False
+    assert snapshot["cogops"]["total_beliefs"] == 1
+    assert snapshot["cogops"]["verified"] == 1
+    assert snapshot["capabilities"]["cogops"]["status"] == "available"
+
+
+def test_dashboard_snapshot_marks_empty_cogops_as_degraded(monkeypatch, tmp_path):
+    monkeypatch.delenv("ENTROLY_VAULT", raising=False)
+    monkeypatch.delenv("ENTROLY_DIR", raising=False)
+    monkeypatch.setenv("ENTROLY_SOURCE", str(tmp_path))
+    (tmp_path / ".entroly" / "vault" / "beliefs").mkdir(parents=True)
+
+    snapshot = dashboard._get_full_snapshot()
+
+    assert snapshot["cogops"]["status"] == "unseeded"
+    assert snapshot["cogops"]["total_beliefs"] == 0
+    assert snapshot["capabilities"]["cogops"]["status"] == "degraded"
+    assert str(tmp_path) in snapshot["capabilities"]["cogops"]["reason"]
+
+
+def test_dashboard_snapshot_marks_missing_native_cogops_as_degraded(monkeypatch, tmp_path):
+    monkeypatch.delenv("ENTROLY_VAULT", raising=False)
+    monkeypatch.delenv("ENTROLY_DIR", raising=False)
+    monkeypatch.setenv("ENTROLY_SOURCE", str(tmp_path))
+    _write_belief(tmp_path / ".entroly" / "vault" / "beliefs" / "runtime.md", "runtime", "verified", 0.9)
+
+    real_import = builtins.__import__
+
+    def import_without_native(name, *args, **kwargs):
+        if name == "entroly_core":
+            raise ImportError("missing native extension")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", import_without_native)
+
+    snapshot = dashboard._get_full_snapshot()
+
+    assert snapshot["cogops"]["engine"] == "unavailable"
+    assert "missing native extension" in snapshot["cogops"]["engine_error"]
+    assert snapshot["capabilities"]["cogops"]["status"] == "degraded"
 
 
 def test_dashboard_snapshot_uses_proxy_last_optimization():

@@ -2053,7 +2053,33 @@ class PromptCompilerProxy:
 
 
 async def _health(request: Request) -> JSONResponse:
-    return JSONResponse({"status": "ok", "service": "entroly-proxy"})
+    proxy = request.app.state.proxy
+    from .runtime_status import resolve_runtime_paths, snapshot_belief_vault
+
+    paths = resolve_runtime_paths(proxy.engine)
+    vault = snapshot_belief_vault(paths.vault_path)
+    return JSONResponse(
+        {
+            "status": "ok",
+            "service": "entroly-proxy",
+            "project_dir": str(paths.project_dir),
+            "cwd": str(paths.cwd),
+            "checkpoint_dir": str(paths.checkpoint_dir) if paths.checkpoint_dir else "",
+            "vault_path": str(paths.vault_path),
+            "vault_source": paths.vault_source,
+            "beliefs": {
+                "status": vault["status"],
+                "total": vault["total_beliefs"],
+                "read_error_count": vault["read_error_count"],
+            },
+            "openai_base_url": proxy.config.openai_base_url,
+            "circuit_breaker": proxy._breaker.state,
+            "bypass_mode": proxy._bypass,
+            "fragments": proxy.engine._rust.fragment_count()
+            if getattr(proxy.engine, "_use_rust", False)
+            else len(getattr(proxy.engine, "_fragments", {})),
+        }
+    )
 
 
 async def _context_inspect(request: Request) -> JSONResponse:
