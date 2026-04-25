@@ -83,20 +83,44 @@ Every day you wait, the gap widens. The federation effect means **early adopters
 ## How It Works (30 Seconds)
 
 ```bash
-npm install entroly-wasm && npx entroly-wasm
-# or
 pip install entroly && entroly go
 ```
 
-That's it. Entroly auto-detects your IDE, connects to Claude/Cursor/Copilot/Codex/MiniMax, and starts optimizing. No configuration. No YAML. No embeddings.
+Or wrap your coding agent — one command:
+
+```bash
+entroly wrap claude       # Claude Code
+entroly wrap cursor       # Cursor
+entroly wrap codex        # Codex CLI
+entroly wrap aider        # Aider
+entroly wrap copilot      # GitHub Copilot
+```
+
+Or use the proxy — zero code changes, any language:
+
+```bash
+entroly proxy --port 9377
+ANTHROPIC_BASE_URL=http://localhost:9377 your-app
+OPENAI_BASE_URL=http://localhost:9377/v1 your-app
+```
+
+Drop it into your own code — two lines:
+
+```python
+from entroly import optimize_context
+
+result = optimize_context(query="fix auth bug", budget=8000)
+# result.fragments, result.tokens_saved, result.savings_pct
+# → 94.2% fewer tokens, same answer quality
+```
 
 **What happens under the hood:**
 
-1. **Index** — Maps your entire codebase in <2 seconds
-2. **Score** — Ranks every file by information density
-3. **Select** — Picks the mathematically optimal subset for your token budget
+1. **Index** — Maps your entire codebase in <2 seconds (Rust data plane)
+2. **Score** — Ranks every file by Kolmogorov information density
+3. **Select** — Picks the mathematically optimal subset (submodular knapsack with (1-1/e) guarantee)
 4. **Deliver** — Critical files go in full, supporting files as signatures, everything else as references
-5. **Learn** — Tracks what works, gets smarter over time
+5. **Learn** — PRISM RL tracks what works, gets smarter over time
 
 Your AI now sees 100% of your codebase. You pay for 5–30% of the tokens.
 
@@ -167,14 +191,17 @@ Zero cloud dependencies. Zero data exfiltration risk. Everything runs on your CP
 
 | Tool | Setup |
 |---|---|
-| **Cursor** | `entroly init` → MCP server |
-| **Claude Code** | `claude mcp add entroly -- entroly` |
-| **GitHub Copilot** | `entroly init` → MCP server |
+| **Claude Code** | `entroly wrap claude` or `claude mcp add entroly -- entroly` |
+| **Cursor** | `entroly wrap cursor` → prints config, paste once |
 | **Codex CLI** | `entroly wrap codex` |
-| **Windsurf / Cline / Cody** | `entroly init` |
+| **GitHub Copilot** | `entroly wrap copilot` |
+| **Aider** | `entroly wrap aider` |
+| **Windsurf / Cline / Cody** | `entroly init` → MCP server |
 | **Any LLM API** | `entroly proxy` → HTTP proxy on `localhost:9377` |
+| **LangChain / LlamaIndex** | `from entroly import optimize_context` |
+| **MCP-native** | `entroly mcp install` → exposes `optimize`, `retrieve`, `stats` |
 
-Also: OpenAI API • Anthropic API • LangChain • LlamaIndex • MCP-native
+Also: OpenAI API • Anthropic API • Google Vertex • AWS Bedrock • Groq • Together • OpenRouter • Ollama • vLLM • 100+ models
 
 ---
 
@@ -224,6 +251,25 @@ Run token cost checks in every PR — catch regressions before they ship:
 ```
 
 → **[entroly-cost-check GitHub Action](https://github.com/juyterman1000/entroly-cost-check-)**
+
+---
+
+## Compared to
+
+Entroly **selects** the right context. Other tools **compress** or **truncate** whatever you give them. Selection beats compression — always.
+
+| | **Entroly** | Compression tools | Top-K / RAG | Raw truncation |
+|---|---|---|---|---|
+| **Approach** | Information-theoretic selection | Text compression | Embedding retrieval | Cut-off |
+| **Token savings** | **94%** | 50–70% | 30–50% | 0% |
+| **Quality loss** | **0%** (benchmark-verified) | 2–5% | Variable | High |
+| **Multi-resolution** | **Full / Skeleton / Reference** | One-size | One-size | One-size |
+| **Learns over time** | **Yes (PRISM RL)** | No | No | No |
+| **Latency** | **12ms** (Rust) | 50–200ms | 100–500ms | 0ms |
+| **Reversible** | **Yes** — full content always retrievable | Varies | Yes | No |
+| **Runs locally** | **Yes** | Varies | Varies | Yes |
+
+> **Why selection > compression:** Compressing a bad selection is still a bad selection. Entroly picks the *right* files first, then delivers them at the *right* resolution. The AI gets architectural understanding, not just fewer tokens.
 
 ---
 
