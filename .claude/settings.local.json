@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(cargo clippy:*)",
-      "Bash(tasklist)",
-      "Bash(node test_smoke.js)"
-    ]
-  }
-}
