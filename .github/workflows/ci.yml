@@ -45,6 +45,13 @@ jobs:
         with:
           components: clippy
 
+      - name: Set up Python
+        # pyo3 needs libpython at link time when the extension-module feature
+        # is off (which it is for `cargo test --lib`).
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Cache cargo
         uses: actions/cache@v5
         with:

@@ -29,13 +29,13 @@
 <h3 align="center">Your AI coding tools only see 5% of your codebase.<br/>Entroly gives them the full picture — for a fraction of the cost.</h3>
 
 <p align="center">
-  <code>npm install entroly-wasm && npx entroly-wasm</code>&nbsp;&nbsp;|&nbsp;&nbsp;<code>pip install entroly && entroly go</code>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="https://juyterman1000.github.io/entroly/"><b>Live demo →</b></a>
+  <code>npm install entroly-wasm && npx entroly-wasm</code>&nbsp;&nbsp;|&nbsp;&nbsp;<code>pip install entroly && entroly go</code>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="https://juyterman1000.github.io/entroly/docs/dashboard.html"><b>📊 Live Dashboard →</b></a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="https://juyterman1000.github.io/entroly/"><b>Live demo →</b></a>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/pypi/v/entroly?color=blue&label=PyPI">
   <img src="https://img.shields.io/npm/v/entroly?color=red&label=npm">
-  <img src="https://img.shields.io/badge/Tests-484_passing-success">
+  <img src="https://img.shields.io/badge/Tests-834_passing-success">
   <img src="https://img.shields.io/badge/Latency-<10ms-purple">
   <img src="https://img.shields.io/badge/License-Apache_2.0-green">
 </p>
@@ -83,20 +83,46 @@ Every day you wait, the gap widens. The federation effect means **early adopters
 ## How It Works (30 Seconds)
 
 ```bash
-npm install entroly-wasm && npx entroly-wasm
-# or
 pip install entroly && entroly go
 ```
 
-That's it. Entroly auto-detects your IDE, connects to Claude/Cursor/Copilot/Codex/MiniMax, and starts optimizing. No configuration. No YAML. No embeddings.
+Or wrap your coding agent — one command:
+
+```bash
+entroly wrap claude       # Claude Code
+entroly wrap cursor       # Cursor
+entroly wrap codex        # Codex CLI
+entroly wrap aider        # Aider
+entroly wrap copilot      # GitHub Copilot
+```
+
+Or use the proxy — zero code changes, any language:
+
+```bash
+entroly proxy --port 9377
+ANTHROPIC_BASE_URL=http://localhost:9377 your-app
+OPENAI_BASE_URL=http://localhost:9377/v1 your-app
+```
+
+Drop it into your own code — two lines:
+
+```python
+from entroly import compress, compress_messages
+
+# Compress any content (code, JSON, logs, prose)
+compressed = compress(api_response, budget=2000)
+
+# Or compress a full LLM conversation
+messages = compress_messages(messages, budget=30000)
+```
 
 **What happens under the hood:**
 
-1. **Index** — Maps your entire codebase in <2 seconds
-2. **Score** — Ranks every file by information density
-3. **Select** — Picks the mathematically optimal subset for your token budget
+1. **Index** — Maps your entire codebase in <2 seconds (Rust data plane)
+2. **Score** — Ranks every file by Kolmogorov information density
+3. **Select** — Picks the mathematically optimal subset (submodular knapsack with (1-1/e) guarantee)
 4. **Deliver** — Critical files go in full, supporting files as signatures, everything else as references
-5. **Learn** — Tracks what works, gets smarter over time
+5. **Learn** — PRISM RL tracks what works, gets smarter over time
 
 Your AI now sees 100% of your codebase. You pay for 5–30% of the tokens.
 
@@ -167,16 +193,18 @@ Zero cloud dependencies. Zero data exfiltration risk. Everything runs on your CP
 
 | Tool | Setup |
 |---|---|
-| **Cursor** | `entroly init` → MCP server |
-| **Claude Code** | `claude mcp add entroly -- entroly` |
-| **GitHub Copilot** | `entroly init` → MCP server |
+| **Claude Code** | `entroly wrap claude` or `claude mcp add entroly -- entroly` |
+| **Cursor** | `entroly wrap cursor` → prints config, paste once |
 | **Codex CLI** | `entroly wrap codex`（读取现有 Codex provider 配置，并在当前会话临时重定向到 Entroly） |
-| **Windsurf / Cline / Cody** | `entroly init` |
+| **GitHub Copilot** | `entroly wrap copilot` |
+| **Aider** | `entroly wrap aider` |
+| **Windsurf / Cline / Cody** | `entroly init` → MCP server |
 | **Any LLM API** | `entroly proxy` → HTTP proxy on `localhost:9377`（会打印当前应使用的精确本地 base URL） |
+| **LangChain / LlamaIndex** | `from entroly import compress` |
 
 第三方 provider 会走各自协议形状注入优化上下文；需要让优化失败显式中断时，设置 `ENTROLY_STRICT_OPTIMIZATION=1`。
 
-Also: OpenAI API • Anthropic API • LangChain • LlamaIndex • MCP-native
+Also: OpenAI API • Anthropic API • Google Vertex • AWS Bedrock • Groq • Together • OpenRouter • Ollama • vLLM • 100+ models
 
 ---
 
@@ -210,6 +238,13 @@ Compression doesn't hurt accuracy — we measured it (n=100, gpt-4o-mini, Wilson
 
 > Confidence intervals overlap on every one of the 7 benchmarks — accuracy is statistically indistinguishable from baseline. LongBench (the only benchmark where context exceeds the budget) shows a 3.6% token saving with a small retention **gain**. Reproduce: `python -m bench.accuracy --benchmark all --model gpt-4o-mini --samples 100`
 
+**Custom OpenAI-compatible providers** (Groq, Together, OpenRouter, Ollama, vLLM, ...):
+
+```bash
+python -m bench.accuracy --benchmark gsm8k --model llama-3.1-70b-versatile \
+    --base-url https://api.groq.com/openai/v1 --api-key-env GROQ_API_KEY
+```
+
 ### CI/CD Integration
 
 Run token cost checks in every PR — catch regressions before they ship:
@@ -219,6 +254,25 @@ Run token cost checks in every PR — catch regressions before they ship:
 ```
 
 → **[entroly-cost-check GitHub Action](https://github.com/juyterman1000/entroly-cost-check-)**
+
+---
+
+## Compared to
+
+Entroly **selects** the right context. Other tools **compress** or **truncate** whatever you give them. Selection beats compression — always.
+
+| | **Entroly** | Compression tools | Top-K / RAG | Raw truncation |
+|---|---|---|---|---|
+| **Approach** | Information-theoretic selection | Text compression | Embedding retrieval | Cut-off |
+| **Token savings** | **94%** | 50–70% | 30–50% | 0% |
+| **Quality loss** | **0%** (benchmark-verified) | 2–5% | Variable | High |
+| **Multi-resolution** | **Full / Skeleton / Reference** | One-size | One-size | One-size |
+| **Learns over time** | **Yes (PRISM RL)** | No | No | No |
+| **Latency** | **12ms** (Rust) | 50–200ms | 100–500ms | 0ms |
+| **Reversible** | **Yes** — full content always retrievable | Varies | Yes | No |
+| **Runs locally** | **Yes** | Varies | Varies | Yes |
+
+> **Why selection > compression:** Compressing a bad selection is still a bad selection. Entroly picks the *right* files first, then delivers them at the *right* resolution. The AI gets architectural understanding, not just fewer tokens.
 
 ---
 

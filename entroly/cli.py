@@ -40,7 +40,7 @@ from pathlib import Path
 try:
     from entroly import __version__
 except ImportError:
-    __version__ = "0.8.2"
+    __version__ = "0.9.0"
 
 from .codex_integration import prepare_codex_wrap, resolve_openai_proxy_route
 from .launching import resolve_launch_cmd, resolve_python_cmd
@@ -1393,6 +1393,12 @@ _WRAP_AGENTS = {
         "env_val": None,
         "name": "Aider",
     },
+    "copilot": {
+        "cmd": ["github-copilot-cli"],
+        "env_key": "OPENAI_BASE_URL",
+        "env_val": None,
+        "name": "GitHub Copilot CLI",
+    },
     "cursor": {
         "cmd": None,
         "env_key": None,
@@ -1449,7 +1455,8 @@ def cmd_wrap(args):
         print(f"  {C.GRAY}上游入口: {plan.provider.base_url}{C.RESET}")
         print(f"  {C.GRAY}代理入口: {_display_local_proxy_base_url(plan.proxy_base_url)}{C.RESET}")
         print(f"  {C.GRAY}会话覆盖: {' '.join(plan.override_args)}{C.RESET}")
-    elif agent in {"aider", "cursor"}:
+    elif agent in {"aider", "copilot", "cursor"}:
+        # OpenAI 兼容入口必须复用统一解析器，避免把 /v1 写死到 wrapper。
         try:
             openai_route = resolve_openai_proxy_route(port=port, env=env)
         except ValueError as e:

@@ -338,7 +338,20 @@ def test_cmd_wrap_codex_passes_upstream_env_to_proxy(monkeypatch):
     ]
 
 
-def test_cmd_wrap_aider_uses_dynamic_openai_proxy_base(monkeypatch):
+@pytest.mark.parametrize(
+    ("agent", "expected_env_key", "agent_args", "expected_cmd"),
+    [
+        ("aider", "OPENAI_API_BASE", ["--model", "gpt-5.4"], ["aider", "--model", "gpt-5.4"]),
+        ("copilot", "OPENAI_BASE_URL", [], ["github-copilot-cli"]),
+    ],
+)
+def test_cmd_wrap_openai_compatible_agents_use_dynamic_proxy_base(
+    monkeypatch,
+    agent: str,
+    expected_env_key: str,
+    agent_args: list[str],
+    expected_cmd: list[str],
+):
     popen_calls: list[dict] = []
     run_calls: list[dict] = []
     state = {"proxy_started": False}
@@ -382,15 +395,16 @@ def test_cmd_wrap_aider_uses_dynamic_openai_proxy_base(monkeypatch):
     monkeypatch.setattr("entroly.cli.os.environ", {"PATH": r"C:\tools"})
 
     args = SimpleNamespace(
-        agent="aider",
+        agent=agent,
         port=9377,
         codex_provider_id=None,
         codex_base_url=None,
-        agent_args=["--model", "gpt-5.4"],
+        agent_args=agent_args,
     )
 
     cmd_wrap(args)
 
     assert popen_calls
     assert run_calls
-    assert run_calls[0]["kwargs"]["env"]["OPENAI_API_BASE"] == "http://127.0.0.1:9377/openai/v1"
+    assert run_calls[0]["kwargs"]["env"][expected_env_key] == "http://127.0.0.1:9377/openai/v1"
+    assert run_calls[0]["cmd"] == expected_cmd
