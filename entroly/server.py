@@ -1646,6 +1646,27 @@ def create_mcp_server():
         except Exception:
             pass  # Never fail optimize_context for nudge computation
 
+        # ── Savings summary ─────────────────────────────────────────────
+        # Surface lifetime + session cost savings so the agent/user can
+        # see the value Entroly delivers. Pure read from in-memory state.
+        try:
+            from .value_tracker import estimate_cost
+            _this_tokens = result.get("tokens_saved", 0)
+            _this_model = result.get("model", "")
+            result["savings"] = {
+                "this_call": {
+                    "tokens_saved": _this_tokens,
+                    "cost_saved_usd": round(estimate_cost(_this_tokens, _this_model), 6),
+                },
+                "session": _value_tracker.get_session(),
+                "lifetime": {
+                    k: v for k, v in _value_tracker.get_lifetime().items()
+                    if k in ("tokens_saved", "cost_saved_usd", "requests_optimized", "duplicates_caught")
+                },
+            }
+        except Exception:
+            pass  # Never fail optimize for savings display
+
         # Hardening: strip invisible Unicode from fragment contents and
         # surface any prompt-injection patterns as `injection_scan`
         # metadata so the consuming agent (Cursor / Claude Code / etc.)
