@@ -10,8 +10,8 @@ The core idea:
     from a real source file ingested by the developer. If the LLM cites
     something that isn't in the provenance set, it hallucinated it.
 
-This is a lightweight wrapper — no ebbiforge dependency required.
-The ProvenanceRecord mimics ebbiforge's Swarm.ProvenanceChain design
+This is a lightweight wrapper — no external dependencies required.
+The ProvenanceRecord implements a standard provenance chain design
 but is purpose-built for the context selection use case.
 """
 
@@ -138,7 +138,7 @@ def build_provenance(
     Args:
         optimize_result:  The dict returned by EntrolyEngine.optimize_context()
         query:            The original user query
-        refined_query:    The ebbiforge-expanded query (if any)
+        refined_query:    The expanded query (if any)
         turn:             Current session turn number
         token_budget:     The budget passed to optimize
         quality_scan_fn:  Optional callable(content, source) -> List[str]

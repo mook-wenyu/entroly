@@ -1,7 +1,7 @@
 //! NKBE — Nash-KKT Budgetary Equilibrium Allocator
 //!
 //! Multi-agent token budget allocation using Arrow-Debreu Walrasian economics
-//! ported from agentOS allocator.rs with Nash Bargaining refinement.
+//! with Nash Bargaining refinement.
 //!
 //! Given N agents sharing a global token budget B, finds the optimal split:
 //!

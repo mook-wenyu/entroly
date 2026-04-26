@@ -2,16 +2,16 @@
 AdaptivePruner Bridge for Entroly
 ======================================
 
-Wires ebbiforge_core.AdaptivePruner into the feedback loop.
+Wires the Rust-backed AdaptivePruner into the feedback loop.
 
 The key addition: `historical_success` — a dimension that entroly's
 Rust engine doesn't have. Over time, the RL weight updates learn which
 scoring features matter most for THIS user's codebase.
 
-Weight update rule (from ebbiforge Rust source):
+Weight update rule:
     weight += lr * feedback * feature_value  (clamped to [-1, 1])
 
-Falls back to no-op if ebbiforge_core is not installed.
+Falls back to no-op if the Rust backend is not installed.
 """
 
 from __future__ import annotations
@@ -21,15 +21,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 try:
-    from ebbiforge_core import AdaptivePruner as _RustPruner
-    from ebbiforge_core import ContextFragment
+    from entroly_core import AdaptivePruner as _RustPruner  # optional Rust backend
+    from entroly_core import ContextFragment
     _PRUNER_AVAILABLE = True
 except ImportError:
     _PRUNER_AVAILABLE = False
     _RustPruner = None
 
 try:
-    from ebbiforge_core import CodeQualityGuard as _RustGuard
+    from entroly_core import CodeQualityGuard as _RustGuard  # optional Rust backend
     _GUARD_AVAILABLE = True
 except ImportError:
     _GUARD_AVAILABLE = False
@@ -38,22 +38,22 @@ except ImportError:
 
 class EntrolyPruner:
     """
-    Adaptive RL pruner backed by ebbiforge_core.AdaptivePruner.
+    Adaptive RL pruner with optional Rust backend.
 
     Extends entroly's Wilson-score feedback with a `historical_success`
     dimension: fragments that previously helped get boosted, those that didn't
     get down-weighted over time.
 
-    Zero-config: if ebbiforge_core is unavailable, all methods are no-ops.
+    Zero-config: if the Rust backend is unavailable, all methods are no-ops.
     """
 
     def __init__(self):
         self._pruner = _RustPruner() if _PRUNER_AVAILABLE else None
         self._fragment_features: dict[str, dict[str, float]] = {}
         if _PRUNER_AVAILABLE:
-            logger.info("AdaptivePruner: ebbiforge_core available -- RL weight learning active")
+            logger.info("AdaptivePruner: Rust backend available -- RL weight learning active")
         else:
-            logger.info("AdaptivePruner: ebbiforge_core not available -- using static weights")
+            logger.info("AdaptivePruner: Rust backend not available -- using static weights")
 
     @property
     def available(self) -> bool:
@@ -127,7 +127,7 @@ class EntrolyPruner:
 
 class FragmentGuard:
     """
-    Code quality scanner backed by ebbiforge_core.CodeQualityGuard.
+    Code quality scanner with optional Rust backend.
 
     Scans each ingested fragment for:
     - Hardcoded API secrets  (sk-..., API_KEY = "...")
@@ -136,7 +136,7 @@ class FragmentGuard:
     - Console spam (>5 log statements)
 
     Returns a list of issues — empty means clean.
-    Zero-config: no-op if ebbiforge_core unavailable.
+    Zero-config: no-op if Rust backend unavailable.
     """
 
     def __init__(self):

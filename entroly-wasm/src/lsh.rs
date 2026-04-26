@@ -1,14 +1,11 @@
 //! Multi-Probe Locality-Sensitive Hashing (LSH) + Context Scorer
 //!
-//! Ported from ebbiforge-core/src/memory/lsh.rs
-//!
 //! Converts the O(N) brute-force Hamming distance scan in `recall()` into
 //! O(L×k) sub-linear lookup by pre-indexing 64-bit SimHash fingerprints into
 //! L hash tables.
 //!
-//! NOTE: entroly-core uses 64-bit SimHash (u64), whereas ebbiforge-core
-//! uses 1024-bit binary addresses ([u64;16]). This implementation is adapted
-//! for 64-bit fingerprints: bit positions are selected from 0..63.
+//! Uses 64-bit SimHash (u64) fingerprints with bit positions selected
+//! from 0..63.
 //!
 //! # Performance
 //!
@@ -171,8 +168,7 @@ impl Default for LshIndex {
 /// Combines similarity (Hamming-based), recency (Ebbinghaus decay), and
 /// entropy (information density) into a single relevance score.
 ///
-/// Ported from ebbiforge-core/src/memory/lsh.rs::ContextScorer,
-/// adapted to entroly-core's 64-bit SimHash and existing score fields.
+/// Adapted for entroly-core's 64-bit SimHash and existing score fields.
 ///
 /// score = w_sim×similarity + w_rec×recency + w_ent×entropy + w_freq×frequency
 #[derive(Clone, Debug)]

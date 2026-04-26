@@ -91,7 +91,7 @@ class NkbeAllocator:
         maximize  Σᵢ wᵢ · Uᵢ(Bᵢ)
         subject to  Σᵢ Bᵢ ≤ B,  Bᵢ ≥ Bᵢ_min  ∀i
 
-    Uses two-phase KKT bisection (from agentOS allocator.rs):
+    Uses two-phase KKT bisection:
     1. Global: bisect for λ* such that Σᵢ Bᵢ(λ*) = B
     2. Per-agent: each agent gets Bᵢ(λ*)
 
@@ -967,7 +967,7 @@ def _date_str(offset_days: int = 0) -> str:
 class LodTier:
     """Level-of-Detail tiers for agent lifecycle management.
 
-    Adapted from both ebbiforge (4-tier swarm) and agentOS (3-tier routing).
+    Level-of-detail tiers for agent lifecycle management.
     Mapped to agent states:
       DORMANT:    Agent registered but idle. Minimal memory footprint.
                   Context = reference-level only (~2% tokens).
@@ -996,16 +996,15 @@ class AgentState:
     parent_id: str | None = None
     depth: int = 0
     children: list[str] = field(default_factory=list)
-    fib_position: float = 0.0  # Fibonacci hash scatter (from ebbiforge)
+    fib_position: float = 0.0  # Fibonacci hash scatter
 
 
 class LODManager:
     """Level-of-Detail lifecycle manager for agent armies.
 
     Prevents resource exhaustion when 100s of agents run simultaneously.
-    Adapted from:
-      - ebbiforge ProductionTensorSwarm: bitflag triggers, surprise-based demotion
-      - agentOS LodManager: load-based tiers, hysteresis, saturation alerts
+    Combines bitflag triggers, surprise-based demotion,
+      load-based tiers, hysteresis, and saturation alerts.
 
     Agent tier mapping:
       Main agent     → starts ACTIVE
@@ -1018,7 +1017,7 @@ class LODManager:
     # Hysteresis: minimum ticks in tier before transition allowed
     ACTIVE_MIN_TICKS = 3
     SATURATED_MIN_TICKS = 2
-    # Load thresholds (from agentOS)
+    # Load thresholds
     SATURATION_THRESHOLD = 0.9
     DORMANT_THRESHOLD = 0.1
     # Alert if >5% agents saturated (thundering herd prevention)
@@ -1409,7 +1408,7 @@ class MemoryBridge:
       2. Hippocampus → Bus: When an agent's context is optimized, relevant
          long-term memories are recalled and injected as pinned fragments.
 
-    Salience mapping (from ebbiforge long_term_memory.py):
+    Salience mapping:
       - Critical events (emotional_tag=3) → salience=100
       - Important events (emotional_tag=2) → salience=50
       - Normal events → salience=20
@@ -1514,7 +1513,7 @@ def _emotional_to_salience(surprise: float) -> float:
 # ── HCC — Hierarchical Context Compression ────────────────────────────
 
 class CompressionLevel:
-    """3-level content compression from agentOS HCC.
+    """3-level content compression for hierarchical context.
 
     Full:      100% information, 100% tokens — verbatim content.
     Skeleton:  ~70% information, ~20% tokens — key lines only.
@@ -1547,7 +1546,7 @@ class HCCFragment:
 class HCCEngine:
     """Rate-distortion optimizer for multi-level context compression.
 
-    Ported from agentOS context.rs HccEngine.
+    Rate-distortion optimizer for multi-level context compression.
 
     Algorithm:
       1. All fragments start at Reference level (minimum viable)
@@ -1707,7 +1706,7 @@ def _generate_reference(content: str, source: str) -> str:
 class AutoTune:
     """Adaptive weight calibration for entropy scoring parameters.
 
-    Ported from agentOS autotune.rs. Uses:
+    Adaptive weight calibration. Uses:
       - EMA (Exponential Moving Average) for smooth tracking
       - Polyak averaging for stability
       - Drift penalty to resist sudden shifts

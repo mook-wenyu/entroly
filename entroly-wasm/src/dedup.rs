@@ -5,14 +5,11 @@
 //!   2. LSH banding (4 bands × 16 bits) for candidate retrieval
 //!   3. Hamming distance verification
 //!
-//! Architecture mirrors ebbiforge-core/src/memory/lsh.rs but
-//! optimized for context fragments instead of memory episodes.
-//! Uses the same multi-table bucketing approach.
+//! Optimized for context fragments with multi-table LSH bucketing.
 //!
 //! References:
 //!   - Charikar (2002) — SimHash
 //!   - Proximity (arXiv 2026) — LSH-bucketed semantic caching
-//!   - ebbiforge-core LSHIndex — 16-table multi-probe design
 
 use std::collections::{HashMap, HashSet};
 use md5::{Md5, Digest};
@@ -99,8 +96,7 @@ pub fn hamming_distance(a: u64, b: u64) -> u32 {
 /// Two fingerprints sharing any band → candidate pair.
 /// Verify with full Hamming distance.
 ///
-/// Same approach as ebbiforge-core LSHIndex but with 4 tables
-/// instead of 16 (sufficient for 64-bit fingerprints).
+/// Uses 4 tables (sufficient for 64-bit fingerprints).
 #[derive(Serialize, Deserialize)]
 pub struct DedupIndex {
     hamming_threshold: u32,

@@ -69,7 +69,7 @@ static INSTANCE_SEED: AtomicU64 = AtomicU64::new(1);
 
 /// The core engine that orchestrates all subsystems.
 ///
-/// Modeled after ebbiforge-core HippocampusEngine:
+/// Pipeline:
 ///   ingest → SimHash → dedup check → entropy score → store
 ///   optimize → Ebbinghaus decay → knapsack DP → ranked results
 #[pyclass]
@@ -138,7 +138,7 @@ pub struct EntrolyEngine {
     // Last optimization snapshot (for explainability)
     last_optimization: Option<OptimizationSnapshot>,
 
-    // LSH index for sub-linear recall (ported from ebbiforge-core)
+    // LSH index for sub-linear recall
     lsh_index: lsh::LshIndex,
     // Composite scorer (similarity + recency + entropy + frequency)
     context_scorer: lsh::ContextScorer,
@@ -2431,7 +2431,7 @@ impl EntrolyEngine {
 
     /// Semantic recall of relevant fragments.
     ///
-    /// Uses ebbiforge-ported LSH multi-probe index for sub-linear candidate
+    /// Uses LSH multi-probe index for sub-linear candidate
     /// selection, then scores per ContextScorer (similarity+recency+entropy
     /// +frequency+feedback). Falls back to O(N) scan when LSH returns no
     /// candidates (cold start with < NUM_TABLES fragments).

@@ -36,6 +36,7 @@ from typing import Any
 
 from .adaptive_pruner import EntrolyPruner, FragmentGuard
 from .autotune import ComponentFeedbackBus, DreamingLoop, FeedbackJournal, TaskProfileOptimizer
+from .online_learner import OnlinePrism, compute_implicit_reward, compute_contributions
 from .cache_aligner import CacheAligner
 from .belief_compiler import BeliefCompiler
 from .change_listener import WorkspaceChangeListener
@@ -442,12 +443,50 @@ class EntrolyEngine:
         # context before context selection, reducing hallucination from wrong files.
         self._refiner = QueryRefiner()
 
-        # ebbiforge CodeQualityGuard: scans ingested fragments for secrets/TODO/unsafe
+        # CodeQualityGuard: scans ingested fragments for secrets/TODO/unsafe
         self._guard = FragmentGuard()
-        # ebbiforge AdaptivePruner: RL weight learning on feedback
+        # AdaptivePruner: RL weight learning on feedback
         self._pruner = EntrolyPruner()
         # Turn counter for provenance
         self._turn_counter: int = 0
+
+        # ── Online Bayesian PRISM — live weight adaptation ──
+        # Closes the learning loop: weights evolve with every optimize_context()
+        # call using Dirichlet posterior updates with REINFORCE gradient estimates.
+        # Prior is anchored to the startup config weights.
+        self._online_prism = OnlinePrism(
+            prior_weights={
+                "w_recency": self.config.weight_recency,
+                "w_frequency": self.config.weight_frequency,
+                "w_semantic": self.config.weight_semantic_sim,
+                "w_entropy": self.config.weight_entropy,
+            },
+            prior_strength=20.0,
+        )
+
+        # ── Reward-driven skill crystallization ───────────────────
+        # Closes the asymmetry: the failure path crystallizes skills
+        # from misses (record_miss → EvolutionDaemon → SkillEngine);
+        # this is the success-path mirror. Detection is on the engine
+        # so it stays alive across MCP/proxy/SDK call surfaces; the
+        # actual SkillEngine.crystallize_skill call is wired via a
+        # callback so we don't couple the engine to vault-IO concerns.
+        from .reward_crystallizer import RewardCrystallizer
+        self._crystallizer = RewardCrystallizer()
+        self._crystallization_callback: Any = None
+        self._crystallized_count: int = 0
+
+        # ── Per-fragment high-reward selection counter ────────────
+        # Drives the "consider pinning" memory nudge (P1.D1). A fragment
+        # repeatedly selected during high-reward optimizations is a
+        # crystallization candidate at the *fact* level — analogous to
+        # the crystallizer at the *strategy* level.
+        self._high_reward_selections: dict[str, int] = {}
+        # External callback fired when the engine wants to surface the
+        # FeedbackJournal feed (P2.2). Decoupled the same way as the
+        # crystallization callback so the engine stays free of journal
+        # IO concerns. Wired by create_mcp_server.
+        self._journal_callback: Any = None
 
         # Fix #5: Validate that the checkpoint directory is writable at startup.
         # Fail fast with a clear error rather than a cryptic gzip/PermissionError
@@ -599,17 +638,273 @@ class EntrolyEngine:
                     result["query_refinement"] = refinement_info
                 if query_analysis:
                     result["query_analysis"] = query_analysis
-                return result
             else:
                 result = self._optimize_python(token_budget, refined_query)
                 if refinement_info:
                     result["query_refinement"] = refinement_info
                 if query_analysis:
                     result["query_analysis"] = query_analysis
-                return result
+
+            # ── Online PRISM: observe outcome and update weights live ──
+            # This is the key integration: after every optimize_context() call,
+            # compute an implicit reward from the result quality and update the
+            # Dirichlet posterior. Weights shift toward configurations that
+            # produce better budget utilization and selectivity.
+            try:
+                selected = result.get("selected_fragments", result.get("selected", []))
+                tokens_used = result.get("tokens_used",
+                    sum(f.get("token_count", 0) for f in selected if isinstance(f, dict)))
+                total_frags = result.get("total_fragments",
+                    result.get("fragment_count", max(len(selected), 1)))
+
+                reward = compute_implicit_reward(
+                    selected_count=len(selected),
+                    total_fragments=total_frags,
+                    tokens_used=tokens_used,
+                    query_present=bool(query),
+                    token_budget=token_budget,
+                )
+                contributions = compute_contributions(
+                    selected if isinstance(selected, list) else [],
+                    total_frags,
+                )
+
+                # Capture PRE-observe baseline + weights for crystallization.
+                # Using post-observe values would let the cluster contaminate
+                # its own baseline (false-positive bias) and would credit the
+                # weights that *resulted from* the reward rather than the
+                # weights that *earned* it.
+                pre_baseline = self._online_prism._reward_ema  # noqa: SLF001
+                pre_weights = self._online_prism.weights()
+
+                new_weights = self._online_prism.observe(reward, contributions)
+
+                # ── Reward-driven crystallization ─────────────────────
+                # Hoeffding-LCB gated detection of sustained-high-reward
+                # query clusters. When a cluster crosses the bound, fire
+                # the registered callback (typically SkillEngine.crystallize_skill).
+                # All bookkeeping is off the hot path: never blocks return.
+                try:
+                    if query and isinstance(selected, list):
+                        frag_ids = [
+                            str(f.get("id") or f.get("fragment_id") or f.get("source", ""))
+                            for f in selected if isinstance(f, dict)
+                        ]
+                        frag_ids = [fid for fid in frag_ids if fid]
+                        event = self._crystallizer.observe(
+                            query=query,
+                            reward=reward,
+                            weights=pre_weights,
+                            selected_fragment_ids=frag_ids,
+                            baseline_reward=pre_baseline,
+                        )
+                        if event is not None and self._crystallization_callback is not None:
+                            try:
+                                self._crystallization_callback(event)
+                                self._crystallized_count += 1
+                            except Exception as cb_err:
+                                logger.debug(
+                                    "crystallization callback error: %s", cb_err
+                                )
+                except Exception as cryst_err:
+                    logger.debug("crystallizer error: %s", cryst_err)
+
+                # ── P2.1: Implicit reward → Wilson per-fragment attribution ──
+                # The implicit reward is computed every optimize_context() but
+                # today only updates OnlinePrism (global Dirichlet). Wilson
+                # per-fragment tracker is only updated by the rare explicit
+                # record_outcome path. This wire closes the gap: fragments
+                # that are consistently selected during high/low-reward
+                # optimizations get their Wilson scores updated automatically.
+                #
+                # Gate: only attribute when reward is in the tails of the
+                # distribution (|reward - baseline| > 0.15). Middle-of-the-
+                # road rewards are dominated by budget-shape noise, not
+                # fragment quality signal.
+                try:
+                    signed_reward = reward - pre_baseline
+                    if abs(signed_reward) > 0.15 and frag_ids:
+                        clipped = max(-1.0, min(1.0, signed_reward))
+                        if clipped > 0:
+                            self._wilson.record_success(frag_ids)
+                        else:
+                            self._wilson.record_failure(frag_ids)
+                        # Also feed continuous signal to Rust + AdaptivePruner
+                        self.record_reward(frag_ids, clipped)
+
+                        # ── P1: Track high-reward fragment selections ────
+                        # Fragments repeatedly selected in high-reward contexts
+                        # are candidates for "consider pinning" memory nudges.
+                        if clipped > 0.3:
+                            for fid in frag_ids:
+                                self._high_reward_selections[fid] = (
+                                    self._high_reward_selections.get(fid, 0) + 1
+                                )
+                except Exception:
+                    pass  # Never fail optimize for attribution
+
+                # ── P2.2: Implicit reward → FeedbackJournal ──────────────
+                # FeedbackJournal.log() only fires on explicit record_outcome
+                # MCP calls. Most agents (Cursor, Claude Code) never call it,
+                # which starves TaskProfileOptimizer and DreamingLoop. This
+                # wire feeds them with signal from every optimize_context().
+                # Same tail-gate: only log episodes with meaningful signal.
+                try:
+                    if abs(reward - pre_baseline) > 0.15 and self._journal_callback:
+                        self._journal_callback(
+                            weights=pre_weights,
+                            reward=max(-1.0, min(1.0, reward - pre_baseline)),
+                            selected_count=len(selected) if isinstance(selected, list) else 0,
+                            query=query or "",
+                            token_budget=token_budget,
+                        )
+                except Exception:
+                    pass  # Never fail optimize for journal logging
+
+                # Apply updated weights to the live engine
+                if self._online_prism._n >= 3:  # Wait for warmup
+                    w = self._online_prism.weights_tuple()
+                    if self._use_rust:
+                        try:
+                            self._rust.set_weights(w[0], w[1], w[2], w[3])
+                        except Exception:
+                            pass  # Rust engine may not support set_weights
+                    else:
+                        self.config.weight_recency = w[0]
+                        self.config.weight_frequency = w[1]
+                        self.config.weight_semantic_sim = w[2]
+                        self.config.weight_entropy = w[3]
+
+                result["online_prism"] = {
+                    "reward": round(reward, 4),
+                    "weights": {k: round(v, 4) for k, v in new_weights.items()},
+                    "n": self._online_prism._n,
+                    "phase": self._online_prism.stats()["phase"],
+                }
+
+                # Crystallizer surface: observability for the meta-loop.
+                # Cheap to compute (locks are held briefly inside the
+                # crystallizer); useful for the dashboard and for users
+                # to understand when their patterns get frozen as skills.
+                cr_stats = self._crystallizer.stats()
+                result["crystallization"] = {
+                    "active_clusters": cr_stats["active_clusters"],
+                    "total_observations": cr_stats["total_observations"],
+                    "lifetime_crystallized": self._crystallized_count,
+                }
+            except Exception as e:
+                logger.debug("OnlinePrism observation error: %s", e)
+
+            return result
         finally:
             gc.enable()
             gc.collect()
+
+    def set_crystallization_callback(self, fn: Any) -> None:
+        """Register a callback fired when a query cluster crystallizes.
+
+        Signature: ``fn(event: CrystallizationEvent) -> Any``. Exceptions
+        in the callback are caught and logged; they never affect
+        ``optimize_context`` return value or latency. Pass ``None`` to
+        unregister.
+
+        Typical wiring (in ``create_mcp_server``):
+
+            engine.set_crystallization_callback(skill_engine.crystallize_skill)
+        """
+        self._crystallization_callback = fn
+
+    def set_journal_callback(self, fn: Any) -> None:
+        """Register a callback for implicit-reward FeedbackJournal logging.
+
+        Signature: ``fn(*, weights, reward, selected_count, query, token_budget)``
+
+        Wired by ``create_mcp_server`` to ``_feedback_journal.log()``.
+        This decouples the engine from journal IO concerns.
+        """
+        self._journal_callback = fn
+
+    def _compute_memory_nudges(
+        self,
+        result: dict[str, Any],
+        query: str,
+    ) -> list[dict[str, Any]]:
+        """Generate proactive persistence hints for the agent.
+
+        Three deterministic detectors:
+
+        D1 — High-reward fragment selected ≥5 times but not pinned.
+             "This fragment keeps being useful — consider pinning it."
+
+        D2 — Crystallizer just fired.
+             "A query pattern was just promoted to a skill."
+
+        D3 — (Future) High cluster reward but no vault belief exists.
+
+        Returns a list of nudge dicts, each with:
+            type: "pin_candidate" | "skill_crystallized"
+            fragment_id: (D1 only) the fragment to pin
+            message: human-readable suggestion
+        """
+        nudges: list[dict[str, Any]] = []
+
+        # D1: Fragments selected ≥5 times in high-reward contexts
+        PIN_THRESHOLD = 5
+        selected = result.get("selected_fragments", result.get("selected", []))
+        selected_ids: set[str] = set()
+        if isinstance(selected, list):
+            for f in selected:
+                if isinstance(f, dict):
+                    fid = str(f.get("id") or f.get("fragment_id") or f.get("source", ""))
+                    if fid:
+                        selected_ids.add(fid)
+
+        for fid, count in list(self._high_reward_selections.items()):
+            if count >= PIN_THRESHOLD and fid in selected_ids:
+                # Check if already pinned (Python fallback only; Rust tracks internally)
+                is_pinned = False
+                if not self._use_rust:
+                    frag = self._fragments.get(fid)
+                    if frag and getattr(frag, "is_pinned", False):
+                        is_pinned = True
+                if not is_pinned:
+                    nudges.append({
+                        "type": "pin_candidate",
+                        "fragment_id": fid,
+                        "selection_count": count,
+                        "message": (
+                            f"Fragment '{fid}' has been selected in {count} "
+                            f"high-reward optimizations but is not pinned. "
+                            f"Consider calling remember_fragment with is_pinned=True "
+                            f"or vault_write_belief to preserve it permanently."
+                        ),
+                    })
+                    # Reset counter after surfacing (don't nag)
+                    self._high_reward_selections[fid] = 0
+
+        # D2: Crystallizer just fired (check if crystallization happened this call)
+        cryst_info = result.get("crystallization", {})
+        if cryst_info.get("lifetime_crystallized", 0) == self._crystallized_count and self._crystallized_count > 0:
+            # Check if it JUST incremented (compare with what was set in the flow)
+            pass  # The crystallization event is already in result["crystallization"]
+        # Simpler: if crystallized_count > 0 and there's an active skill_crystallized
+        # event, the crystallizer block already logged it. Surface it as a nudge.
+        if self._crystallized_count > 0:
+            recent_clusters = cryst_info.get("active_clusters", 0)
+            total_obs = cryst_info.get("total_observations", 0)
+            if recent_clusters > 0:
+                nudges.append({
+                    "type": "skill_crystallized",
+                    "lifetime_skills": self._crystallized_count,
+                    "active_clusters": recent_clusters,
+                    "message": (
+                        f"{self._crystallized_count} query patterns have been "
+                        f"promoted to reusable skills. {recent_clusters} clusters "
+                        f"are being tracked for potential future crystallization."
+                    ),
+                })
+
+        return nudges
 
     def recall_relevant(
         self,
@@ -1160,6 +1455,11 @@ def create_mcp_server():
     _last_opt_ctx = {}  # tracks last optimization for feedback attribution
     _vault_beliefs_loaded = False  # lazy: load vault beliefs on first optimize
 
+    # P2.2: Wire implicit-reward → FeedbackJournal so TaskProfileOptimizer
+    # and DreamingLoop get signal from every optimize_context() call,
+    # not just rare explicit record_outcome MCP calls.
+    engine.set_journal_callback(_feedback_journal.log)
+
     @mcp.tool()
     def remember_fragment(
         content: str,
@@ -1349,6 +1649,28 @@ def create_mcp_server():
             quality_scan_fn=engine._guard.scan if engine._guard.available else None,
         )
         result["provenance"] = provenance.to_dict()
+
+        # ── P1: Memory nudge surface ──────────────────────────────────
+        # Proactive persistence hints: tell the agent when fragments are
+        # worth pinning or when a skill was crystallized. The agent has no
+        # other signal to call vault_write_belief proactively.
+        try:
+            nudges = engine._compute_memory_nudges(result, query)
+            if nudges:
+                result["memory_nudges"] = nudges
+        except Exception:
+            pass  # Never fail optimize_context for nudge computation
+
+        # Hardening: strip invisible Unicode from fragment contents and
+        # surface any prompt-injection patterns as `injection_scan`
+        # metadata so the consuming agent (Cursor / Claude Code / etc.)
+        # can act on them. Does not modify content beyond Unicode strip.
+        try:
+            from .hardening import sanitize_mcp_result
+            sanitize_mcp_result(result)
+        except Exception:
+            pass  # never fail optimize_context on sanitization
+
         return json.dumps(result, indent=2)
 
     @mcp.tool()
@@ -1367,6 +1689,18 @@ def create_mcp_server():
             top_k: Number of results to return
         """
         results = engine.recall_relevant(query, top_k)
+        # Same hardening as optimize_context: strip invisible chars,
+        # flag injection patterns. Wrap in dict if the engine returns
+        # a bare list so injection_scan has somewhere to live.
+        try:
+            from .hardening import sanitize_mcp_result
+            if isinstance(results, list):
+                payload = {"results": results}
+                sanitize_mcp_result(payload)
+                return json.dumps(payload, indent=2)
+            sanitize_mcp_result(results)
+        except Exception:
+            pass
         return json.dumps(results, indent=2)
 
     @mcp.tool()
@@ -2108,6 +2442,26 @@ def create_mcp_server():
     )
     _evolution_daemon.start()  # non-blocking background thread
     logger.info("EvolutionDaemon: autonomous self-improvement started")
+
+    # ── Wire reward-driven crystallization ───────────────────────────
+    # Closes the success-side of the evolution loop: when a query
+    # cluster's Hoeffding lower bound on reward beats the global
+    # baseline, materialize it as a promoted skill (status='promoted',
+    # because the LCB is itself the fitness proof — no benchmark gate).
+    # Runs synchronously inside the engine's optimize_context but is
+    # cheap (no LLM, no IO besides one vault write) and exception-safe.
+    def _on_crystallization(event: Any) -> None:
+        try:
+            res = _py_skill_engine.crystallize_skill(event)
+            logger.info(
+                "Crystallized skill %s from cluster %s (lcb=%.3f, n=%d)",
+                res.get("skill_id"), event.cluster_id,
+                event.lcb_reward, event.n_samples,
+            )
+        except Exception as e:
+            logger.debug("crystallize_skill error: %s", e)
+    engine.set_crystallization_callback(_on_crystallization)
+    logger.info("RewardCrystallizer: success-driven skill synthesis wired")
 
     # Wire ComponentFeedbackBus to all self-improving components
     _py_orchestrator._component_bus = _component_bus

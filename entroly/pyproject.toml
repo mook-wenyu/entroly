@@ -46,7 +46,6 @@ Homepage = "https://github.com/juyterman1000/entroly"
 Documentation = "https://github.com/juyterman1000/entroly#readme"
 Repository = "https://github.com/juyterman1000/entroly"
 "Bug Tracker" = "https://github.com/juyterman1000/entroly/issues"
-"Full Framework" = "https://github.com/juyterman1000/ebbiforge"
 
 [project.scripts]
 entroly = "entroly._docker_launcher:launch"

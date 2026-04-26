@@ -52,9 +52,7 @@ def extract_generic(filepath):
 
 def main():
     dirs_to_scan = [
-        r"C:\Users\abhis\cogops\ebbiforge",
-        r"C:\Users\abhis\cogops\ebbiforge-core",
-        r"C:\Users\abhis\AgentOS_temp"
+        r"C:\Users\abhis\entroly",
     ]
     summary = []
     processed_count = 0
