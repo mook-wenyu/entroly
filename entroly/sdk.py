@@ -118,6 +118,18 @@ def compress_messages(
     if not messages:
         return messages
 
+    # Pre-pass: collapse aged tool outputs to one-line digests. This is
+    # near-free and orthogonal to the budget-driven compression below
+    # (which operates on text length, not message semantics). Same path
+    # used by the proxy — keeps proxy and SDK behavior aligned.
+    try:
+        from .hardening import prune_aged_tool_outputs
+        messages, _ = prune_aged_tool_outputs(
+            messages, tail_window=preserve_last_n
+        )
+    except Exception:
+        pass  # Never block compress_messages on the pre-pass.
+
     # Estimate total tokens
     total_tokens = sum(
         len(m.get("content", "")) // 4
