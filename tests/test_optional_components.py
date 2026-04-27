@@ -7,6 +7,23 @@ from entroly import adaptive_pruner
 from entroly.cli import cmd_doctor
 
 
+def test_optional_component_loader_falls_back_to_ebbiforge_core(monkeypatch):
+    class FakePruner:
+        pass
+
+    modules = {
+        "entroly_core": SimpleNamespace(),
+        "ebbiforge_core": SimpleNamespace(AdaptivePruner=FakePruner),
+    }
+
+    monkeypatch.setattr(adaptive_pruner.importlib, "import_module", lambda name: modules[name])
+
+    cls, error = adaptive_pruner._load_optional_class("AdaptivePruner")
+
+    assert cls is FakePruner
+    assert error is None
+
+
 def test_adaptive_pruner_missing_ebbiforge_core_is_not_info_noise(monkeypatch, caplog):
     monkeypatch.setattr(adaptive_pruner, "_PRUNER_AVAILABLE", False)
     monkeypatch.setattr(adaptive_pruner, "_PRUNER_IMPORT_ERROR", "No module named 'ebbiforge_core'")

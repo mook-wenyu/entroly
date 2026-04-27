@@ -17,27 +17,28 @@ Falls back to no-op if the Rust backend is not installed.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import importlib
 import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
-try:
-    from entroly_core import AdaptivePruner as _RustPruner  # optional Rust backend
-    _PRUNER_AVAILABLE = True
-    _PRUNER_IMPORT_ERROR: str | None = None
-except ImportError as exc:
-    _PRUNER_AVAILABLE = False
-    _PRUNER_IMPORT_ERROR = str(exc)
-    _RustPruner = None
+def _load_optional_class(class_name: str) -> tuple[type[Any] | None, str | None]:
+    errors: list[str] = []
+    for module_name in ("entroly_core", "ebbiforge_core"):
+        try:
+            module = importlib.import_module(module_name)
+            return getattr(module, class_name), None
+        except (ImportError, AttributeError) as exc:
+            errors.append(f"{module_name}.{class_name}: {exc}")
+    return None, " | ".join(errors)
 
-try:
-    from entroly_core import CodeQualityGuard as _RustGuard  # optional Rust backend
-    _GUARD_AVAILABLE = True
-    _GUARD_IMPORT_ERROR: str | None = None
-except ImportError as exc:
-    _GUARD_AVAILABLE = False
-    _GUARD_IMPORT_ERROR = str(exc)
-    _RustGuard = None
+
+_RustPruner, _PRUNER_IMPORT_ERROR = _load_optional_class("AdaptivePruner")
+_PRUNER_AVAILABLE = _RustPruner is not None
+
+_RustGuard, _GUARD_IMPORT_ERROR = _load_optional_class("CodeQualityGuard")
+_GUARD_AVAILABLE = _RustGuard is not None
 
 
 @dataclass(frozen=True)
@@ -53,18 +54,18 @@ def get_optional_component_status() -> dict[str, OptionalComponentStatus]:
             name="AdaptivePruner",
             available=_PRUNER_AVAILABLE,
             detail=(
-                "entroly_core.AdaptivePruner 可用"
+                "AdaptivePruner 可用"
                 if _PRUNER_AVAILABLE
-                else (_PRUNER_IMPORT_ERROR or "未安装 entroly_core")
+                else (_PRUNER_IMPORT_ERROR or "未安装 native 可选组件")
             ),
         ),
         "fragment_guard": OptionalComponentStatus(
             name="FragmentGuard",
             available=_GUARD_AVAILABLE,
             detail=(
-                "entroly_core.CodeQualityGuard 可用"
+                "CodeQualityGuard 可用"
                 if _GUARD_AVAILABLE
-                else (_GUARD_IMPORT_ERROR or "未安装 entroly_core")
+                else (_GUARD_IMPORT_ERROR or "未安装 native 可选组件")
             ),
         ),
     }
@@ -87,7 +88,7 @@ class EntrolyPruner:
         if _PRUNER_AVAILABLE:
             logger.info("AdaptivePruner: Rust backend available -- RL weight learning active")
         else:
-            logger.debug("AdaptivePruner 未启用：%s", _PRUNER_IMPORT_ERROR or "未安装 entroly_core")
+            logger.debug("AdaptivePruner 未启用：%s", _PRUNER_IMPORT_ERROR or "未安装 native 可选组件")
 
     @property
     def available(self) -> bool:

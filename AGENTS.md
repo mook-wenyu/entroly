@@ -10,11 +10,12 @@ Entroly 是 Python 包与 Rust 核心混合项目。`entroly/` 放置 Python CLI
 $py = "C:\Users\WenYu\AppData\Local\Programs\Python\Python313\python.exe"
 $env:PYO3_PYTHON = $py
 & $py -m pip install maturin pytest pytest-cov pytest-timeout ruff psutil
+cd D:\PyProjects\ebbiforge; & $py -m pip install .; cd D:\PyProjects\entroly
 cd entroly-core; & $py -m pip install .; cd ..
-& $py -m pip install -e ".[proxy,native]"
+& $py -m pip install -e ".[full]"
 ```
 
-不要使用 venv；本仓库默认安装到本机 Python 3.13。`pip install .` 会通过 maturin 构建并安装本地 Rust 扩展。`pip install -e ".[proxy,native]"` 安装 Python 包、本地 Rust 核心和代理相关依赖；避免使用 `.[full]`，因为其中的 `ebbiforge` 依赖不一定在当前 pip 源可用。常用验证命令：
+不要使用 venv；本仓库默认安装到本机 Python 3.13。`D:\PyProjects\ebbiforge` 必须先本地安装，供 `.[full]` 解析 `ebbiforge` 与 `ebbiforge_core`。`entroly-core` 也必须先本地构建安装，随后 `pip install -e ".[full]"` 安装 Python 包、Rust 核心、代理依赖与可选学习组件。常用验证命令：
 
 ```powershell
 & $py -m ruff check entroly/
