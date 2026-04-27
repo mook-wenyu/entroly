@@ -105,14 +105,14 @@ def _safe_preview(content: str, max_chars: int = 30) -> str:
     return f"[{len(content)} chars, {content.count(chr(10)) + 1} lines]"
 
 
-# ── Resilience primitives (ported from agentOS) ─────────────────────────
+# ── Resilience primitives ────────────────────────────────────────────
 
 
 class _CircuitBreaker:
     """SIRS-inspired circuit breaker: open after N consecutive failures,
     half-open after cooldown period, close on success.
 
-    Inspired by the refractory period in agentOS/scheduler.rs SIRS routing.
+    Inspired by the refractory period in SIRS epidemic routing models.
     """
 
     def __init__(self, failure_threshold: int = 3, cooldown_s: float = 30.0):
@@ -155,7 +155,7 @@ class _CircuitBreaker:
 class _TokenBucket:
     """Token bucket rate limiter.
 
-    Ported from agentOS/compliance.rs TokenBucket.
+    Standard token bucket rate limiter.
     """
 
     def __init__(self, capacity: float, refill_per_second: float):
@@ -180,7 +180,6 @@ class _TokenBucket:
 class _WelfordStats:
     """Welford's online algorithm for streaming mean/variance.
 
-    Ported from agentOS/persona_manifold.rs Welford tracker.
     Tracks pipeline latency without storing all samples.
     """
 
@@ -871,6 +870,20 @@ class PromptCompilerProxy:
 
         if "messages" in body:
             from .proxy_transform import compress_tool_messages
+            # Stage 1: age-tiered pruning (collapses old tool outputs to digests).
+            # Runs first so content-aware compression in stage 2 only pays for
+            # the small tail window of recent tool messages.
+            if getattr(self.config, "enable_aged_tool_pruning", True):
+                from .hardening import prune_aged_tool_outputs
+                body["messages"], aged_bytes_saved = prune_aged_tool_outputs(
+                    body["messages"],
+                    tail_window=getattr(self.config, "aged_tool_tail_window", 4),
+                )
+                if aged_bytes_saved > 0:
+                    logger.info(
+                        f"Aged tool pruning: ~{aged_bytes_saved // 4} tokens saved"
+                    )
+            # Stage 2: content-aware compression (test output, diffs, JSON, …)
             body["messages"], tool_tokens_saved = compress_tool_messages(body["messages"])
             if tool_tokens_saved > 0:
                 logger.info(f"Tool output compression: {tool_tokens_saved} tokens saved")
@@ -980,6 +993,18 @@ class PromptCompilerProxy:
                         self._last_optimization_at = time.time()
                         self._has_successful_optimization = True
 
+                    if getattr(self.config, "enable_context_sanitizer", True):
+                        from .hardening import sanitize_injected_context
+                        context_text, _sanitize_report = sanitize_injected_context(
+                            context_text, fence=True
+                        )
+                        if _sanitize_report.matches:
+                            logger.warning(
+                                "Injection-scan: %s patterns in retrieved context: %s",
+                                len(_sanitize_report.matches),
+                                _sanitize_report.matches,
+                            )
+
                     if provider == "gemini":
                         body = inject_context_gemini(body, context_text)
                     elif provider == "anthropic":
@@ -992,17 +1017,26 @@ class PromptCompilerProxy:
                     if provider != "gemini" and "messages" in body:
                         try:
                             from .proxy_transform import entropic_conversation_prune
-                            ecp_messages = body.get("messages", [])
-                            pruned_msgs, ecp_stats = entropic_conversation_prune(
-                                ecp_messages, context_text, provider
-                            )
-                            if ecp_stats.get("pruned"):
-                                body["messages"] = pruned_msgs
-                                logger.debug(
-                                    "ECP: %d messages compressed, %.1f%% savings",
-                                    ecp_stats["messages_compressed"],
-                                    ecp_stats["savings_ratio"] * 100,
+                            from .hardening import ECP_THRASH_GUARD
+                            anti_thrash = getattr(self.config, "enable_ecp_anti_thrash", True)
+                            if anti_thrash and ECP_THRASH_GUARD.should_skip(client_key):
+                                logger.debug("ECP: skipped (anti-thrash cooldown)")
+                            else:
+                                ecp_messages = body.get("messages", [])
+                                pruned_msgs, ecp_stats = entropic_conversation_prune(
+                                    ecp_messages, context_text, provider
                                 )
+                                if ecp_stats.get("pruned"):
+                                    body["messages"] = pruned_msgs
+                                    logger.debug(
+                                        "ECP: %d messages compressed, %.1f%% savings",
+                                        ecp_stats["messages_compressed"],
+                                        ecp_stats["savings_ratio"] * 100,
+                                    )
+                                if anti_thrash:
+                                    ECP_THRASH_GUARD.record(
+                                        client_key, ecp_stats.get("savings_ratio", 0.0)
+                                    )
                         except Exception:
                             pass  # Never block for conversation pruning
 

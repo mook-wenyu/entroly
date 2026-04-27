@@ -27,7 +27,7 @@ Multi-Instance Support:
   entroly instances on the same project can share learned state.
   merge_from_peers() scans for other instances' checkpoints and
   merges fragments using most-recent-writer-wins with access_count
-  tiebreaker. Inspired by agentOS Pitman-Yor lifecycle management.
+  tiebreaker. Uses Pitman-Yor lifecycle management.
 
 Storage Format:
   JSON for human readability and debuggability. Gzipped for
@@ -168,7 +168,7 @@ def _merge_fragments(
     """Merge fragment lists from different instances.
 
     Conflict resolution: most-recent-writer-wins with access_count tiebreaker.
-    Inspired by Pitman-Yor lifecycle management from agentOS/persona_manifold.rs.
+    Uses Pitman-Yor lifecycle management.
     """
     merged: dict[str, dict[str, Any]] = {f["fragment_id"]: f for f in local}
 
@@ -231,7 +231,7 @@ def _release_file_lock(lock_file: Any) -> None:
     lock_file.close()
 
 
-# Ebbinghaus decay constant (ported from agentOS/persona_manifold.rs)
+# Ebbinghaus decay constant
 _EBBINGHAUS_LAMBDA = 0.01
 
 
@@ -479,7 +479,7 @@ class CheckpointManager:
     ) -> list[dict[str, Any]]:
         """Apply Ebbinghaus forgetting curve to fragment health scores.
 
-        Ported from agentOS/persona_manifold.rs lifecycle_tick().
+        Applies Ebbinghaus forgetting curve decay.
         Fragments with health < 0.05 are evicted.
         """
         result = []

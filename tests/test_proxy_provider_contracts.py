@@ -19,6 +19,15 @@ from entroly.proxy import PromptCompilerProxy  # noqa: E402
 from entroly.proxy_config import ProxyConfig  # noqa: E402
 
 
+def _has_sanitized_context(value: object, expected: str = "ENTROLY_CONTEXT") -> bool:
+    return (
+        isinstance(value, str)
+        and value.startswith("<entroly:retrieved-context>")
+        and expected in value
+        and "</entroly:retrieved-context>" in value
+    )
+
+
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
@@ -94,7 +103,7 @@ async def _send_through_proxy(
             {"authorization": "Bearer sk-test"},
             {"model": "gpt-5.4", "input": "review this file", "stream": False},
             lambda sent: (
-                sent["instructions"] == "ENTROLY_CONTEXT"
+                _has_sanitized_context(sent["instructions"])
                 and sent["input"] == "review this file"
             ),
         ),
@@ -108,7 +117,7 @@ async def _send_through_proxy(
             },
             lambda sent: (
                 sent["messages"][0]["role"] == "system"
-                and sent["messages"][0]["content"] == "ENTROLY_CONTEXT"
+                and _has_sanitized_context(sent["messages"][0]["content"])
             ),
         ),
         (
@@ -120,7 +129,10 @@ async def _send_through_proxy(
                 "messages": [{"role": "user", "content": "review this file"}],
                 "max_tokens": 1024,
             },
-            lambda sent: sent["system"].startswith("ENTROLY_CONTEXT\n\nExisting system"),
+            lambda sent: (
+                _has_sanitized_context(sent["system"])
+                and sent["system"].endswith("\n\nExisting system")
+            ),
         ),
         (
             "/v1beta/models/gemini-2.5-flash:generateContent",
@@ -134,7 +146,7 @@ async def _send_through_proxy(
                 ]
             },
             lambda sent: (
-                sent["systemInstruction"]["parts"][0]["text"] == "ENTROLY_CONTEXT"
+                _has_sanitized_context(sent["systemInstruction"]["parts"][0]["text"])
             ),
         ),
     ],

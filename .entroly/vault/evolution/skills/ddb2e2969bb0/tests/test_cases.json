@@ -1,6 +1,0 @@
-[
-  {
-    "input": "fix auth bug",
-    "expected": "should_not_fail"
-  }
-]

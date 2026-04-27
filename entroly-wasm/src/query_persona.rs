@@ -1,6 +1,6 @@
 //! Query Persona Manifold — RKHS-based Query Archetype Discovery
 //!
-//! Adapted from agentOS `persona_manifold.rs` for entroly's query optimization.
+//! RKHS-based query archetype discovery for entroly's query optimization.
 //!
 //! # Mathematical Framework
 //!

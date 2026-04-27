@@ -21,9 +21,12 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from .vault import VaultManager
+
+if TYPE_CHECKING:
+    from .reward_crystallizer import CrystallizationEvent
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +144,141 @@ class SkillSynthesizer:
             f"- Source file references with line numbers\n"
             f"- Dependency graph edges\n"
             f"- Test coverage status\n"
+        )
+
+    # ── Success-driven crystallization ────────────────────────────
+    #
+    # Mirror of synthesize_from_gap, but driven by RewardCrystallizer
+    # events: a query family that consistently beats the global reward
+    # baseline (Hoeffding LCB > baseline + ε) gets frozen as a skill.
+    #
+    # Differences from the failure path:
+    #   - status starts as "promoted" (not "draft"). The Hoeffding LCB
+    #     is itself the fitness proof; running another benchmark would
+    #     just re-derive the same statistic with smaller n.
+    #   - Test cases are real positive samples from the cluster (the
+    #     queries that earned the reward), not synthetic placeholders.
+    #   - The procedure encodes the actual recipe: weight profile +
+    #     fragment IDs that delivered the wins, so a future structural
+    #     planner can use them directly.
+
+    def synthesize_from_success(self, event: "CrystallizationEvent") -> SkillSpec:  # type: ignore[name-defined]
+        """Generate a SkillSpec from a RewardCrystallizer event.
+
+        The event already carries the statistical proof (LCB, effect
+        size, n) so we don't re-derive — we materialize.
+        """
+        from .reward_crystallizer import CrystallizationEvent  # noqa: F401, runtime check
+
+        terms = event.common_terms or [event.cluster_id]
+        name = "crystallized_" + "_".join(terms[:3])[:48]
+        entity = "|".join(terms[:5]) or event.cluster_id
+        trigger = "|".join(terms[:5]) if terms else event.cluster_id
+
+        procedure = (
+            f"# Crystallized skill — {name}\n\n"
+            f"## Provenance\n"
+            f"- cluster_id: `{event.cluster_id}`\n"
+            f"- samples (n): {event.n_samples}\n"
+            f"- mean reward: {event.mean_reward:.3f}\n"
+            f"- Hoeffding lower bound: {event.lcb_reward:.3f}\n"
+            f"- baseline reward: {event.baseline_reward:.3f}\n"
+            f"- effect size (LCB − baseline): {event.effect_size:.3f}\n\n"
+            f"## Trigger\n"
+            f"This skill activates when a query matches the pattern: "
+            f"`{trigger}`.\n\n"
+            f"## Recipe\n"
+            f"Sample queries that earned high reward:\n"
+            + "\n".join(f"- {q!r}" for q in event.sample_queries[:5])
+            + "\n\n"
+            "## Selection strategy (snapshot at crystallization)\n"
+            "PRISM weight profile that delivered the wins:\n"
+            + "\n".join(
+                f"- `{k}` = {v:.4f}"
+                for k, v in sorted(event.weight_profile.items())
+            )
+            + "\n\n"
+            "## Fragment recipe (most-frequently selected)\n"
+            + "\n".join(f"- `{fid}`" for fid in event.fragment_recipe[:8])
+            + "\n"
+        )
+
+        tool_code = self._generate_crystallized_tool(
+            name=name,
+            trigger=trigger,
+            fragment_recipe=event.fragment_recipe,
+            weight_profile=event.weight_profile,
+        )
+
+        # Real positive samples as test cases — the queries that won.
+        tests = [
+            {"input": q, "expected": "should_match"}
+            for q in event.sample_queries[:5]
+        ]
+
+        spec = SkillSpec(
+            name=name,
+            description=(
+                f"Crystallized from sustained high reward "
+                f"(LCB={event.lcb_reward:.3f} > baseline={event.baseline_reward:.3f})"
+            ),
+            entity=entity,
+            trigger=trigger,
+            procedure=procedure,
+            tool_code=tool_code,
+            test_cases=tests,
+            status="promoted",  # Pre-validated by Hoeffding LCB; skip benchmark gate.
+            metrics={
+                "fitness_score": round(event.lcb_reward, 4),
+                "samples": float(event.n_samples),
+                "effect_size": round(event.effect_size, 4),
+                "source": "crystallization",
+            },
+        )
+        return spec
+
+    def _generate_crystallized_tool(
+        self,
+        name: str,
+        trigger: str,
+        fragment_recipe: list[str],
+        weight_profile: dict[str, float],
+    ) -> str:
+        """Emit a tool whose execute() returns the cluster's winning recipe.
+
+        The runtime can use this output to short-circuit fragment selection
+        for matched queries (see future fast-path work). For now the tool
+        is a faithful, deterministic record of the strategy that worked.
+        """
+        # Safe-quote the trigger for regex embedding.
+        trig_escaped = trigger.replace("\\", "\\\\").replace('"', '\\"')
+        recipe_lit = json.dumps(list(fragment_recipe))
+        weights_lit = json.dumps(weight_profile)
+        return (
+            f'"""Crystallized skill tool — {name}.\n'
+            f'\n'
+            f'Auto-generated by RewardCrystallizer. Encodes the fragment\n'
+            f'recipe and PRISM weight profile that delivered sustained\n'
+            f'high reward for the trigger pattern.\n'
+            f'"""\n\n'
+            f'import re\n\n'
+            f'TRIGGER_PATTERN = re.compile(r"\\b({trig_escaped})\\b", re.I)\n'
+            f'FRAGMENT_RECIPE = {recipe_lit}\n'
+            f'WEIGHT_PROFILE = {weights_lit}\n\n\n'
+            f'def matches(query: str) -> bool:\n'
+            f'    return bool(TRIGGER_PATTERN.search(query or ""))\n\n\n'
+            f'def execute(query: str, context: dict) -> dict:\n'
+            f'    """Return the recipe that previously won for this query family."""\n'
+            f'    return {{\n'
+            f'        "status": "success",\n'
+            f'        "skill": "{name}",\n'
+            f'        "fragment_recipe": list(FRAGMENT_RECIPE),\n'
+            f'        "weight_profile": dict(WEIGHT_PROFILE),\n'
+            f'        "results": [\n'
+            f'            {{"file": fid, "snippet": ""}}\n'
+            f'            for fid in FRAGMENT_RECIPE\n'
+            f'        ],\n'
+            f'    }}\n'
         )
 
     def _generate_tool_template(self, name: str, entity: str, trigger: str) -> str:
@@ -727,6 +865,74 @@ class SkillEngine:
             "skill_id": spec.skill_id,
             "name": spec.name,
             "path": str(skill_dir),
+        }
+
+    def crystallize_skill(self, event: "CrystallizationEvent") -> dict[str, Any]:  # type: ignore[name-defined]
+        """Materialize a RewardCrystallizer event as a promoted skill.
+
+        Bypasses the failure-driven gap pipeline: the event already
+        carries a Hoeffding LCB > baseline + ε, which is a stronger
+        statistical guarantee than any benchmark we'd run. The skill
+        is written directly with status='promoted'.
+
+        Returns the same shape as ``create_skill``.
+        """
+        from .reward_crystallizer import CrystallizationEvent  # noqa: F401, runtime check
+
+        self._vault.ensure_structure()
+        spec = self._synthesizer.synthesize_from_success(event)
+
+        skill_dir = self._vault.config.path / "evolution" / "skills" / spec.skill_id
+        skill_dir.mkdir(parents=True, exist_ok=True)
+
+        (skill_dir / "SKILL.md").write_text(
+            f"---\n"
+            f"skill_id: {spec.skill_id}\n"
+            f"name: {spec.name}\n"
+            f"entity: {spec.entity}\n"
+            f"status: {spec.status}\n"
+            f"created_at: {spec.created_at}\n"
+            f"source: crystallization\n"
+            f"cluster_id: {event.cluster_id}\n"
+            f"---\n\n"
+            f"# {spec.name}\n\n"
+            f"{spec.description}\n\n"
+            f"{spec.procedure}\n",
+            encoding="utf-8",
+        )
+        (skill_dir / "tool.py").write_text(spec.tool_code, encoding="utf-8")
+        (skill_dir / "metrics.json").write_text(
+            json.dumps({
+                "created_at": spec.created_at,
+                "fitness_score": spec.metrics.get("fitness_score", 0.0),
+                "samples": spec.metrics.get("samples", 0),
+                "effect_size": spec.metrics.get("effect_size", 0.0),
+                "source": "crystallization",
+                "cluster_id": event.cluster_id,
+                "runs": 0, "successes": 0, "failures": 0,
+            }, indent=2),
+            encoding="utf-8",
+        )
+        tests_dir = skill_dir / "tests"
+        tests_dir.mkdir(exist_ok=True)
+        (tests_dir / "test_cases.json").write_text(
+            json.dumps(spec.test_cases, indent=2),
+            encoding="utf-8",
+        )
+
+        self._update_registry(spec, "crystallized")
+
+        logger.info(
+            "SkillEngine: crystallized skill %s (cluster=%s, lcb=%.3f, n=%d)",
+            spec.skill_id, event.cluster_id, event.lcb_reward, event.n_samples,
+        )
+        return {
+            "status": "crystallized",
+            "skill_id": spec.skill_id,
+            "name": spec.name,
+            "path": str(skill_dir),
+            "fitness_score": spec.metrics.get("fitness_score", 0.0),
+            "cluster_id": event.cluster_id,
         }
 
     def benchmark_skill(self, skill_id: str) -> dict[str, Any]:

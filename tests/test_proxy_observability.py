@@ -259,7 +259,10 @@ async def test_optimized_responses_request_uses_instructions_and_is_logged(monke
 
     assert response.status_code == 200
     assert response.headers["x-entroly-optimized"] == "true"
-    assert captured["body"]["instructions"] == "CONTEXT"
+    instructions = captured["body"]["instructions"]
+    assert instructions.startswith("<entroly:retrieved-context>")
+    assert "CONTEXT" in instructions
+    assert instructions.endswith("</entroly:retrieved-context>")
     assert captured["body"]["input"] == "hello"
 
     recent = dashboard.get_recent_requests()

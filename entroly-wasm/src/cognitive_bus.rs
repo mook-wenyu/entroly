@@ -1,9 +1,8 @@
 //! Cognitive Bus — Inter-Agent Event Routing with Memory-Aware ISA Prioritization
 //!
 //! Routes events (observations, tool results, beliefs, memories) between agents
-//! using Information-Surprise-Adaptive (ISA) routing. Ported from agentOS
-//! cognitive_bus.rs with deep integration into entroly's entropy scoring and
-//! ebbiforge's hippocampus memory system.
+//! using Information-Surprise-Adaptive (ISA) routing. Integrates with entroly's
+//! entropy scoring and hippocampus memory system.
 //!
 //! Architecture:
 //!   publish(event) → dedup → novelty score → priority(ISA) → per-subscriber queue
@@ -32,7 +31,6 @@
 //! References:
 //!   - Jaques et al., "Social Influence as Intrinsic Motivation", ICML 2019
 //!   - McClelland et al., "Complementary Learning Systems", Psych Review 1995
-//!   - agentOS cognitive_bus.rs — ISA routing, Poisson models
 
 use std::collections::{BinaryHeap, HashMap, VecDeque};
 use std::cmp::Ordering;
@@ -54,7 +52,7 @@ const EMOTIONAL_IMPORTANT_BOOST: f64 = 1.5;
 // ── Event Types ────────────────────────────────────────────────────────
 
 /// Event types routable on the cognitive bus.
-/// Maps to agentOS 25 event types, grouped into 4 zones.
+/// Grouped into 4 zones.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum EventType {
     // Zone 1: Perception (external inputs)

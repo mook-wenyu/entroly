@@ -1,9 +1,9 @@
 //! Context Fragment — the atomic unit of managed context.
 //!
-//! Mirrors Ebbiforge's Episode struct but optimized for context window
-//! management rather than memory storage.
+//! The atomic unit of managed context, optimized for context window
+//! management.
 //!
-//! Scoring follows the ContextScorer pattern from ebbiforge-core/src/memory/lsh.rs:
+//! Scoring follows the ContextScorer pattern:
 //!   composite = w_recency * recency + w_frequency * frequency
 //!             + w_semantic * semantic + w_entropy * entropy
 
@@ -73,8 +73,8 @@ impl ContextFragment {
 
 /// Compute composite relevance score for a fragment.
 ///
-/// Direct port of ebbiforge-core ContextScorer::score() but
-/// with entropy replacing emotion as the fourth dimension.
+/// Composite relevance scorer with entropy as the fourth dimension
+/// (replacing emotion from the original ContextScorer design).
 ///
 /// `feedback_multiplier` comes from FeedbackTracker::learned_value():
 /// - > 1.0 = historically useful fragment (boosted)
@@ -137,7 +137,7 @@ pub fn softcap(x: f64, cap: f64) -> f64 {
 ///   recency(t) = exp(-λ · Δt)
 ///   where λ = ln(2) / half_life
 ///
-/// Same math as ebbiforge-core HippocampusEngine.
+/// Standard Ebbinghaus forgetting curve implementation.
 pub fn apply_ebbinghaus_decay(
     fragments: &mut [ContextFragment],
     current_turn: u32,

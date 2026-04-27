@@ -1,46 +1,64 @@
-# Entroly
+# ── Build artifacts ──────────────────────────────────────────────────
 target/
+dist/
+*.whl
+*.egg-info/
+
+# ── Python ───────────────────────────────────────────────────────────
 .venv/
 __pycache__/
 *.pyc
-dist/
-*.whl
+*.pyo
 
-# Compiled extensions
+# ── Compiled extensions ──────────────────────────────────────────────
 *.pyd
 *.so
 *.dll
 
-# Generated output
-bench/results.tsv
-
-# Scratch / debug artifacts
-*.restored
-.omx/
-.playwright-mcp/
-.tmp/
+# ── Entroly runtime state (per-project, generated at runtime) ───────
+.entroly/
 .test_vault/
 .verify-artifacts/
 
-# Build & lint logs (keep CI clean)
+# ── Personal tooling ────────────────────────────────────────────────
+.omx/
+.playwright-mcp/
+vault/
+
+# ── Scratch / debug artifacts ────────────────────────────────────────
+.tmp/
+*.restored
+tuning_config.json
+tuning_config.*.bak.json
+entroly-report.html
+training_data.jsonl
+
+# ── Benchmark workflow artifacts (regenerated each run) ──────────────
+bench/results.tsv
+bench/.cache/
+bench_section.md
+bench_output.txt
+test_output.txt
+
+# ── Build & lint logs ────────────────────────────────────────────────
 *_errors.txt
 *_errors2.txt
 *_output.txt
 *_dump.txt
 *_list.txt
 
-# IDE / editor
-claudecode/
+# ── IDE / editor ─────────────────────────────────────────────────────
 .idea/
 .vscode/
+claudecode/
 *.swp
 *.swo
+.claude/
 
-# OS
+# ── OS ───────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 
-# Benchmark workflow artifacts (regenerated each run)
-bench_section.md
-bench_output.txt
-test_output.txt
+# ── Test / CI caches ─────────────────────────────────────────────────
+.pytest_cache/
+.ruff_cache/

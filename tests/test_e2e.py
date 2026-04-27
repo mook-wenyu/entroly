@@ -448,7 +448,7 @@ def test_fragment_guard_flags_secrets():
 
     guard = FragmentGuard()
     if not guard.available:
-        print("  ⚠ FragmentGuard not available (ebbiforge_core not installed) — skipping")
+        print("  ⚠ FragmentGuard not available (Rust backend not installed) — skipping")
         return
 
     issues = guard.scan(

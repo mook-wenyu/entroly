@@ -208,6 +208,12 @@ class ProxyConfig:
     enable_conversation_compression: bool = True
     enable_passive_feedback: bool = True
 
+    # Pipeline hardening
+    enable_aged_tool_pruning: bool = True
+    aged_tool_tail_window: int = 4
+    enable_context_sanitizer: bool = True
+    enable_ecp_anti_thrash: bool = True
+
     # Context window size (auto-detected per model, this is the fallback)
     context_window: int = 128_000
 
