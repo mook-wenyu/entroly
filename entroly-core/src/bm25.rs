@@ -368,6 +368,7 @@ fn is_code_stopword(word: &str) -> bool {
 ///
 /// The floor of 0.05 ensures that even irrelevant files get a tiny non-zero score,
 /// preventing division-by-zero in downstream scoring.
+#[allow(dead_code)]
 pub fn normalize_scores(scores: &[f64]) -> Vec<f64> {
     if scores.is_empty() {
         return vec![];
