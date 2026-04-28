@@ -21,6 +21,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .csharp_semantic import CSharpModule, CSharpSemanticAnalyzer, CSharpSemanticError
 from .vault import BeliefArtifact, VaultManager
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,8 @@ class CodeEntity:
     line: int = 0
     docstring: str = ""
     signature: str = ""
+    symbol: str = ""
+    return_type: str = ""
     dependencies: list[str] = field(default_factory=list)
     dependents: list[str] = field(default_factory=list)
 
@@ -68,6 +71,20 @@ class ModuleMap:
     description: str = ""
     loc: int = 0
     language: str = ""
+    assembly: str = ""
+    root_namespace: str = ""
+    assembly_references: list[str] = field(default_factory=list)
+    include_platforms: list[str] = field(default_factory=list)
+    exclude_platforms: list[str] = field(default_factory=list)
+    define_constraints: list[str] = field(default_factory=list)
+    version_defines: list[str] = field(default_factory=list)
+    precompiled_references: list[str] = field(default_factory=list)
+    override_references: bool = False
+    no_engine_references: bool = False
+    auto_referenced: bool = True
+    allow_unsafe_code: bool = False
+    diagnostics: list[str] = field(default_factory=list)
+    derived_from: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -330,7 +347,7 @@ def synthesize_module_map(
 ) -> ModuleMap:
     """Create a ModuleMap for a single file."""
     ext = Path(file_path).suffix.lower()
-    lang = {"py": "python", "rs": "rust", "ts": "typescript", "js": "javascript"}.get(
+    lang = {"py": "python", "rs": "rust", "ts": "typescript", "tsx": "typescript", "js": "javascript", "jsx": "javascript", "cs": "csharp"}.get(
         ext.lstrip("."), "unknown"
     )
     imports = sorted(set(d for e in entities for d in e.dependencies))
@@ -423,12 +440,13 @@ class BeliefCompiler:
     """
 
     # File extensions to parse
-    SUPPORTED_EXTENSIONS = {".py", ".rs", ".ts", ".tsx", ".js", ".jsx"}
+    SUPPORTED_EXTENSIONS = {".py", ".rs", ".ts", ".tsx", ".js", ".jsx", ".cs"}
 
     # Directories to skip
     SKIP_DIRS = {
         "__pycache__", "node_modules", ".git", ".hg", "target",
-        "dist", "build", ".tox", ".pytest_cache", ".mypy_cache",
+        "dist", "build", "Library", "Temp", "Logs", "UserSettings",
+        ".tox", ".pytest_cache", ".mypy_cache",
         "venv", ".venv", "env", ".env",
     }
 
@@ -488,33 +506,68 @@ class BeliefCompiler:
         file_paths: list[Path],
     ) -> CompilationResult:
         """Compile a set of absolute file paths under a root into beliefs."""
-        result = CompilationResult()
-        resolver = EntityResolver()
+        csharp_paths = [path for path in file_paths if path.suffix.lower() == ".cs"]
+        non_csharp_paths = [path for path in file_paths if path.suffix.lower() != ".cs"]
 
-        # Phase 1: Extract entities from all source files
+        result = CompilationResult(files_processed=len(file_paths))
+        all_modules = self._extract_non_csharp_modules(root, non_csharp_paths, result)
+        if csharp_paths:
+            all_modules.update(self._extract_csharp_modules(root, csharp_paths))
+        result.entities_extracted = sum(len(module.entities) for module in all_modules.values())
+        self._merge_results(result, self._write_modules(root, all_modules))
+        return result
+
+    def _extract_non_csharp_modules(
+        self,
+        root: Path,
+        file_paths: list[Path],
+        result: CompilationResult,
+    ) -> dict[str, ModuleMap]:
+        """Extract module maps from source files handled by lightweight extractors."""
         all_modules: dict[str, ModuleMap] = {}
         for fpath in file_paths:
             try:
                 content = fpath.read_text(encoding="utf-8", errors="replace")
                 rel = str(fpath.relative_to(root))
-
                 entities = extract_entities(content, rel)
                 if entities:
-                    resolver.add_entities(entities)
                     module = synthesize_module_map(rel, entities, content)
                     all_modules[rel] = module
-                    result.entities_extracted += len(entities)
-
-                result.files_processed += 1
             except Exception as e:
                 result.errors.append(f"{fpath}: {e}")
-        result.modules_mapped = len(all_modules)
+        return all_modules
 
-        # Phase 2: Resolve cross-file dependencies
+    def _extract_csharp_modules(
+        self,
+        root: Path,
+        file_paths: list[Path],
+    ) -> dict[str, ModuleMap]:
+        analysis = CSharpSemanticAnalyzer().analyze_directory(str(root))
+        selected = {path.relative_to(root).as_posix() for path in file_paths}
+        modules = {
+            module.path: self._csharp_module_to_module_map(module)
+            for module in analysis.modules
+            if module.path in selected
+        }
+        missing = sorted(selected - set(modules))
+        if missing:
+            raise CSharpSemanticError(f"Roslyn analyzer did not return selected C# files: {', '.join(missing)}")
+        return modules
+
+    def _write_modules(
+        self,
+        root: Path,
+        all_modules: dict[str, ModuleMap],
+    ) -> CompilationResult:
+        result = CompilationResult()
+        result.modules_mapped = len(all_modules)
+        resolver = EntityResolver()
+        for module in all_modules.values():
+            resolver.add_entities(module.entities)
         resolver.resolve_dependencies()
         self._resolver = resolver
+        self._last_modules = all_modules
 
-        # Phase 3: Generate beliefs for each module
         for rel_path, module in all_modules.items():
             try:
                 belief = self._module_to_belief(module, rel_path, resolver)
@@ -524,7 +577,6 @@ class BeliefCompiler:
             except Exception as e:
                 result.errors.append(f"Belief write failed for {rel_path}: {e}")
 
-        # Phase 4: Generate architecture overview belief
         if all_modules:
             try:
                 arch_belief = self._create_architecture_belief(all_modules, str(root))
@@ -533,7 +585,6 @@ class BeliefCompiler:
             except Exception as e:
                 result.errors.append(f"Architecture belief failed: {e}")
 
-        # Phase 5: Generate dependency diagram
         dep_graph = self._resolver.dependency_graph()
         if dep_graph:
             try:
@@ -546,12 +597,9 @@ class BeliefCompiler:
             except Exception as e:
                 result.errors.append(f"Diagram failed: {e}")
 
-        # Module diagram
         if all_modules:
             try:
-                mod_diagram = generate_module_diagram(
-                    resolver.get_modules()
-                )
+                mod_diagram = generate_module_diagram(resolver.get_modules())
                 media_dir = self._vault.config.path / "media"
                 media_dir.mkdir(parents=True, exist_ok=True)
                 mod_path = media_dir / f"modules_{root.name}.md"
@@ -567,8 +615,66 @@ class BeliefCompiler:
         )
         return result
 
+    @staticmethod
+    def _merge_results(target: CompilationResult, source: CompilationResult) -> None:
+        target.beliefs_written += source.beliefs_written
+        target.entities_extracted += source.entities_extracted
+        target.modules_mapped += source.modules_mapped
+        target.diagrams_generated += source.diagrams_generated
+        target.files_processed += source.files_processed
+        target.errors.extend(source.errors)
+        target.belief_ids.extend(source.belief_ids)
+
+    @staticmethod
+    def _csharp_module_to_module_map(module: CSharpModule) -> ModuleMap:
+        entities = [
+            CodeEntity(
+                name=entity.name,
+                kind=entity.kind,
+                file_path=entity.file_path,
+                line=entity.line,
+                docstring=entity.docstring,
+                signature=entity.signature,
+                symbol=entity.symbol,
+                return_type=entity.return_type,
+                dependencies=entity.dependencies,
+            )
+            for entity in module.entities
+        ]
+        return ModuleMap(
+            name=module.name,
+            file_path=module.path,
+            entities=entities,
+            imports=module.imports,
+            exports=[entity.name for entity in entities if entity.kind in ("class", "struct", "interface", "enum", "function", "property")],
+            loc=module.loc,
+            language=module.language,
+            assembly=module.assembly,
+            root_namespace=module.root_namespace,
+            assembly_references=module.assembly_references,
+            include_platforms=module.include_platforms,
+            exclude_platforms=module.asmdef.exclude_platforms,
+            define_constraints=module.asmdef.define_constraints,
+            version_defines=[
+                f"{item.name}:{item.expression}:{item.define}"
+                for item in module.asmdef.version_defines
+            ],
+            precompiled_references=module.asmdef.precompiled_references,
+            override_references=module.asmdef.override_references,
+            no_engine_references=module.asmdef.no_engine_references,
+            auto_referenced=module.asmdef.auto_referenced,
+            allow_unsafe_code=module.asmdef.allow_unsafe_code,
+            diagnostics=[
+                f"{diagnostic.severity}:{diagnostic.code}:{diagnostic.message}"
+                for diagnostic in module.diagnostics
+            ],
+            derived_from=["belief_compiler", "roslyn", "unity_asmdef"],
+        )
+
     def compile_file(self, file_path: str, content: str) -> BeliefArtifact | None:
         """Compile a single file into a belief artifact."""
+        if Path(file_path).suffix.lower() == ".cs":
+            raise ValueError("C# belief compilation requires compile_directory or compile_paths so Roslyn can build project context")
         entities = extract_entities(content, file_path)
         if not entities:
             return None
@@ -591,13 +697,44 @@ class BeliefCompiler:
             body_parts.append(module.description)
 
         # Summary
-        classes = [e for e in module.entities if e.kind in ("class", "struct", "enum", "trait")]
+        classes = [e for e in module.entities if e.kind in ("class", "struct", "enum", "trait", "interface")]
         funcs = [e for e in module.entities if e.kind == "function"]
-        [e for e in module.entities if e.kind == "const"]
+        properties = [e for e in module.entities if e.kind == "property"]
+        consts = [e for e in module.entities if e.kind == "const"]
 
         body_parts.append(f"**Language:** {module.language}")
+        if module.assembly:
+            body_parts.append(f"**Assembly:** {module.assembly}")
+        if module.root_namespace:
+            body_parts.append(f"**Root namespace:** {module.root_namespace}")
+        if module.assembly_references:
+            body_parts.append(f"**Assembly references:** {', '.join(module.assembly_references)}")
+        if module.include_platforms:
+            body_parts.append(f"**Unity include platforms:** {', '.join(module.include_platforms)}")
+        if module.exclude_platforms:
+            body_parts.append(f"**Unity exclude platforms:** {', '.join(module.exclude_platforms)}")
+        if module.define_constraints:
+            body_parts.append(f"**Unity define constraints:** {', '.join(module.define_constraints)}")
+        if module.version_defines:
+            body_parts.append(f"**Unity version defines:** {', '.join(module.version_defines)}")
+        if module.precompiled_references:
+            body_parts.append(f"**Unity precompiled references:** {', '.join(module.precompiled_references)}")
+        if module.override_references:
+            body_parts.append("**Unity override references:** true")
+        if module.no_engine_references:
+            body_parts.append("**Unity no engine references:** true")
+        if not module.auto_referenced:
+            body_parts.append("**Unity auto referenced:** false")
+        if module.allow_unsafe_code:
+            body_parts.append("**Unity allow unsafe code:** true")
         body_parts.append(f"**Lines of code:** {module.loc}")
         body_parts.append("")
+
+        if module.diagnostics:
+            body_parts.append("## Diagnostics")
+            for diagnostic in module.diagnostics:
+                body_parts.append(f"- `{diagnostic}`")
+            body_parts.append("")
 
         if classes:
             body_parts.append("## Types")
@@ -610,6 +747,17 @@ class BeliefCompiler:
             for f in funcs:
                 doc = f" — {f.docstring}" if f.docstring else ""
                 body_parts.append(f"- `{f.signature}`{doc}")
+
+        if properties:
+            body_parts.append("\n## Properties")
+            for p in properties:
+                doc = f" — {p.docstring}" if p.docstring else ""
+                body_parts.append(f"- `{p.signature}`{doc}")
+
+        if consts:
+            body_parts.append("\n## Constants")
+            for c in consts:
+                body_parts.append(f"- `{c.signature or c.name}`")
 
         if module.imports:
             body_parts.append("\n## Dependencies")
@@ -647,7 +795,7 @@ class BeliefCompiler:
             confidence=0.75,  # auto-compiled → moderate confidence
             status="inferred",
             sources=sources,
-            derived_from=["belief_compiler", "sast"],
+            derived_from=module.derived_from or ["belief_compiler", "sast"],
         )
 
     def _create_architecture_belief(

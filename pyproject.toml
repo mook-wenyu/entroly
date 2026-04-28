@@ -62,8 +62,18 @@ Repository = "https://github.com/juyterman1000/entroly"
 entroly = "entroly.cli:main"
 entroly-docker = "entroly._docker_launcher:launch"
 
+[tool.hatch.build]
+exclude = [
+    "entroly/roslyn/Entroly.CSharpAnalyzer/bin",
+    "entroly/roslyn/Entroly.CSharpAnalyzer/obj",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["entroly"]
+artifacts = [
+    "entroly/roslyn/Entroly.CSharpAnalyzer/*.csproj",
+    "entroly/roslyn/Entroly.CSharpAnalyzer/*.cs",
+]
 
 [tool.ruff]
 target-version = "py310"

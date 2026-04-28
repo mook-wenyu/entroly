@@ -40,6 +40,7 @@ Instead of raw truncation, Entroly provides:
 | **SimHash Dedup** | Catches near-duplicate content in O(1) | 64-bit SimHash fingerprints with 4-band LSH bucketing, Hamming threshold = 3 |
 | **Multi-Probe LSH Index** | Sub-linear semantic recall over 100K+ fragments | 12-table LSH with 10-bit sampling + 3-neighbor multi-probe queries |
 | **Dependency Graph** | Pulls in related code fragments together | Symbol table + auto-linking (imports, type refs, function calls) + two-pass knapsack refinement |
+| **C# Semantic Beliefs** | Extracts Unity/C# symbols with project context | Roslyn `SemanticModel` + Unity `.asmdef` assembly/root namespace/reference/platform metadata and diagnostics |
 | **Predictive Pre-fetch** | Pre-loads context before the agent asks | Static import analysis + test file inference + learned co-access patterns |
 | **Checkpoint & Resume** | Crash recovery for multi-step tasks | Gzipped JSON state serialization (~100 KB per checkpoint) |
 | **Feedback Loop** | Learns which context leads to good outputs | Wilson score lower-bound confidence intervals (same formula as Reddit ranking) |

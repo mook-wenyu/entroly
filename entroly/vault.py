@@ -231,6 +231,9 @@ class VaultManager:
         content = file_path.read_text(encoding="utf-8", errors="replace")
         frontmatter = _parse_frontmatter(content)
         body = _extract_body(content)
+        if frontmatter is not None:
+            frontmatter["sources"] = _extract_frontmatter_list(content, "sources")
+            frontmatter["derived_from"] = _extract_frontmatter_list(content, "derived_from")
 
         return {
             "path": str(file_path),
@@ -484,6 +487,11 @@ def _parse_frontmatter(content: str) -> dict[str, str] | None:
 
 def _extract_sources(content: str) -> list[str]:
     """Extract sources list from frontmatter."""
+    return _extract_frontmatter_list(content, "sources")
+
+
+def _extract_frontmatter_list(content: str, key: str) -> list[str]:
+    """Extract a YAML list field from belief frontmatter."""
     if not content.startswith("---"):
         return []
     end = content.find("---", 3)
@@ -491,20 +499,20 @@ def _extract_sources(content: str) -> list[str]:
         return []
 
     fm_text = content[3:end].strip().splitlines()
-    sources: list[str] = []
-    in_sources = False
+    values: list[str] = []
+    in_target = False
     for line in fm_text:
         stripped = line.strip()
-        if stripped.startswith("sources:"):
-            in_sources = True
+        if stripped.startswith(f"{key}:"):
+            in_target = True
             continue
-        if in_sources:
+        if in_target:
             if stripped.startswith("- "):
-                sources.append(stripped[2:].strip())
+                values.append(stripped[2:].strip())
                 continue
             if stripped and not stripped.startswith("-"):
                 break
-    return sources
+    return values
 
 
 def _extract_body(content: str) -> str:
@@ -515,5 +523,4 @@ def _extract_body(content: str) -> str:
     if end < 0:
         return content
     return content[end + 3:].strip()
-
 

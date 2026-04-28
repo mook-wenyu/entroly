@@ -124,6 +124,8 @@ messages = compress_messages(messages, budget=30000)
 4. **Deliver** — Critical files go in full, supporting files as signatures, everything else as references
 5. **Learn** — PRISM RL tracks what works, gets smarter over time
 
+For C# and Unity projects, belief compilation uses the official Roslyn semantic model through a bundled .NET analyzer. Unity `.asmdef` files define assembly names, root namespaces, assembly references, GUID-based references, platform metadata, version/define metadata, precompiled reference metadata, and diagnostics for metadata Entroly records but does not execute as Unity Editor compiler behavior; Roslyn symbols provide the type and member signatures written into the vault.
+
 Your AI now sees 100% of your codebase. You pay for 5–30% of the tokens.
 
 ---

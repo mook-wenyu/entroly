@@ -30,10 +30,10 @@ from .verification_engine import VerificationEngine
 
 logger = logging.getLogger(__name__)
 
-_SUPPORTED_EXTS = {".py", ".rs", ".js", ".jsx", ".ts", ".tsx"}
+_SUPPORTED_EXTS = {".py", ".rs", ".js", ".jsx", ".ts", ".tsx", ".cs"}
 _SKIP_DIRS = {
     ".git", ".venv", "__pycache__", ".pytest_cache", ".ruff_cache",
-    "node_modules", "target", "dist", "build", ".tmp",
+    "node_modules", "target", "dist", "build", "Library", "Temp", "Logs", "UserSettings", ".tmp",
 }
 
 
@@ -117,7 +117,18 @@ class WorkspaceChangeListener:
         if refresh_targets:
             result.refresh_result = self._change_pipe.refresh_docs(refresh_targets)
 
-        for rel_path in result.changed_files:
+        csharp_paths = [rel_path for rel_path in result.changed_files if rel_path.lower().endswith(".cs")]
+        direct_paths = [rel_path for rel_path in result.changed_files if not rel_path.lower().endswith(".cs")]
+
+        if csharp_paths:
+            try:
+                compile_result = self._compiler.compile_paths(str(self._project_dir), csharp_paths)
+                result.beliefs_written += compile_result.beliefs_written
+                result.errors.extend(compile_result.errors)
+            except Exception as exc:
+                result.errors.append(f"C# semantic sync failed: {exc}")
+
+        for rel_path in direct_paths:
             abs_path = self._project_dir / rel_path
             try:
                 content = abs_path.read_text(encoding="utf-8", errors="replace")
@@ -199,7 +210,8 @@ class WorkspaceChangeListener:
         for path in self._project_dir.rglob("*"):
             if not path.is_file():
                 continue
-            if any(part in _SKIP_DIRS for part in path.parts):
+            rel_parts = path.relative_to(self._project_dir).parts
+            if any(part in _SKIP_DIRS for part in rel_parts):
                 continue
             if path.suffix.lower() not in _SUPPORTED_EXTS:
                 continue

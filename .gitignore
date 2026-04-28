@@ -3,6 +3,8 @@ target/
 dist/
 *.whl
 *.egg-info/
+entroly/roslyn/**/bin/
+entroly/roslyn/**/obj/
 
 # ── Python ───────────────────────────────────────────────────────────
 .venv/

@@ -295,6 +295,25 @@ python -m bench.needle_heatmap --model gpt-4o-mini
 | **4. Deliver** | 3 resolution levels: full → signatures → references | 100% coverage |
 | **5. Learn** | Track which context produced good AI responses | Gets smarter over time |
 
+### C# / Unity semantic ingestion
+
+Entroly's C# belief compiler uses Microsoft.CodeAnalysis.CSharp instead of regex extraction. The bundled analyzer creates a Roslyn `CSharpCompilation`, gets a `SemanticModel` for each syntax tree, and writes symbol-backed types, constructors, methods, properties, constants, return types, and referenced type names into belief artifacts.
+
+Unity projects are grouped by `.asmdef` directory ownership. The analyzer records `name`, `rootNamespace`, `references`, `includePlatforms`, `excludePlatforms`, `defineConstraints`, `versionDefines`, `precompiledReferences`, `overrideReferences`, `noEngineReferences`, `autoReferenced`, `allowUnsafeCode`, and Unity `.meta` GUID mappings, so both direct assembly references and `GUID:...` references resolve to assembly names when the target `.asmdef.meta` is present. Files outside an `.asmdef` use Unity's default `Assembly-CSharp` assembly name.
+
+This path requires a working `dotnet` command and the packaged `entroly/roslyn/Entroly.CSharpAnalyzer` project. `ENTROLY_DOTNET` can point to a specific executable. Analyzer startup failure, non-zero exit, empty output, invalid JSON, or non-`ok` status fails the compile explicitly; Entroly does not switch back to regex C# parsing because that would hide broken project context.
+
+Current boundary: this is Roslyn semantic ingestion with Unity `.asmdef` metadata, not full Unity Editor compiler parity. Entroly records platform metadata, but does not choose a Unity target platform. `allowUnsafeCode=true` is applied to the Roslyn compilation options for that assembly. `defineConstraints`, `versionDefines`, `precompiledReferences`, `overrideReferences`, `noEngineReferences`, and `autoReferenced=false` are recorded and reported through analyzer diagnostics because Entroly does not execute those Unity Editor compiler behaviors. Entroly also does not locate UnityEngine or UnityEditor assemblies from an Editor installation. New `.asmdef` semantics must be added with explicit tests and visible diagnostics before they affect belief output.
+
+Recommended verification for this path:
+
+```powershell
+$py = "C:\Users\WenYu\AppData\Local\Programs\Python\Python313\python.exe"
+dotnet build entroly/roslyn/Entroly.CSharpAnalyzer/Entroly.CSharpAnalyzer.csproj -v:minimal
+& $py -m pytest tests/test_csharp_semantic_compiler.py tests/test_change_listener.py -q --tb=short
+entroly compile . --max-files 0
+```
+
 ---
 
 ## The 3 Pillars of Zero-Token Autonomy
