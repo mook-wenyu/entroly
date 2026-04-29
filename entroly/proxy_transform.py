@@ -509,6 +509,8 @@ def format_context_block(
     *,
     task_type: str = "Unknown",
     vagueness: float = 0.0,
+    coverage_risk: str = "",
+    coverage: float = 1.0,
 ) -> str:
     """Format selected fragments into a context string for injection.
 
@@ -525,7 +527,13 @@ def format_context_block(
     parts.append("")
 
     # Task-aware preamble (conditional — only when signals warrant it)
-    preamble = _build_preamble(task_type, vagueness, len(security_issues))
+    preamble = _build_preamble(
+        task_type,
+        vagueness,
+        len(security_issues),
+        coverage_risk=coverage_risk,
+        coverage=coverage,
+    )
     if preamble:
         parts.append(preamble)
         parts.append("")
