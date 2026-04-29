@@ -226,19 +226,26 @@ This is from this repo's vault, not a roadmap:
 
 ### Accuracy Retention
 
-Compression doesn't hurt accuracy — we measured it (n=100, gpt-4o-mini, Wilson 95% CIs):
+Latest fresh evidence for the upstream-touched benchmarks uses the current default model and provider route (2026-04-29, n=100, gpt-5.5, Wilson 95% CIs):
 
-| Benchmark | Baseline (95% CI) | With Entroly (95% CI) | Retention |
-|---|---|---|---|
-| NeedleInAHaystack | 100% [83.9–100%] | 100% [83.9–100%] | **100.0%** |
-| GSM8K | 85.0% [76.7–90.7%] | 86.0% [77.9–91.5%] | **101.2%** |
-| SQuAD 2.0 | 84.0% [75.6–89.9%] | 83.0% [74.5–89.1%] | **98.8%** |
-| MMLU | 82.0% [73.3–88.3%] | 85.9% [77.8–91.4%] | **104.7%** |
-| TruthfulQA (MC1) | 72.0% [62.5–79.9%] | 73.7% [64.3–81.4%] | **102.4%** |
-| LongBench (HotpotQA) | 57.0% [47.2–66.3%] | 60.4% [50.6–69.4%] | **105.9%** |
-| Berkeley Function Calling | 99.0% [94.5–99.8%] | 100.0% [96.3–100.0%] | **101.0%** |
+| Benchmark | Baseline (95% CI) | With Entroly (95% CI) | Retention | Token Savings |
+|---|---|---|---|---|
+| MMLU | 97.0% [91.6-99.0%] | 98.0% [93.0-99.5%] | **101.0%** | -0.3% |
+| TruthfulQA (MC1) | 91.0% [83.8-95.2%] | 90.0% [82.6-94.5%] | **98.9%** | 1.9% |
+| LongBench (HotpotQA) | 74.0% [64.6-81.6%] | 74.0% [64.6-81.6%] | **100.0%** | 0.0% |
 
-> Confidence intervals overlap on every one of the 7 benchmarks — accuracy is statistically indistinguishable from baseline. LongBench (the only benchmark where context exceeds the budget) shows a 3.6% token saving with a small retention **gain**. Reproduce: `python -m bench.accuracy --benchmark all --model gpt-4o-mini --samples 100`
+> All three confidence intervals overlap, so the fresh run does not show a statistically meaningful accuracy loss. The upstream benchmark values are not used as the fork truth source because the current gpt-5.5 run does not reproduce those point estimates. Full historical suite results and BFCL coverage are in `BENCHMARKS.md`.
+
+Reproduce the current refresh:
+
+```bash
+python -m bench.accuracy --benchmark mmlu --model gpt-5.5 --samples 100 \
+    --base-url https://api.mookbot.com/v1 --api-key-env OPENAI_API_KEY --wire-api responses
+python -m bench.accuracy --benchmark truthfulqa --model gpt-5.5 --samples 100 \
+    --base-url https://api.mookbot.com/v1 --api-key-env OPENAI_API_KEY --wire-api responses
+python -m bench.accuracy --benchmark longbench --model gpt-5.5 --samples 100 \
+    --base-url https://api.mookbot.com/v1 --api-key-env OPENAI_API_KEY --wire-api responses
+```
 
 **Custom OpenAI-compatible providers** (Groq, Together, OpenRouter, Ollama, vLLM, ...):
 

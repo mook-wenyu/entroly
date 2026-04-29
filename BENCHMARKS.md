@@ -91,24 +91,38 @@ All strategies operate on the **same corpus** with the **same token budget**. No
 
 ---
 
-## LLM Accuracy Retention (2026-04-22)
+## LLM Accuracy Retention
 
-> Does Entroly compression degrade LLM answer quality? **No.**
+> Entroly 压缩是否损害回答质量？当前 fresh 证据显示，上游触及的三项基准没有统计意义上的准确率损失。
 
-Model: `gpt-4o-mini` | Budget: 50,000 tokens | Wilson 95% Confidence Intervals
+### Fresh Refresh (2026-04-29)
+
+Model: `gpt-5.5` | Endpoint: `https://api.mookbot.com/v1` Responses API | Budget: 50,000 tokens | Wilson 95% Confidence Intervals
 
 | Benchmark | n | Baseline (95% CI) | Entroly (95% CI) | Retention | Token Savings |
 |---|---|---|---|---|---|
-| **NeedleInAHaystack** | 20 | 100.0% [83.9–100%] | 100.0% [83.9–100%] | **100.0%** | 0.0% |
-| **GSM8K** | 100 | 85.0% [76.7–90.7%] | 86.0% [77.9–91.5%] | **101.2%** | 3.6% |
-| **SQuAD 2.0** | 100 | 84.0% [75.6–89.9%] | 83.0% [74.5–89.1%] | **98.8%** | 0.8% |
-| **MMLU** (4-way MCQ) | 100 | 82.0% [73.3–88.3%] | 85.0% [76.7–90.7%] | **103.7%** | 0.0% |
-| **TruthfulQA** (MC1) | 100 | 72.0% [62.5–79.9%] | 73.0% [63.6–80.7%] | **101.4%** | 0.1% |
-| **LongBench** (HotpotQA) | 100 | 57.0% [47.2–66.3%] | 59.8% [49.8–69.0%] | **104.9%** | 3.6% |
+| **MMLU** (4-way MCQ) | 100 | 97.0% [91.6-99.0%] | 98.0% [93.0-99.5%] | **101.0%** | -0.3% |
+| **TruthfulQA** (MC1) | 100 | 91.0% [83.8-95.2%] | 90.0% [82.6-94.5%] | **98.9%** | 1.9% |
+| **LongBench** (HotpotQA) | 100 | 74.0% [64.6-81.6%] | 74.0% [64.6-81.6%] | **100.0%** | 0.0% |
+
+Evidence artifacts: `.verify-artifacts/upstream-audit/2026-04-29-mmlu-gpt-5.5-responses-v1-http-n100.txt`, `.verify-artifacts/upstream-audit/2026-04-29-truthfulqa-gpt-5.5-responses-v1-http-n100.txt`, `.verify-artifacts/upstream-audit/2026-04-29-longbench-gpt-5.5-responses-v1-http-n100.txt`，三项 exit code 均为 0。
+
+上游 benchmark 数字没有被采纳，因为当前 fork 的默认 `gpt-5.5` provider 路由没有复现那些点估计。
+
+### Historical Other Benchmark Rows (2026-04-22)
+
+Model: `gpt-4o-mini` | Budget: 50,000 tokens | Wilson 95% Confidence Intervals | Rows not refreshed in this run
+
+| Benchmark | n | Baseline (95% CI) | Entroly (95% CI) | Retention | Token Savings |
+|---|---|---|---|---|---|
+| **NeedleInAHaystack** | 20 | 100.0% [83.9-100%] | 100.0% [83.9-100%] | **100.0%** | 0.0% |
+| **GSM8K** | 100 | 85.0% [76.7-90.7%] | 86.0% [77.9-91.5%] | **101.2%** | 3.6% |
+| **SQuAD 2.0** | 100 | 84.0% [75.6-89.9%] | 83.0% [74.5-89.1%] | **98.8%** | 0.8% |
+| **Berkeley Function Calling** | 100 | 99.0% [94.5-99.8%] | 100.0% [96.3-100.0%] | **101.0%** | 0.0% |
 
 ### Benchmark Coverage
 
-The harness now covers 7 public benchmarks across five evaluation axes:
+The harness now covers 8 public benchmarks across six evaluation axes:
 
 | Axis | Benchmark | Tests |
 |---|---|---|
@@ -118,30 +132,35 @@ The harness now covers 7 public benchmarks across five evaluation axes:
 | Reading | SQuAD 2.0 | Short-passage QA |
 | Knowledge | MMLU | 57-subject 4-way MCQ |
 | Truthfulness | TruthfulQA MC1 | Resistance to common misconceptions |
-| Long context | LongBench HotpotQA | Multi-hop QA over 10K–60K-token docs |
+| Long context | LongBench HotpotQA | Multi-hop QA over 10K-60K-token docs |
+| Tool use | Berkeley Function Calling | Exact function-name selection from per-sample tool schemas |
 
-> **BFCL (Berkeley Function Calling)** is intentionally omitted — requires function-calling scaffolding with per-sample tool schemas and AST validation, and BFCL prompts are short enough that the compression selector passes through unchanged. Poor signal-to-noise fit for an accuracy-retention benchmark.
+> **BFCL (Berkeley Function Calling)** is now part of the public harness. The loader uses the official Gorilla BFCL JSONL data, adds realistic distractor tool schemas, and requires exact function-name matching so the metric cannot pass on a loose substring.
 
 ### Interpretation
 
-- **All 6 CIs overlap baseline** — accuracy is statistically indistinguishable from raw context on every benchmark. The point estimates lean slightly positive (average retention 101.7%), but within noise.
-- **LongBench is the only benchmark where compression actually fires** — avg baseline context is 12,885 tokens vs. 12,423 after Entroly (3.6% saving), and retention lands at **104.9%** despite the context cut. The selector is correctly keeping the passages that contain the answer.
-- MMLU, TruthfulQA, GSM8K, and SQuAD have short system contexts that fit within the 50K budget — Entroly correctly passes through (no artificial noise injection). These serve as **regression guards** against the selector corrupting short-context prompts.
-- Needle contexts (4K–32K tokens) also fit within the 50K budget, so compression is not triggered there.
-- Real token savings appear on codebases with 100K+ token contexts (typical: 70–95% savings).
+- Fresh `gpt-5.5` 三项基准的置信区间均与 baseline 重叠，没有统计意义上的准确率损失。
+- Fresh LongBench 当前 HotpotQA 样本在 50K budget 内几乎不触发压缩：baseline 平均 13,316.4 tokens，Entroly 平均 13,313.4 tokens，节省四舍五入为 0.0%。
+- MMLU 和 TruthfulQA 是短上下文 regression guard，主要证明 selector 不会破坏已经符合预算的 prompt。
+- 历史 `gpt-4o-mini` 表仅保留本轮未刷新的其它基准行；上游触及的三项只保留 fresh `gpt-5.5` 真源。
+- 真实代码库 100K+ token context 才会体现主要 token savings，常见范围为 70-95%。
 
 ### Reproduce
 
 ```bash
 export OPENAI_API_KEY=...
 
-# Run everything (7 benchmarks, ~5–10 min on gpt-4o-mini at n=100)
-python -m bench.accuracy --benchmark all --model gpt-4o-mini --samples 100
+# Current gpt-5.5 Responses refresh
+python -m bench.accuracy --benchmark mmlu --model gpt-5.5 --samples 100 \
+    --base-url https://api.mookbot.com/v1 --api-key-env OPENAI_API_KEY --wire-api responses
+python -m bench.accuracy --benchmark truthfulqa --model gpt-5.5 --samples 100 \
+    --base-url https://api.mookbot.com/v1 --api-key-env OPENAI_API_KEY --wire-api responses
+python -m bench.accuracy --benchmark longbench --model gpt-5.5 --samples 100 \
+    --base-url https://api.mookbot.com/v1 --api-key-env OPENAI_API_KEY --wire-api responses
 
-# Run one at a time
-python -m bench.accuracy --benchmark mmlu       --samples 100
-python -m bench.accuracy --benchmark truthfulqa --samples 100
-python -m bench.accuracy --benchmark longbench  --samples 100
+# Historical full harness, 8 benchmark loaders
+python -m bench.accuracy --benchmark all --model gpt-5.5 --samples 100 \
+    --base-url https://api.mookbot.com/v1 --api-key-env OPENAI_API_KEY --wire-api responses
 ```
 
-Engine version: `entroly-core v0.9.0` (BM25+GGCR retrieval, IOS selection, hierarchical Bayesian prior)
+Engine version: `entroly-core v0.10.0` (BM25+GGCR retrieval, IOS selection, hierarchical Bayesian prior)

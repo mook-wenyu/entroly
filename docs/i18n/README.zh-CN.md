@@ -194,19 +194,26 @@ LLM响应包含约40%的填充内容——"当然！我很乐意帮忙！"、含
 
 ### 准确率保持
 
-压缩不影响准确率——我们测量过（n=100, gpt-4o-mini, Wilson 95% CI）：
+最新 fresh 证据使用当前默认模型和 provider 路由（2026-04-29，n=100，gpt-5.5，Wilson 95% CI）：
 
-| 基准测试 | 基线 (95% CI) | 使用Entroly (95% CI) | 保持率 |
-|---|---|---|---|
-| NeedleInAHaystack | 100% [83.9–100%] | 100% [83.9–100%] | **100.0%** |
-| GSM8K | 85.0% [76.7–90.7%] | 86.0% [77.9–91.5%] | **101.2%** |
-| SQuAD 2.0 | 84.0% [75.6–89.9%] | 83.0% [74.5–89.1%] | **98.8%** |
-| MMLU | 82.0% [73.3–88.3%] | 85.0% [76.7–90.7%] | **103.7%** |
-| TruthfulQA (MC1) | 72.0% [62.5–79.9%] | 73.0% [63.6–80.7%] | **101.4%** |
-| LongBench (HotpotQA) | 57.0% [47.2–66.3%] | 59.8% [49.8–69.0%] | **104.9%** |
-| Berkeley Function Calling | 99.0% [94.5–99.8%] | 100.0% [96.3–100.0%] | **101.0%** |
+| 基准测试 | 基线 (95% CI) | 使用 Entroly (95% CI) | 保持率 | Token 节省 |
+|---|---|---|---|---|
+| MMLU | 97.0% [91.6-99.0%] | 98.0% [93.0-99.5%] | **101.0%** | -0.3% |
+| TruthfulQA (MC1) | 91.0% [83.8-95.2%] | 90.0% [82.6-94.5%] | **98.9%** | 1.9% |
+| LongBench (HotpotQA) | 74.0% [64.6-81.6%] | 74.0% [64.6-81.6%] | **100.0%** | 0.0% |
 
-> 7项基准测试的置信区间全部重叠——准确率与基线在统计学上无法区分。LongBench（唯一上下文超出预算的基准）在节省3.6%token的同时，保持率反而**提升**。复现：`python -m bench.accuracy --benchmark all --model gpt-4o-mini --samples 100`
+> 三项基准的置信区间全部重叠，fresh run 没有显示统计意义上的准确率损失。上游 benchmark 数字来自 README 文档提交，当前 fork 的 gpt-5.5 fresh run 没有复现那些点估计，因此不把上游数字作为当前真源。完整历史套件结果和 BFCL 覆盖见 `BENCHMARKS.md`。
+
+复现当前 refresh：
+
+```bash
+python -m bench.accuracy --benchmark mmlu --model gpt-5.5 --samples 100 \
+    --base-url https://api.mookbot.com/v1 --api-key-env OPENAI_API_KEY --wire-api responses
+python -m bench.accuracy --benchmark truthfulqa --model gpt-5.5 --samples 100 \
+    --base-url https://api.mookbot.com/v1 --api-key-env OPENAI_API_KEY --wire-api responses
+python -m bench.accuracy --benchmark longbench --model gpt-5.5 --samples 100 \
+    --base-url https://api.mookbot.com/v1 --api-key-env OPENAI_API_KEY --wire-api responses
+```
 
 ### CI/CD集成
 

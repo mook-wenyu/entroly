@@ -24,8 +24,8 @@ The key metric is ACCURACY RETENTION:
 
 Usage:
     python -m bench.accuracy --benchmark needle --model claude-sonnet-4-5-20250929
-    python -m bench.accuracy --benchmark all --model gpt-4o
-    python -m bench.accuracy --benchmark all --model gemini-2.0-flash
+    python -m bench.accuracy --benchmark all --model gpt-5.5
+    python -m bench.accuracy --benchmark mmlu --model gpt-5.5 --wire-api responses
     python -m bench.accuracy --benchmark humaneval --samples 50
 
 Requires: ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY set in environment.
@@ -40,6 +40,8 @@ import random
 import re
 import sys
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -136,9 +138,141 @@ class RetentionReport:
     cost_savings_pct: float
 
 
+class BenchmarkExecutionError(RuntimeError):
+    """Benchmark evidence is invalid because one or more samples failed."""
+
 BENCHMARKS = ("needle", "gsm8k", "humaneval", "squad", "mmlu", "truthfulqa", "longbench", "bfcl")
 BENCHMARK_CHOICES_HELP = ", ".join((*BENCHMARKS, "all"))
+BENCHMARK_USER_AGENT = "python-urllib/3 entroly-benchmark/0.10"
+WIRE_API_CHOICES = ("chat", "responses")
 
+
+def _messages_to_responses_payload(messages: list[dict]) -> tuple[str | None, str]:
+    """把 benchmark 的 chat messages 转成 Responses API 的 instructions/input。"""
+    instructions: list[str] = []
+    inputs: list[str] = []
+
+    for message in messages:
+        role = message.get("role")
+        content = message.get("content", "")
+        if not isinstance(content, str):
+            raise ValueError("benchmark messages must contain string content")
+        if role == "system":
+            instructions.append(content)
+        elif role == "user":
+            inputs.append(content)
+        else:
+            raise ValueError(f"unsupported Responses benchmark message role: {role!r}")
+
+    if not inputs:
+        raise ValueError("Responses benchmark input cannot be empty")
+    return ("\n\n".join(instructions) or None), "\n\n".join(inputs)
+
+
+def _mapping_get(value: Any, key: str, default: Any = None) -> Any:
+    if isinstance(value, dict):
+        return value.get(key, default)
+    return getattr(value, key, default)
+
+
+def _extract_responses_text(response: Any) -> str:
+    """从 Responses 返回对象或 JSON dict 中提取文本。"""
+    output_text = _mapping_get(response, "output_text")
+    if isinstance(output_text, str) and output_text:
+        return output_text
+
+    parts: list[str] = []
+    for item in _mapping_get(response, "output", []) or []:
+        for block in _mapping_get(item, "content", []) or []:
+            text = _mapping_get(block, "text")
+            if isinstance(text, str):
+                parts.append(text)
+    if parts:
+        return "\n".join(parts)
+    raise ValueError("Responses API response does not contain output text")
+
+
+def _responses_token_count(response: Any) -> int:
+    usage = _mapping_get(response, "usage")
+    if usage is None:
+        return 0
+    total_tokens = _mapping_get(usage, "total_tokens")
+    return total_tokens if isinstance(total_tokens, int) else 0
+
+
+def _responses_url(base_url: str) -> str:
+    return f"{base_url.rstrip('/')}/responses"
+
+
+def _call_responses_http(
+    messages: list[dict],
+    model: str,
+    max_tokens: int,
+    base_url: str,
+    api_key: str,
+) -> tuple[str, int]:
+    """用显式 HTTP 调用 Responses API，避免兼容代理被 SDK 默认头影响。"""
+    instructions, input_text = _messages_to_responses_payload(messages)
+    payload = {
+        "model": model,
+        "input": input_text,
+        "max_output_tokens": max_tokens,
+    }
+    if instructions is not None:
+        payload["instructions"] = instructions
+
+    body = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        _responses_url(base_url),
+        data=body,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "User-Agent": BENCHMARK_USER_AGENT,
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            response_payload = json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        error_body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Responses HTTP {exc.code}: {error_body}") from exc
+
+    return _extract_responses_text(response_payload), _responses_token_count(response_payload)
+
+
+def _call_openai_compatible(
+    client: Any,
+    messages: list[dict],
+    model: str,
+    max_tokens: int,
+    wire_api: str,
+) -> tuple[str, int]:
+    """按指定 wire API 调用 OpenAI SDK 兼容客户端。"""
+    if wire_api == "responses":
+        instructions, input_text = _messages_to_responses_payload(messages)
+        response = client.responses.create(
+            model=model,
+            max_output_tokens=max_tokens,
+            input=input_text,
+            instructions=instructions,
+        )
+        text = _extract_responses_text(response)
+        usage = getattr(response, "usage", None)
+        return text, usage.total_tokens if usage else 0
+
+    if wire_api == "chat":
+        response = client.chat.completions.create(
+            model=model,
+            max_tokens=max_tokens,
+            messages=messages,
+        )
+        text = response.choices[0].message.content or ""
+        return text, response.usage.total_tokens if response.usage else 0
+
+    raise ValueError(f"unsupported wire_api: {wire_api!r}")
 
 # ── LLM Client ────────────────────────────────────────────────────────
 
@@ -149,6 +283,7 @@ def _call_llm(
     max_tokens: int = 1024,
     base_url: str | None = None,
     api_key_env: str | None = None,
+    wire_api: str = "chat",
 ) -> tuple[str, int, float]:
     """Call LLM API. Returns (response_text, token_count, latency_ms).
 
@@ -172,7 +307,7 @@ def _call_llm(
     retrying transparently is strictly better data quality.
     """
     return _call_llm_with_retry(
-        messages, model, max_tokens, base_url, api_key_env, max_retries=3
+        messages, model, max_tokens, base_url, api_key_env, wire_api, max_retries=3
     )
 
 
@@ -212,6 +347,7 @@ def _call_llm_with_retry(
     max_tokens: int,
     base_url: str | None,
     api_key_env: str | None,
+    wire_api: str,
     max_retries: int,
 ) -> tuple[str, int, float]:
     """Inner retry loop. Exponential backoff: 1s, 2s, 4s, … capped at 30s."""
@@ -219,7 +355,7 @@ def _call_llm_with_retry(
     for attempt in range(max_retries + 1):
         try:
             return _call_llm_once(
-                messages, model, max_tokens, base_url, api_key_env,
+                messages, model, max_tokens, base_url, api_key_env, wire_api,
             )
         except Exception as e:
             last_exc = e
@@ -242,12 +378,12 @@ def _call_llm_once(
     max_tokens: int,
     base_url: str | None,
     api_key_env: str | None,
+    wire_api: str,
 ) -> tuple[str, int, float]:
     """Single LLM call attempt — provider routing only, no retry logic."""
     t0 = time.perf_counter()
 
     if base_url:
-        import openai
         if api_key_env is None:
             api_key = "no-auth"
         else:
@@ -258,12 +394,12 @@ def _call_llm_once(
                     f"not exported. Set it (e.g. `export {api_key_env}=...`), or omit "
                     f"the flag for self-hosted endpoints that ignore auth."
                 )
-        client = openai.OpenAI(api_key=api_key, base_url=base_url)
-        resp = client.chat.completions.create(
-            model=model, max_tokens=max_tokens, messages=messages,
-        )
-        text = resp.choices[0].message.content or ""
-        tokens = resp.usage.total_tokens if resp.usage else 0
+        if wire_api == "responses":
+            text, tokens = _call_responses_http(messages, model, max_tokens, base_url, api_key)
+        else:
+            import openai
+            client = openai.OpenAI(api_key=api_key, base_url=base_url)
+            text, tokens = _call_openai_compatible(client, messages, model, max_tokens, wire_api)
     elif model.startswith("claude"):
         import anthropic
         client = anthropic.Anthropic()
@@ -300,13 +436,7 @@ def _call_llm_once(
     else:
         import openai
         client = openai.OpenAI()
-        resp = client.chat.completions.create(
-            model=model,
-            max_tokens=max_tokens,
-            messages=messages,
-        )
-        text = resp.choices[0].message.content or ""
-        tokens = resp.usage.total_tokens if resp.usage else 0
+        text, tokens = _call_openai_compatible(client, messages, model, max_tokens, wire_api)
 
     latency = (time.perf_counter() - t0) * 1000
     return text, tokens, latency
@@ -781,8 +911,9 @@ def _fetch_hf_rows(dataset: str, config: str, split: str, limit: int) -> list[di
             "length": batch,
         })
         url = f"https://datasets-server.huggingface.co/rows?{qs}"
-        resp = urllib.request.urlopen(url, timeout=30)
-        payload = json.loads(resp.read())
+        request = urllib.request.Request(url, headers={"User-Agent": BENCHMARK_USER_AGENT})
+        with urllib.request.urlopen(request, timeout=60) as response:
+            payload = json.loads(response.read())
         new_rows = payload.get("rows", [])
         if not new_rows:
             break
@@ -1135,12 +1266,13 @@ def _benchmark_loaders(model: str, samples: int) -> dict[str, Any]:
 
 def run_benchmark(
     benchmark: str,
-    model: str = "gpt-4o-mini",
+    model: str = "gpt-5.5",
     samples: int = 50,
     budget: int = 50_000,
     base_url: str | None = None,
     api_key_env: str | None = None,
     mode: str = "entroly",
+    wire_api: str = "chat",
 ) -> RetentionReport:
     """Run a benchmark, comparing baseline vs Entroly-compressed.
 
@@ -1169,14 +1301,14 @@ def run_benchmark(
     # Run baseline
     print("\n  [1/2] Running baseline (no compression)...")
     baseline = _run_mode(items, benchmark, model, "baseline", budget=None,
-                         base_url=base_url, api_key_env=api_key_env)
+                         base_url=base_url, api_key_env=api_key_env, wire_api=wire_api)
 
     # Run with the selected compression mode (entroly / llmlingua / hybrid).
     # The RetentionReport name is preserved for backwards compatibility,
     # but the .entroly field now actually holds whichever mode ran.
     print(f"  [2/2] Running with {mode} compression (budget={budget})...")
     treatment = _run_mode(items, benchmark, model, mode, budget=budget,
-                         base_url=base_url, api_key_env=api_key_env)
+                         base_url=base_url, api_key_env=api_key_env, wire_api=wire_api)
 
     retention = treatment.accuracy / max(baseline.accuracy, 1e-9)
     token_savings = 1.0 - (treatment.avg_tokens / max(baseline.avg_tokens, 1))
@@ -1195,11 +1327,12 @@ def run_benchmark(
 def run_pareto_sweep(
     benchmark: str,
     samples: int = 100,
-    model: str = "gpt-4o-mini",
+    model: str = "gpt-5.5",
     modes: tuple[str, ...] = ("entroly", "head", "tail", "random", "llmlingua", "hybrid"),
     budget_fractions: tuple[float, ...] = (0.05, 0.10, 0.20, 0.30, 0.50),
     base_url: str | None = None,
     api_key_env: str | None = None,
+    wire_api: str = "chat",
 ) -> dict[str, Any]:
     """Run the budget × mode Pareto sweep with AUC summary.
 
@@ -1268,7 +1401,7 @@ def run_pareto_sweep(
 
     print("  [baseline] full context, no compression…")
     baseline = _run_mode(items, benchmark, model, "baseline", budget=None,
-                        base_url=base_url, api_key_env=api_key_env)
+                        base_url=base_url, api_key_env=api_key_env, wire_api=wire_api)
 
     out: dict[str, Any] = {
         "benchmark": benchmark,
@@ -1297,7 +1430,7 @@ def run_pareto_sweep(
             tok_budget = max(budget_floor, int(median_ctx_tokens * frac))
             print(f"    budget = {frac*100:.0f}% (~{tok_budget} tokens)")
             r = _run_mode(items, benchmark, model, mode, budget=tok_budget,
-                         base_url=base_url, api_key_env=api_key_env)
+                         base_url=base_url, api_key_env=api_key_env, wire_api=wire_api)
             points.append({
                 "budget_frac": frac,
                 "budget_tokens": tok_budget,
@@ -1352,6 +1485,7 @@ def _run_mode(
     budget: int | None,
     base_url: str | None = None,
     api_key_env: str | None = None,
+    wire_api: str = "chat",
 ) -> BenchmarkResult:
     """Run all items in a given mode."""
     correct = 0
@@ -1377,7 +1511,7 @@ def _run_mode(
 
         try:
             response, tokens, latency = _call_llm(
-                messages, model, base_url=base_url, api_key_env=api_key_env,
+                messages, model, base_url=base_url, api_key_env=api_key_env, wire_api=wire_api,
             )
             is_correct = _check_answer(response, item["expected"], benchmark, item.get("metadata"))
             if is_correct:
@@ -1413,7 +1547,15 @@ def _run_mode(
             print(f"    [{i+1}/{len(items)}] accuracy={pct:.0f}%")
 
     n = len(items)
-    valid = max(n - errors, 1)
+    if errors:
+        summary = "; ".join(
+            f"{count}x {label}" for label, count in sorted(error_classes.items())
+        )
+        raise BenchmarkExecutionError(
+            f"{benchmark}/{mode} failed for {errors}/{n} samples: {summary}"
+        )
+
+    valid = n
     ci_lo, ci_hi = _wilson_ci(correct, valid)
     return BenchmarkResult(
         benchmark=benchmark,
@@ -1453,10 +1595,10 @@ Benchmarks:
   all         Run all benchmarks
 
 Examples:
-  python -m bench.accuracy --benchmark needle --model gemini-2.0-flash --samples 20
+  python -m bench.accuracy --benchmark needle --model gpt-5.5 --samples 20
   python -m bench.accuracy --benchmark gsm8k --model claude-sonnet-4-5-20250929
-  python -m bench.accuracy --benchmark longbench --model gpt-4o-mini --samples 100
-  python -m bench.accuracy --benchmark all --model gpt-4o-mini
+  python -m bench.accuracy --benchmark longbench --model gpt-5.5 --samples 100
+  python -m bench.accuracy --benchmark all --model gpt-5.5
 
 Custom OpenAI-compatible providers (Groq, Together, OpenRouter, Ollama, vLLM, ...):
   python -m bench.accuracy --benchmark gsm8k --model llama-3.1-70b-versatile \\
@@ -1464,6 +1606,10 @@ Custom OpenAI-compatible providers (Groq, Together, OpenRouter, Ollama, vLLM, ..
 
   python -m bench.accuracy --benchmark mmlu --model llama3.1:8b \\
       --base-url http://localhost:11434/v1                  # Ollama local (no auth)
+
+Responses API providers:
+  python -m bench.accuracy --benchmark mmlu --model gpt-5.5 \\
+      --base-url https://api.mookbot.com/v1 --api-key-env OPENAI_API_KEY --wire-api responses
 """,
     )
     parser.add_argument(
@@ -1471,8 +1617,8 @@ Custom OpenAI-compatible providers (Groq, Together, OpenRouter, Ollama, vLLM, ..
         help=f"Benchmark to run ({BENCHMARK_CHOICES_HELP})",
     )
     parser.add_argument(
-        "--model", "-m", type=str, default="gpt-4o-mini",
-        help="LLM model to use (default: gpt-4o-mini)",
+        "--model", "-m", type=str, default="gpt-5.5",
+        help="LLM model to use (default: gpt-5.5)",
     )
     parser.add_argument(
         "--samples", "-n", type=int, default=200,
@@ -1492,6 +1638,11 @@ Custom OpenAI-compatible providers (Groq, Together, OpenRouter, Ollama, vLLM, ..
         "--api-key-env", type=str, default=None,
         help="Name of the env var holding the API key for --base-url (default: OPENAI_API_KEY). "
              "Use any var with empty/dummy value for self-hosted endpoints that ignore auth.",
+    )
+    parser.add_argument(
+        "--wire-api", type=str, default="chat", choices=WIRE_API_CHOICES,
+        help="Wire API for OpenAI-compatible endpoints (default: chat). Use responses for providers "
+             "that expose the OpenAI Responses API instead of Chat Completions.",
     )
     parser.add_argument(
         "--json", action="store_true",
@@ -1531,6 +1682,7 @@ Custom OpenAI-compatible providers (Groq, Together, OpenRouter, Ollama, vLLM, ..
     if args.pareto:
         budget_fractions = tuple(float(f) for f in args.budget_fractions.split(","))
         sweep_reports: list[dict[str, Any]] = []
+        had_errors = False
         for bench in benchmarks:
             try:
                 report = run_pareto_sweep(
@@ -1538,9 +1690,11 @@ Custom OpenAI-compatible providers (Groq, Together, OpenRouter, Ollama, vLLM, ..
                     modes=("entroly", "head", "tail", "random", "llmlingua", "hybrid"),
                     budget_fractions=budget_fractions,
                     base_url=args.base_url, api_key_env=args.api_key_env,
+                    wire_api=args.wire_api,
                 )
                 sweep_reports.append(report)
             except Exception as e:
+                had_errors = True
                 print(f"\n  ERROR: {bench} pareto sweep failed: {e}")
                 continue
 
@@ -1574,18 +1728,22 @@ Custom OpenAI-compatible providers (Groq, Together, OpenRouter, Ollama, vLLM, ..
 
         if args.json:
             print(json.dumps(sweep_reports, indent=2, default=str))
+        if had_errors:
+            sys.exit(1)
         return
 
     all_reports = []
+    had_errors = False
     for bench in benchmarks:
         try:
             report = run_benchmark(
                 bench, args.model, args.samples, args.budget,
                 base_url=args.base_url, api_key_env=args.api_key_env,
-                mode=args.mode,
+                mode=args.mode, wire_api=args.wire_api,
             )
             all_reports.append(report)
         except Exception as e:
+            had_errors = True
             print(f"\n  ERROR: {bench} failed: {e}")
             continue
 
@@ -1631,6 +1789,9 @@ Custom OpenAI-compatible providers (Groq, Together, OpenRouter, Ollama, vLLM, ..
             print(f"  {'AVERAGE':<12} {'':>24} {'':>24} {avg_retention:>9.1%} {avg_savings:>10.1f}%")
         print("=" * 88)
         print()
+
+    if had_errors:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

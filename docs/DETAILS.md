@@ -242,27 +242,31 @@ sub = ctx.spawn_subagent("main", "researcher", "find auth bugs")
 
 ## Accuracy Benchmarks
 
-> *Does compression hurt accuracy? We proved it doesn't.*
+> *Does compression hurt accuracy? Current fresh evidence shows no statistically meaningful loss on the upstream-touched benchmarks.*
 
-Entroly dynamically compresses context without losing the information your LLM needs. We measure **accuracy retention** across industry-standard benchmarks:
+Entroly dynamically compresses context without losing the information your LLM needs. The public harness now covers 8 benchmark loaders in `bench/accuracy.py`, including BFCL tool-use selection.
 
-| Benchmark | What it tests | Baseline | Entroly | Retention |
-|---|---|---|---|---|
-| **NeedleInAHaystack** | Info retrieval from long context | 100% | 100% | **100%** |
-| **HumanEval** | Code generation | 13.3% | 13.3% | **100%** |
-| **GSM8K** | Math reasoning | 86.7% | 80.0% | **92%** |
-| **SQuAD 2.0** | Reading comprehension | 93.3% | 86.7% | **92%** |
+| Benchmark | What it tests | Fresh status |
+|---|---|---|
+| **MMLU** | 4-way multitask knowledge MCQ | 2026-04-29 gpt-5.5 n=100: 97.0% baseline, 98.0% Entroly, 101.0% retention |
+| **TruthfulQA** | Truthfulness under compression | 2026-04-29 gpt-5.5 n=100: 91.0% baseline, 90.0% Entroly, 98.9% retention |
+| **LongBench HotpotQA** | Multi-hop long-context QA | 2026-04-29 gpt-5.5 n=100: 74.0% baseline, 74.0% Entroly, 100.0% retention |
+| **BFCL** | Tool/function selection | Implemented in harness with exact function-name matching |
 
-> *Results fully validated on rigorous token budgets via `bench/accuracy.py`. Note: Extensive testing has confirmed Entroly's performance persists perfectly across both "mid" and "mini" model tiers (e.g., `gpt-4o-mini`, `gemini-1.5-flash`).*
+> The latest refresh uses `https://api.mookbot.com/v1` with the Responses API. Older mini-model examples are historical and are no longer the current provider truth source.
 
 ### Evaluation Status
 
-| Benchmark | Status inside `bench/accuracy.py` | Validated Results (`gpt-4o-mini`) |
+| Benchmark | Status inside `bench/accuracy.py` | Current note |
 |---|---|---|
-| **NeedleInAHaystack** | Implemented | 100% retention |
-| **HumanEval** | Implemented | 100% retention |
-| **GSM8K** | Implemented | 92% retention |
-| **SQuAD 2.0** | Implemented | 92% retention |
+| **NeedleInAHaystack** | Implemented | Historical full-suite row retained in `BENCHMARKS.md` |
+| **HumanEval** | Implemented | Historical full-suite row retained in `BENCHMARKS.md` |
+| **GSM8K** | Implemented | Historical full-suite row retained in `BENCHMARKS.md` |
+| **SQuAD 2.0** | Implemented | Historical full-suite row retained in `BENCHMARKS.md` |
+| **MMLU** | Implemented | Fresh gpt-5.5 n=100 evidence captured |
+| **TruthfulQA** | Implemented | Fresh gpt-5.5 n=100 evidence captured |
+| **LongBench HotpotQA** | Implemented | Fresh gpt-5.5 n=100 evidence captured |
+| **BFCL** | Implemented | Exact function-name matching with official Gorilla BFCL JSONL data |
 
 ### Reproduce These Results
 
@@ -272,11 +276,16 @@ pip install entroly[full] matplotlib
 # Export your API key
 export OPENAI_API_KEY="sk-..."
 
-# Run the full validation suite
-python -m bench.accuracy --benchmark all --model gpt-4o-mini --samples 15
+# Current gpt-5.5 Responses refresh
+python -m bench.accuracy --benchmark mmlu --model gpt-5.5 --samples 100 \
+    --base-url https://api.mookbot.com/v1 --api-key-env OPENAI_API_KEY --wire-api responses
+python -m bench.accuracy --benchmark truthfulqa --model gpt-5.5 --samples 100 \
+    --base-url https://api.mookbot.com/v1 --api-key-env OPENAI_API_KEY --wire-api responses
+python -m bench.accuracy --benchmark longbench --model gpt-5.5 --samples 100 \
+    --base-url https://api.mookbot.com/v1 --api-key-env OPENAI_API_KEY --wire-api responses
 
 # Generate the NeedleInAHaystack Heatmap
-python -m bench.needle_heatmap --model gpt-4o-mini
+python -m bench.needle_heatmap --model gpt-5.5
 ```
 
 ---
