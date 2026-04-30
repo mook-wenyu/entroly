@@ -372,10 +372,10 @@ class FederationClient:
       3. Importing and merging global contributions
       4. Confidence-weighted blending of global vs local weights
 
-    Federation is OFF by default. Enable via:
-      - FederationClient(enabled=True)
-      - ENTROLY_FEDERATION=1 env var
-      - entroly config set federation.enabled true
+    Federation is ON by default. Disable via:
+      - FederationClient(enabled=False)
+      - ENTROLY_FEDERATION=0 env var
+      - entroly config set federation.enabled false
     """
 
     def __init__(
@@ -391,7 +391,7 @@ class FederationClient:
 
         # Check env var for enable
         if enabled is None:
-            enabled = os.environ.get("ENTROLY_FEDERATION", "0") == "1"
+            enabled = os.environ.get("ENTROLY_FEDERATION", "1") == "1"
         self._enabled = enabled
 
         # DP mechanism

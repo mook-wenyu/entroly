@@ -26,6 +26,7 @@ Run:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import gc
 import json
 import logging
@@ -342,6 +343,62 @@ logging.basicConfig(
     stream=sys.stderr,
 )
 logger = logging.getLogger("entroly")
+
+
+@dataclass
+class RuntimeLearningServices:
+    """Runtime-owned learning services attached to an EntrolyEngine."""
+
+    feedback_journal: FeedbackJournal
+    evolution_logger: EvolutionLogger
+    evolution_daemon: EvolutionDaemon
+
+    def record_activity(self) -> None:
+        self.evolution_daemon.record_activity()
+
+    def stop(self) -> None:
+        self.evolution_daemon.stop()
+
+
+def start_runtime_learning_services(
+    engine: Any,
+    *,
+    project_root: str | Path | None = None,
+    checkpoint_dir: str | Path | None = None,
+    vault_path: str | Path | None = None,
+) -> RuntimeLearningServices:
+    """Start feedback, evolution, dreaming, and federation services for an engine."""
+    existing = getattr(engine, "_runtime_learning_services", None)
+    if existing is not None:
+        return existing
+
+    root = Path(project_root or os.environ.get("ENTROLY_SOURCE", os.getcwd()))
+    checkpoint_base = Path(checkpoint_dir or os.environ.get("ENTROLY_DIR", root / ".entroly"))
+    vault_base = Path(vault_path or os.environ.get("ENTROLY_VAULT", checkpoint_base / "vault"))
+
+    feedback_journal = FeedbackJournal(str(checkpoint_base))
+    if hasattr(engine, "set_journal_callback"):
+        engine.set_journal_callback(feedback_journal.log)
+
+    vault = VaultManager(VaultConfig(base_path=str(vault_base)))
+    evolution_logger = EvolutionLogger(vault_path=str(vault_base), gap_threshold=3)
+    daemon = EvolutionDaemon(
+        vault=vault,
+        evolution_logger=evolution_logger,
+        value_tracker=get_tracker(),
+        feedback_journal=feedback_journal,
+        rust_engine=engine._rust if getattr(engine, "_use_rust", False) else None,
+        project_root=str(root),
+        data_dir=str(checkpoint_base),
+    )
+    services = RuntimeLearningServices(
+        feedback_journal=feedback_journal,
+        evolution_logger=evolution_logger,
+        evolution_daemon=daemon,
+    )
+    daemon.start()
+    engine._runtime_learning_services = services
+    return services
 
 
 class _WilsonFeedbackTracker:
@@ -1591,16 +1648,13 @@ def create_mcp_server():
 
     # Cross-session feedback journal + task-conditioned profiles
     _checkpoint_dir = os.environ.get("ENTROLY_DIR", os.path.join(os.getcwd(), ".entroly"))
-    _feedback_journal = FeedbackJournal(_checkpoint_dir)
+    _runtime_services = start_runtime_learning_services(engine, checkpoint_dir=_checkpoint_dir)
+    _feedback_journal = _runtime_services.feedback_journal
     _task_profiles = TaskProfileOptimizer(_feedback_journal)
     _task_profiles.optimize_all()  # warm from existing journal
     _last_opt_ctx = {}  # tracks last optimization for feedback attribution
     _vault_beliefs_loaded = False  # lazy: load vault beliefs on first optimize
-
-    # P2.2: Wire implicit-reward → FeedbackJournal so TaskProfileOptimizer
-    # and DreamingLoop get signal from every optimize_context() call,
-    # not just rare explicit record_outcome MCP calls.
-    engine.set_journal_callback(_feedback_journal.log)
+    _value_tracker = get_tracker()
 
     @mcp.tool()
     def remember_fragment(
@@ -2586,24 +2640,13 @@ def create_mcp_server():
         source_dir=_source_dir,
     )
 
-    # ── Evolution Daemon: autonomous self-improvement (3 pillars) ──
-    # Pillar 1: ValueTracker funds evolution via "tax on savings"
-    # Pillar 2: StructuralSynthesizer creates tools at $0 (CPU-only)
-    # Pillar 3: DreamingLoop optimizes weights during idle time
-    _value_tracker = get_tracker()
     _cache_aligner = CacheAligner(similarity_threshold=0.90)
 
     # Universal self-improvement bus — every component logs metrics here
     _component_bus = ComponentFeedbackBus(_checkpoint_dir)
 
-    _evolution_daemon = EvolutionDaemon(
-        vault=_vault_mgr,
-        evolution_logger=_py_evolution,
-        value_tracker=_value_tracker,
-        feedback_journal=_feedback_journal,
-        rust_engine=engine._rust if engine._use_rust else None,
-    )
-    _evolution_daemon.start()  # non-blocking background thread
+    runtime_services = getattr(engine, "_runtime_learning_services")
+    _evolution_daemon = runtime_services.evolution_daemon
     logger.info("EvolutionDaemon: autonomous self-improvement started")
 
     # ── Wire reward-driven crystallization ───────────────────────────

@@ -446,8 +446,8 @@ After:  "The issue is in the auth module — specifically the token validation l
 **Safety guarantee:** Code blocks, JSON, YAML, XML — never modified. The distiller only touches prose.
 
 ```bash
-export ENTROLY_DISTILL=1           # Turn it on
-export ENTROLY_DISTILL_MODE=full   # lite | full | ultra
+export ENTROLY_DISTILL=1           # Default; set 0 to disable
+export ENTROLY_DISTILL_MODE=ultra  # lite | full | ultra
 ```
 
 Works in real-time on streaming responses. <1ms overhead per chunk.
@@ -832,7 +832,7 @@ entroly proxy --port 9378
 
 | Variable | Default | What it does |
 |---|---|---|
-| `ENTROLY_QUALITY` | `0.5` | Quality dial (0.0-1.0 or preset) |
+| `ENTROLY_QUALITY` | `max` | Quality dial (0.0-1.0 or preset) |
 | `ENTROLY_PROXY_PORT` | `9377` | Proxy port |
 | `ENTROLY_MAX_FILES` | `5000` | Max files to index |
 | `ENTROLY_RATE_LIMIT` | `0` | Requests/min (0 = unlimited) |
@@ -843,10 +843,10 @@ entroly proxy --port 9378
 | `ENTROLY_LIVE_RESPONSES_BASE_URL` | *(none)* | 真实 Responses provider E2E 测试的上游 base URL |
 | `ENTROLY_LIVE_RESPONSES_MODEL` | *(none)* | 真实 Responses provider E2E 测试使用的模型 |
 | `ENTROLY_LIVE_RESPONSES_API_KEY` | *(none)* | 真实 Responses provider E2E 测试使用的 API Key |
-| `ENTROLY_FEDERATION` | `0` | Enable federated swarm learning (1 to enable) |
+| `ENTROLY_FEDERATION` | `1` | Federated swarm learning (0 to disable) |
 | `ENTROLY_FEDERATION_BOT` | *(none)* | Shared GitHub bot token for anonymous federation writes |
-| `ENTROLY_DISTILL` | `0` | Enable response distillation / output compression (1 to enable) |
-| `ENTROLY_DISTILL_MODE` | `full` | Distillation intensity: `lite`, `full`, or `ultra` |
+| `ENTROLY_DISTILL` | `1` | Response distillation / output compression (0 to disable) |
+| `ENTROLY_DISTILL_MODE` | `ultra` | Distillation intensity: `lite`, `full`, or `ultra` |
 
 ---
 

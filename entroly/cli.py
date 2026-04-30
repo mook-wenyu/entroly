@@ -86,6 +86,19 @@ def _describe_openai_proxy_route(route) -> str | None:
     return None
 
 
+def _select_runtime_quality(requested: str | None, env: dict[str, str] | None = None) -> tuple[str, float, str]:
+    """Resolve CLI/env/default quality with one precedence rule."""
+    from entroly.proxy_config import DEFAULT_QUALITY_PRESET, resolve_quality
+
+    source_env = env if env is not None else os.environ
+    if requested is not None:
+        return requested, resolve_quality(requested), "cli"
+    env_value = source_env.get("ENTROLY_QUALITY")
+    if env_value:
+        return env_value, resolve_quality(env_value), "env"
+    return DEFAULT_QUALITY_PRESET, resolve_quality(DEFAULT_QUALITY_PRESET), "default"
+
+
 def _ensure_loopback_no_proxy(env: dict[str, str]) -> None:
     bypass_hosts = ["127.0.0.1", "localhost", "::1"]
     raw = env.get("NO_PROXY") or env.get("no_proxy") or ""
@@ -792,7 +805,7 @@ def cmd_proxy(args):
 
     from entroly.auto_index import auto_index, start_incremental_watcher
     from entroly.proxy import create_proxy_app
-    from entroly.proxy_config import ProxyConfig, resolve_quality
+    from entroly.proxy_config import ProxyConfig
     from entroly.server import EntrolyEngine
 
     requested_port = args.port or int(os.environ.get("ENTROLY_PROXY_PORT", "9377"))
@@ -809,10 +822,11 @@ def cmd_proxy(args):
         config.port = args.port
     if args.host:
         config.host = args.host
-    if args.quality is not None:
-        quality_val = resolve_quality(args.quality)
+    quality_label, quality_val, quality_source = _select_runtime_quality(args.quality, os.environ)
+    if quality_source == "cli":
         config.quality = quality_val
         config._apply_quality_dial(quality_val)
+        config._apply_explicit_env_overrides()
 
     # Initialize engine + auto-index codebase (non-blocking for large repos)
     engine = EntrolyEngine()
@@ -1678,7 +1692,7 @@ def cmd_go(args):
     # Step 3: Initialize engine + auto-index
     from entroly.auto_index import auto_index, start_incremental_watcher
     from entroly.proxy import create_proxy_app
-    from entroly.proxy_config import ProxyConfig, resolve_quality
+    from entroly.proxy_config import ProxyConfig
     from entroly.server import EntrolyEngine
 
     engine = EntrolyEngine()
@@ -1692,7 +1706,7 @@ def cmd_go(args):
         file_count = result.get("existing_fragments", 0)
         print(f"  {C.GRAY}Using persistent index ({file_count} fragments){C.RESET}")
 
-    # Step 4: Smart quality recommendation
+    # Step 4: Runtime quality selection
     requested_port = args.port or int(os.environ.get("ENTROLY_PROXY_PORT", "9377"))
     try:
         openai_route = resolve_openai_proxy_route(port=requested_port, env=os.environ)
@@ -1701,14 +1715,16 @@ def cmd_go(args):
         return
     config = ProxyConfig.from_env()
     config.openai_base_url = openai_route.upstream_base_url
-    recommended = _recommend_quality(project, file_count)
-    quality_val = resolve_quality(getattr(args, "quality", None) or recommended)
-    config.quality = quality_val
-    config._apply_quality_dial(quality_val)
+    quality_label, quality_val, quality_source = _select_runtime_quality(getattr(args, "quality", None), os.environ)
+    if quality_source == "cli":
+        config.quality = quality_val
+        config._apply_quality_dial(quality_val)
+        config._apply_explicit_env_overrides()
     if args.port:
         config.port = args.port
 
-    print(f"  {C.CYAN}Quality:{C.RESET}  {recommended} (auto-detected for {file_count} files)")
+    quality_note = {"default": "default", "env": "ENTROLY_QUALITY", "cli": "--quality"}[quality_source]
+    print(f"  {C.CYAN}Quality:{C.RESET}  {quality_label} ({quality_note})")
 
     # Start file watcher
     start_incremental_watcher(engine)

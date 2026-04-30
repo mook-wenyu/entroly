@@ -675,7 +675,7 @@ class PromptCompilerProxy:
         # Strips filler from LLM responses (pleasantries, hedging, meta-commentary)
         # Grounded in Selective Context (Li et al., EMNLP 2023) self-information theory
         self._enable_distill = os.environ.get("ENTROLY_DISTILL", "1") != "0"
-        self._distill_mode = os.environ.get("ENTROLY_DISTILL_MODE", "full")  # lite/full/ultra
+        self._distill_mode = os.environ.get("ENTROLY_DISTILL_MODE", "ultra")  # lite/full/ultra
         self._total_output_original_tokens: int = 0
         self._total_output_compressed_tokens: int = 0
 
@@ -923,6 +923,9 @@ class PromptCompilerProxy:
             user_message = extract_user_message(body, provider)
             if user_message:
                 request_observation["query"] = _sanitize_query(user_message)
+                runtime_services = getattr(self, "_runtime_learning_services", None)
+                if runtime_services is not None:
+                    runtime_services.record_activity()
             if user_message:
                 pipeline_result = await asyncio.to_thread(
                     self._run_pipeline, user_message, body, path
@@ -2624,6 +2627,12 @@ def create_proxy_app(
     """Create the Starlette ASGI app for the prompt compiler proxy."""
     proxy = PromptCompilerProxy(engine, config)
 
+    import importlib
+    _server_mod = importlib.import_module("entroly.server")
+    runtime_learning_services = _server_mod.start_runtime_learning_services(engine)
+    proxy._runtime_learning_services = runtime_learning_services
+    logger.info("Runtime learning services started")
+
     # Auto-start the live value dashboard alongside the proxy
     try:
         from .dashboard import start_dashboard
@@ -2641,8 +2650,6 @@ def create_proxy_app(
     # Start the autotune RL daemon — continuously improves weights in background.
     # Lazy import to avoid circular dependency (server.py ↔ proxy.py).
     try:
-        import importlib
-        _server_mod = importlib.import_module("entroly.server")
         _server_mod._start_autotune_daemon(engine)
         logger.info("Autotune RL daemon started (background, nice+10)")
     except Exception as e:
@@ -2655,8 +2662,11 @@ def create_proxy_app(
     @asynccontextmanager
     async def _lifespan(app: Starlette):  # type: ignore[type-arg]
         await proxy.startup()
-        yield
-        await proxy.shutdown()
+        try:
+            yield
+        finally:
+            await proxy.shutdown()
+            runtime_learning_services.stop()
 
     app = Starlette(
         routes=[

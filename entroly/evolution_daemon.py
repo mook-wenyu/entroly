@@ -121,7 +121,7 @@ class EvolutionDaemon:
             logger.debug("EvolutionDaemon: archetype detection skipped: %s", e)
 
         # ── Pillar 5: Federated Learning ────────────────────────────
-        # Opt-in: off by default. Enable via ENTROLY_FEDERATION=1.
+        # Enabled by default. Disable via ENTROLY_FEDERATION=0.
         self._federation = None
         self._github_transport = None
         try:

@@ -69,7 +69,7 @@ def context_window_for_model(model: str) -> int:
 #
 # quality=0.0 → "speed":   minimal budget, aggressive pruning, fast
 # quality=0.5 → "balanced": current defaults
-# quality=1.0 → "quality":  generous budget, full diversity, thorough
+# quality=1.0 → "max":      generous budget, full diversity, thorough
 #
 # For each numeric param p:
 #   p(q) = p_speed × (1 - q) + p_quality × q
@@ -140,6 +140,8 @@ QUALITY_PRESETS = {
     "quality": 0.8,
     "max": 1.0,
 }
+
+DEFAULT_QUALITY_PRESET = "max"
 
 
 def resolve_quality(value: str) -> float:
@@ -257,8 +259,8 @@ class ProxyConfig:
         Supports single-dial mode: set ENTROLY_QUALITY=0.0–1.0 to auto-derive
         all numeric params from Pareto-interpolated profiles.
         """
-        quality_env = os.environ.get("ENTROLY_QUALITY")
-        quality = float(quality_env) if quality_env else None
+        quality_env = os.environ.get("ENTROLY_QUALITY", DEFAULT_QUALITY_PRESET)
+        quality = resolve_quality(quality_env)
 
         config = cls(
             port=int(os.environ.get("ENTROLY_PROXY_PORT", "9377")),
@@ -303,9 +305,9 @@ class ProxyConfig:
             ),
         )
 
-        # Single-dial mode: auto-derive params from quality knob
-        if quality is not None:
-            config._apply_quality_dial(quality)
+        # Single-dial mode: auto-derive params from the selected quality knob.
+        config._apply_quality_dial(quality)
+        config._apply_explicit_env_overrides()
 
         # Overlay tunable coefficients from tuning_config.json (written by autotune)
         config._load_tuned_coefficients()
@@ -337,6 +339,23 @@ class ProxyConfig:
         logger = logging.getLogger("entroly.proxy")
         logger.info(f"Single-dial quality={q:.2f}: context_fraction={self.context_fraction:.3f}, "
                      f"ecdb_min_budget={self.ecdb_min_budget}, diversity={self.enable_ios_diversity}")
+
+    def _apply_explicit_env_overrides(self) -> None:
+        """Apply per-setting environment overrides after the quality preset."""
+        if "ENTROLY_CONTEXT_FRACTION" in os.environ:
+            self.context_fraction = float(os.environ["ENTROLY_CONTEXT_FRACTION"])
+        if "ENTROLY_TEMPERATURE_CALIBRATION" in os.environ:
+            self.enable_temperature_calibration = os.environ["ENTROLY_TEMPERATURE_CALIBRATION"] != "0"
+        if "ENTROLY_TRAJECTORY_CONVERGENCE" in os.environ:
+            self.enable_trajectory_convergence = os.environ["ENTROLY_TRAJECTORY_CONVERGENCE"] != "0"
+        if "ENTROLY_CONVERSATION_COMPRESSION" in os.environ:
+            self.enable_conversation_compression = os.environ["ENTROLY_CONVERSATION_COMPRESSION"] != "0"
+        if "ENTROLY_FISHER_SCALE" in os.environ:
+            self.fisher_scale = float(os.environ["ENTROLY_FISHER_SCALE"])
+        if "ENTROLY_TRAJECTORY_CMIN" in os.environ:
+            self.trajectory_c_min = float(os.environ["ENTROLY_TRAJECTORY_CMIN"])
+        if "ENTROLY_TRAJECTORY_LAMBDA" in os.environ:
+            self.trajectory_lambda = float(os.environ["ENTROLY_TRAJECTORY_LAMBDA"])
 
     def _load_tuned_coefficients(self) -> None:
         """Load tunable coefficients from tuning_config.json if present.
