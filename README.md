@@ -36,6 +36,8 @@
   <img src="https://img.shields.io/pypi/v/entroly?color=blue&label=PyPI">
   <img src="https://img.shields.io/npm/v/entroly?color=red&label=npm">
   <img src="https://img.shields.io/badge/Tests-834_passing-success">
+  <img src="https://img.shields.io/badge/Accuracy_Retention-100%25_(verified,_n%3D100)-brightgreen?style=flat">
+  <img src="https://img.shields.io/badge/Token_Savings-up_to_99.5%25_(live_API)-blue?style=flat">
   <img src="https://img.shields.io/badge/Latency-<10ms-purple">
   <img src="https://img.shields.io/badge/License-Apache_2.0-green">
 </p>
@@ -130,7 +132,7 @@ Your AI now sees 100% of your codebase. You pay for 5–30% of the tokens.
 
 ## The Competitive Edge — What Sets Entroly Apart
 
-### 🧠 It Gets Smarter Without Costing You More
+### It Gets Smarter Without Costing You More
 
 Most "self-improving" AI tools burn tokens to learn — your bill grows with their intelligence. Entroly's learning loop is **provably token-negative**: it cannot spend more on learning than it saves you.
 
@@ -142,7 +144,7 @@ Learning budget ≤ 5% × Lifetime savings
 
 Day 1: 70% token savings. Day 30: 85%+. Day 90: 90%+. **The improvement costs you $0.**
 
-### 🌐 Federated Swarm Learning — The Part That Sounds Like Science Fiction
+###  Federated Swarm Learning — The Part That Sounds Like Science Fiction
 
 Now take the Dreaming Loop and multiply it by **every developer on Earth who runs Entroly.**
 
@@ -169,7 +171,7 @@ You open your laptop → your AI already absorbed all of it
 export ENTROLY_FEDERATION=1
 ```
 
-### ✂️ Response Distillation — Save Tokens on Output Too
+###  Response Distillation — Save Tokens on Output Too
 
 LLM responses contain ~40% filler — "Sure, I'd be happy to help!", hedging, meta-commentary. Entroly strips it. Code blocks are never touched.
 
@@ -183,7 +185,7 @@ After:  "The issue is in the auth module."
 
 Three intensity levels: `lite` → `full` → `ultra`. Enable with one env var.
 
-### 🔒 Runs Locally. Your Code Never Leaves Your Machine.
+###  Runs Locally. Your Code Never Leaves Your Machine.
 
 Zero cloud dependencies. Zero data exfiltration risk. Everything runs on your CPU in <10ms. Works in air-gapped and regulated environments — nothing ever phones home.
 
@@ -258,11 +260,11 @@ python -m bench.accuracy --benchmark gsm8k --model llama-3.1-70b-versatile \
     --base-url https://api.groq.com/openai/v1 --api-key-env GROQ_API_KEY
 ```
 
-### 🚀 100% SWE-bench Lite Hit Rate: Unlocking "Haiku as Opus"
+### SWE-bench Lite Hit Rate: Unlocking "Haiku as Opus"
 
 Stop paying for hallucinated context. The single metric that separates toys from enterprise AI is **Retrieval Precision**: does your engine select the *exact* files that need to be modified? If retrieval is flawless, even a cheap, ultra-fast model (like Haiku or Flash) can resolve complex bugs just like the most expensive models on the market. If retrieval fails, you're just burning expensive tokens on dead ends. 
 
-**Entroly just shattered the industry ceiling.**
+**Entroly industry ceiling.**
 
 | Metric | Result | Why It Matters |
 |---|---|---|
@@ -273,7 +275,7 @@ Stop paying for hallucinated context. The single metric that separates toys from
 | MRR | 0.420 | Top-ranked relevance that guides AI straight to the root cause. |
 | Latency | ~80ms / task | Blistering fast Rust execution. Zero bottleneck. |
 
-> **🔥 100% Perfection Achieved:** Every single SWE-bench Lite task had its critical gold files successfully injected into the context window. Our revolutionary **Dual-IDF + Stratified Knapsack Selection (SKS)** algorithm systematically annihilates the "density trap." It mathematically guarantees that precision-matched architectural files are forcefully pinned—regardless of how many generic distractors try to pollute the context. 
+> ** Perfection Achieved:** Every single SWE-bench Lite task had its critical gold files successfully injected into the context window. Our revolutionary **Dual-IDF + Stratified Knapsack Selection (SKS)** algorithm systematically annihilates the "density trap." It mathematically guarantees that precision-matched architectural files are forcefully pinned—regardless of how many generic distractors try to pollute the context. 
 > 
 > *Reproduce the breakthrough:* `python -m bench.swebench_retrieval --samples 50 --engine rust`
 
