@@ -107,6 +107,35 @@ Funciona em ambientes air-gapped e regulamentados — nenhum dado é enviado par
 
 ---
 
+## Benchmarks
+
+### Retenção de Precisão
+
+A compressão não prejudica a precisão — verificado com API ao vivo (gpt-4o-mini, Wilson 95% CI):
+
+| Benchmark | n | Budget | Baseline (95% CI) | Com Entroly (95% CI) | Retenção | Economia de Tokens |
+|---|---|---|---|---|---|---|
+| NeedleInAHaystack | 20 | 2K | 100% [83.9–100%] | 100% [83.9–100%] | **100.0%** | **99.5%** |
+| LongBench (HotpotQA) | 50 | 2K | 64.0% [50.1–75.9%] | 68.0% [54.2–79.2%] | **106.2%** | **85.3%** |
+| Berkeley Function Calling | 50 | 500 | 100% [92.9–100%] | 100% [92.9–100%] | **100.0%** | **79.3%** |
+| SQuAD 2.0 | 50 | 100 | 78.0% [64.8–87.2%] | 76.0% [62.6–85.7%] | **97.4%** | **39.3%** |
+| GSM8K | 100 | 50K | 85.0% [76.7–90.7%] | 86.0% [77.9–91.5%] | **101.2%** | pass-through¹ |
+| MMLU | 100 | 50K | 82.0% [73.3–88.3%] | 85.9% [77.8–91.4%] | **104.7%** | pass-through¹ |
+| TruthfulQA (MC1) | 100 | 50K | 72.0% [62.5–79.9%] | 73.7% [64.3–81.4%] | **102.4%** | pass-through¹ |
+
+> ¹ **pass-through**: Contexto já dentro do budget — Entroly corretamente não faz nada. Os intervalos de confiança se sobrepõem em todos os benchmarks.
+
+### Comparação com Outros Métodos (Contexto Longo)
+
+| Método | Retenção | Redução de Tokens | Arquitetura / Trade-offs |
+|---|---|---|---|
+| **Entroly** | **100–106%** | **85–99%** | **Rápido (~80ms).** Knapsack por fragmento. Fidelidade estrutural verbatim perfeita. |
+| Poda neural por token | ~98–99% | 80–95% | **Alto overhead.** Requer transformer local. Degradação de sintaxe de código. |
+| Compactação verbatim por regras | ~100% | 50–70% | **Alta fidelidade.** Mas menor redução de tokens. |
+| Compressão por atenção | 95%+ | 26–54% | **Precisão sólida.** Mas menor redução de tokens. |
+
+---
+
 ## Paridade Total: Python & Node.js
 
 | Capacidade | Python | Node.js (WASM) |

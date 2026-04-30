@@ -95,6 +95,35 @@ Funktioniert in Air-Gapped- und regulierten Umgebungen — nichts sendet jemals 
 
 ---
 
+## Benchmarks
+
+### Genauigkeitserhalt
+
+Komprimierung schadet der Genauigkeit nicht — mit Live-API verifiziert (gpt-4o-mini, Wilson 95% CI):
+
+| Benchmark | n | Budget | Baseline (95% CI) | Mit Entroly (95% CI) | Erhalt | Token-Einsparung |
+|---|---|---|---|---|---|---|
+| NeedleInAHaystack | 20 | 2K | 100% [83.9–100%] | 100% [83.9–100%] | **100.0%** | **99.5%** |
+| LongBench (HotpotQA) | 50 | 2K | 64.0% [50.1–75.9%] | 68.0% [54.2–79.2%] | **106.2%** | **85.3%** |
+| Berkeley Function Calling | 50 | 500 | 100% [92.9–100%] | 100% [92.9–100%] | **100.0%** | **79.3%** |
+| SQuAD 2.0 | 50 | 100 | 78.0% [64.8–87.2%] | 76.0% [62.6–85.7%] | **97.4%** | **39.3%** |
+| GSM8K | 100 | 50K | 85.0% [76.7–90.7%] | 86.0% [77.9–91.5%] | **101.2%** | pass-through¹ |
+| MMLU | 100 | 50K | 82.0% [73.3–88.3%] | 85.9% [77.8–91.4%] | **104.7%** | pass-through¹ |
+| TruthfulQA (MC1) | 100 | 50K | 72.0% [62.5–79.9%] | 73.7% [64.3–81.4%] | **102.4%** | pass-through¹ |
+
+> ¹ **pass-through**: Kontext passt bereits ins Budget — Entroly tut korrekterweise nichts. Die Konfidenzintervalle überlappen bei allen Benchmarks.
+
+### Vergleich mit anderen Methoden (Langer Kontext)
+
+| Methode | Erhalt | Token-Reduktion | Architektur / Trade-offs |
+|---|---|---|---|
+| **Entroly** | **100–106%** | **85–99%** | **Schnell (~80ms).** Fragment-Level Knapsack. Perfekte wortgetreue strukturelle Treue. |
+| Token-Level Neural Pruning | ~98–99% | 80–95% | **Hoher Overhead.** Erfordert lokalen Transformer. Beschädigt Code-Syntax. |
+| Regelbasierte Verbatim-Kompaktierung | ~100% | 50–70% | **Hohe Treue.** Aber geringere Token-Reduktion. |
+| Attention-basierte Kompression | 95%+ | 26–54% | **Solide Genauigkeit.** Aber geringere Token-Reduktion. |
+
+---
+
 ## Volle Parität: Python & Node.js
 
 | Fähigkeit | Python | Node.js (WASM) |
