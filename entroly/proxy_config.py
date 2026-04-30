@@ -232,6 +232,9 @@ class ProxyConfig:
     ecdb_codebase_divisor: float = 200.0
     ecdb_codebase_cap: float = 2.0
 
+    # ACB：按请求预测压缩预算；训练样本不足时继续走 ECDB / 静态预算。
+    enable_adaptive_budget: bool = True
+
     # IOS: tunable info factors and diversity floor
     ios_skeleton_info_factor: float = 0.70
     ios_reference_info_factor: float = 0.15

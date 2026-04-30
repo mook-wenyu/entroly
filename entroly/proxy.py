@@ -37,13 +37,14 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
+from .adaptive_budget import AdaptiveBudgetModel, extract_features
 from .proxy_http import (
     build_downstream_headers,
     build_forward_headers,
     join_target_url,
     merge_path_and_query,
 )
-from .proxy_config import ProxyConfig
+from .proxy_config import ProxyConfig, context_window_for_model
 from .proxy_transform import (
     apply_temperature,
     apply_trajectory_convergence,
@@ -721,6 +722,9 @@ class PromptCompilerProxy:
         # Pipeline latency tracking (Welford online stats)
         self._pipeline_stats = _WelfordStats()
 
+        # ACB：按请求预测压缩预算；模型冷启动时继续走 ECDB / 静态预算。
+        self._acb = AdaptiveBudgetModel()
+
         # Passive implicit feedback — closes the RL loop without IDE cooperation
         self._feedback_tracker = ImplicitFeedbackTracker()
         self._enable_passive_feedback = (
@@ -1245,11 +1249,34 @@ class PromptCompilerProxy:
         if model and hasattr(self.engine, 'set_model'):
             self.engine.set_model(model)
 
-        # ── ECDB: Dynamic Budget Computation ──
-        # We need vagueness for the budget, but the full query analysis
-        # happens inside optimize_context(). Do a lightweight pre-analysis
-        # to get vagueness for budget calibration.
-        if self.config.enable_dynamic_budget:
+        # ── 预算计算：ACB → ECDB → 静态预算 ──
+        # ACB 有足够训练证据时优先使用；否则继续走现有 ECDB / 静态路径。
+        token_budget = None
+
+        # (1) ACB：自适应压缩预算。
+        if self.config.enable_adaptive_budget:
+            try:
+                ctx_text = ""  # 轻量预估阶段，避免提前拼完整上下文。
+                acb_features = extract_features(
+                    user_message, ctx_text, task_type=None,
+                )
+                ctx_window = context_window_for_model(model or "")
+                acb_prediction = self._acb.predict(acb_features)
+                if acb_prediction.get("fallback") is None:
+                    # 只有模型明确给出非冷启动预测时，才替换预算。
+                    ratio = acb_prediction["budget_used"]
+                    token_budget = max(200, int(ctx_window * ratio))
+                    logger.debug(
+                        "ACB: budget_ratio=%.3f → %d tokens (se=%.4f, n=%d)",
+                        ratio, token_budget,
+                        acb_prediction.get("budget_se") or 0,
+                        acb_prediction.get("n_training", 0),
+                    )
+            except Exception as e:
+                logger.debug("ACB fallback: %s", e)
+
+        # (2) ECDB：熵校准动态预算。
+        if token_budget is None and self.config.enable_dynamic_budget:
             try:
                 from entroly_core import py_analyze_query
                 summaries = []  # Empty summaries for quick vagueness estimate
@@ -1262,8 +1289,9 @@ class PromptCompilerProxy:
                 )
             except Exception as e:
                 logger.debug("ECDB pre-analysis fallback: %s", e)
-                token_budget = compute_token_budget(model, self.config)
-        else:
+
+        # (3) 静态预算。
+        if token_budget is None:
             token_budget = compute_token_budget(model, self.config)
 
         # Rate-Distortion self-correction: shift IOS toward full-resolution
@@ -1378,11 +1406,16 @@ class PromptCompilerProxy:
                 for issue in issues:
                     security_issues.append(f"[{source}] {issue}")
 
-        # LTM memories (already injected by optimize_context, but we want to
-        # show them in the context block for transparency)
+        # LTM 记忆已由 optimize_context 注入；这里再展示到上下文块，便于请求链路观测。
+        # ``hasattr`` 对值为 None 的属性也会返回 True，因此调用 .active 前必须判空。
         ltm_memories: list[dict] = []
-        if self.config.enable_ltm and hasattr(self.engine, '_ltm') and self.engine._ltm.active:
-            ltm_memories = self.engine._ltm.recall_relevant(
+        _ltm = getattr(self.engine, '_ltm', None)
+        if (
+            self.config.enable_ltm
+            and _ltm is not None
+            and getattr(_ltm, 'active', False)
+        ):
+            ltm_memories = _ltm.recall_relevant(
                 user_message, top_k=3, min_retention=0.3
             )
 
