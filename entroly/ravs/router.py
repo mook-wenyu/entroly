@@ -400,3 +400,321 @@ class GuardedRouter:
                 "model_success_rates": dict(self._model_success),
                 "model_costs": dict(self._model_cost),
             }
+
+
+# ── Model cost tiers ────────────────────────────────────────────────────
+# Approximate $/1M input tokens for routing cost estimation.
+
+MODEL_TIERS: dict[str, dict[str, Any]] = {
+    # Anthropic
+    "claude-sonnet-4-20250514": {"tier": "flagship", "cost_per_m": 3.0, "cheap_alt": "claude-haiku-3-5-20241022"},
+    "claude-3-5-sonnet-20241022": {"tier": "flagship", "cost_per_m": 3.0, "cheap_alt": "claude-haiku-3-5-20241022"},
+    "claude-3-opus-20240229": {"tier": "flagship", "cost_per_m": 15.0, "cheap_alt": "claude-haiku-3-5-20241022"},
+    "claude-haiku-3-5-20241022": {"tier": "cheap", "cost_per_m": 0.80},
+    "claude-3-haiku-20240307": {"tier": "cheap", "cost_per_m": 0.25},
+    # OpenAI
+    "gpt-4o": {"tier": "flagship", "cost_per_m": 2.50, "cheap_alt": "gpt-4o-mini"},
+    "gpt-4o-2024-11-20": {"tier": "flagship", "cost_per_m": 2.50, "cheap_alt": "gpt-4o-mini"},
+    "gpt-4o-mini": {"tier": "cheap", "cost_per_m": 0.15},
+    "gpt-4-turbo": {"tier": "flagship", "cost_per_m": 10.0, "cheap_alt": "gpt-4o-mini"},
+    # Google
+    "gemini-2.0-flash": {"tier": "cheap", "cost_per_m": 0.10},
+    "gemini-1.5-pro": {"tier": "flagship", "cost_per_m": 3.50, "cheap_alt": "gemini-2.0-flash"},
+    "gemini-2.5-pro": {"tier": "flagship", "cost_per_m": 1.25, "cheap_alt": "gemini-2.0-flash"},
+}
+
+# ── Task archetype classifier ──────────────────────────────────────────
+
+import json
+import math
+import re
+from pathlib import Path
+from typing import Optional
+
+_ARCHETYPE_PATTERNS: list[tuple[re.Pattern, str]] = [
+    # Test-related
+    (re.compile(r"\b(?:pytest|jest|vitest|mocha|rspec|phpunit)\b", re.I), "test/run"),
+    (re.compile(r"\b(?:run|execute)\b.*\b(?:test|spec|suite)\b", re.I), "test/run"),
+    (re.compile(r"\b(?:write|add|create)\b.*\b(?:test|spec|unit test)\b", re.I), "test/write"),
+    (re.compile(r"\b(?:fix|debug|failing)\b.*\btest\b", re.I), "test/fix"),
+    # Build/compile
+    (re.compile(r"\b(?:build|compile|tsc|webpack|cargo build|go build|make)\b", re.I), "build/run"),
+    (re.compile(r"\b(?:fix|resolve)\b.*\b(?:build|compilation|type)\s*(?:error|issue)\b", re.I), "build/fix"),
+    # Lint/format
+    (re.compile(r"\b(?:lint|eslint|pylint|ruff|clippy|format|prettier|black)\b", re.I), "lint/run"),
+    # Type checking
+    (re.compile(r"\b(?:mypy|pyright|typecheck|type.?check|tsc.*noEmit)\b", re.I), "typecheck/run"),
+    # Code changes
+    (re.compile(r"\b(?:refactor|rename|move|extract|inline)\b", re.I), "code/refactor"),
+    (re.compile(r"\b(?:add|implement|create|write)\b.*\b(?:function|method|class|component|endpoint)\b", re.I), "code/implement"),
+    (re.compile(r"\b(?:fix|debug|resolve|patch)\b.*\b(?:bug|error|issue|crash|exception)\b", re.I), "code/fix_bug"),
+    (re.compile(r"\b(?:update|change|modify|edit)\b", re.I), "code/edit"),
+    # Explanation (cheap)
+    (re.compile(r"\b(?:explain|what does|how does|why does|what is|describe|summarize)\b", re.I), "explain"),
+    (re.compile(r"\b(?:read|look at|check|review|show|find|search|grep)\b", re.I), "inspect"),
+    # File/git operations
+    (re.compile(r"\b(?:git|commit|push|pull|merge|rebase|branch|diff|status)\b", re.I), "git/op"),
+    (re.compile(r"\b(?:install|setup|configure|init|npm|pip|cargo)\b", re.I), "setup"),
+]
+
+
+def classify_archetype(user_message: str) -> str:
+    """Classify a user message into a task archetype."""
+    if not user_message:
+        return "unknown"
+    for pattern, archetype in _ARCHETYPE_PATTERNS:
+        if pattern.search(user_message):
+            return archetype
+    return "general"
+
+
+def _lookup_tier(model: str) -> Optional[dict[str, Any]]:
+    """Look up a model's cost tier. Fuzzy prefix match."""
+    if not model:
+        return None
+    if model in MODEL_TIERS:
+        return MODEL_TIERS[model]
+    for name, info in MODEL_TIERS.items():
+        if model.startswith(name.rsplit("-", 1)[0]):
+            return info
+    return None
+
+
+def _find_best_cell(
+    archetype: str, cells: dict[str, dict[str, Any]]
+) -> Optional[dict[str, Any]]:
+    """Find the best matching Bayesian cell for an archetype."""
+    if not cells:
+        return None
+    if archetype in cells:
+        return cells[archetype]
+    category = archetype.split("/")[0] if "/" in archetype else archetype
+    category_cells = [
+        v for k, v in cells.items()
+        if k.startswith(f"{category}/") or k == category
+    ]
+    if category_cells:
+        return max(category_cells, key=lambda c: c.get("n", 0))
+    return None
+
+
+def _load_cells_from_log(log_path: str) -> dict[str, dict[str, Any]]:
+    """Load Bayesian cells from RAVS event log. Fast, no full report."""
+    success_vals = frozenset({"success", "passed", "accepted", "pass"})
+    failure_vals = frozenset({"failure", "failed", "rejected", "fail"})
+    counts: dict[str, dict[str, int]] = {}
+
+    path = Path(log_path)
+    if not path.exists():
+        return {}
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    evt = json.loads(line)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                if not isinstance(evt, dict):
+                    continue
+                kind = evt.get("kind") or evt.get("type")
+                if kind != "outcome":
+                    continue
+                evt_type = evt.get("event_type", "")
+                tool = evt.get("tool", evt_type)
+                value = evt.get("value", "")
+                if evt_type not in ("test", "build", "lint", "typecheck", "format",
+                                    "other", "test_result", "ci_result", "command_exit"):
+                    continue
+                cell_key = f"{evt_type}/{tool}" if tool != evt_type else evt_type
+                cell = counts.setdefault(cell_key, {"pass": 0, "fail": 0})
+                if value in success_vals:
+                    cell["pass"] += 1
+                elif value in failure_vals:
+                    cell["fail"] += 1
+    except Exception as e:
+        logger.warning("Failed to load RAVS cells: %s", e)
+        return {}
+
+    total_pass = sum(c["pass"] for c in counts.values())
+    total_fail = sum(c["fail"] for c in counts.values())
+    total_obs = total_pass + total_fail
+    global_mean = total_pass / max(total_obs, 1)
+    alpha_0 = max(global_mean * 2.0, 0.1)
+    beta_0 = max((1 - global_mean) * 2.0, 0.1)
+
+    cells: dict[str, dict[str, Any]] = {}
+    for key, c in counts.items():
+        n = c["pass"] + c["fail"]
+        alpha = alpha_0 + c["pass"]
+        beta_val = beta_0 + c["fail"]
+        cells[key] = {
+            "n": n, "passes": c["pass"], "failures": c["fail"],
+            "alpha": alpha, "beta": beta_val,
+            "posterior_mean": alpha / (alpha + beta_val),
+        }
+    return cells
+
+
+def swap_model_in_body(body: dict[str, Any], new_model: str) -> dict[str, Any]:
+    """Swap the model field in a request body."""
+    body = dict(body)
+    if "model" in body:
+        body["model"] = new_model
+    return body
+
+
+# ── Bayesian Router (cell-based, hook-fed) ─────────────────────────────
+
+
+class _CellCache:
+    """Cached Bayesian cells with TTL."""
+    def __init__(self, ttl_s: float = 60.0):
+        self.cells: dict[str, dict[str, Any]] = {}
+        self.loaded_at: float = 0.0
+        self.ttl_s = ttl_s
+
+    def is_stale(self) -> bool:
+        return (time.time() - self.loaded_at) > self.ttl_s
+
+
+class BayesianRouter:
+    """RAVS-powered model router using live Bayesian cells from hook data.
+
+    Thread-safe. Cell cache refreshed every 60s. O(1) routing decisions.
+    Fails safe: on any issue, returns the original model unchanged.
+    """
+
+    def __init__(
+        self,
+        log_path: str | None = None,
+        min_samples: int = 10,
+        ci_threshold: float = 0.80,
+        enabled: bool = True,
+    ):
+        self._log_path = log_path
+        self._min_samples = min_samples
+        self._ci_threshold = ci_threshold
+        self._enabled = enabled
+        self._cache = _CellCache()
+        self._lock = threading.Lock()
+        self._total_decisions = 0
+        self._total_swaps = 0
+        self._total_savings_est = 0.0
+        self._swap_by_archetype: dict[str, int] = {}
+
+    @property
+    def enabled(self) -> bool:
+        return self._enabled
+
+    @enabled.setter
+    def enabled(self, val: bool) -> None:
+        self._enabled = val
+
+    def route(self, model: str, user_message: str) -> RoutingDecision:
+        """Decide whether to route to a cheaper model.
+
+        Returns RoutingDecision. If use_original=False, the proxy should
+        swap the model to recommended_model before forwarding.
+        """
+        self._total_decisions += 1
+
+        if not self._enabled:
+            return RoutingDecision(reason="bayesian_router_disabled")
+
+        tier = _lookup_tier(model)
+        if not tier or tier.get("tier") != "flagship":
+            return RoutingDecision(reason=f"already_cheap ({tier.get('tier', '?') if tier else 'unknown'})")
+
+        cheap_alt = tier.get("cheap_alt")
+        if not cheap_alt:
+            return RoutingDecision(reason="no_cheap_alt")
+
+        # Risk gate (reuse V3 logic)
+        risk = classify_risk(user_message)
+        if risk == DomainRisk.HIGH:
+            return RoutingDecision(reason="blocked:high_risk", risk_level=risk.value)
+
+        archetype = classify_archetype(user_message)
+        cells = self._get_cells()
+        cell = _find_best_cell(archetype, cells)
+
+        if cell is None:
+            return RoutingDecision(reason=f"no_cell:{archetype}", risk_level=risk.value)
+
+        n = cell.get("n", 0)
+        alpha = cell.get("alpha", 1)
+        beta = cell.get("beta", 1)
+        mean = alpha / (alpha + beta) if (alpha + beta) > 0 else 0.5
+        ab = alpha + beta
+        var = (alpha * beta) / (ab * ab * (ab + 1)) if ab > 0 else 0
+        std = math.sqrt(var) if var > 0 else 0
+        ci_lo = max(0.0, mean - 1.96 * std)
+
+        if n < self._min_samples:
+            return RoutingDecision(
+                reason=f"need_data (n={n}/{self._min_samples})",
+                risk_level=risk.value, confidence=ci_lo,
+            )
+
+        if ci_lo < self._ci_threshold:
+            return RoutingDecision(
+                reason=f"ci_low ({ci_lo:.3f}<{self._ci_threshold})",
+                risk_level=risk.value, confidence=ci_lo,
+            )
+
+        # Route!
+        flagship_cost = tier.get("cost_per_m", 0)
+        cheap_info = _lookup_tier(cheap_alt)
+        cheap_cost = cheap_info.get("cost_per_m", 0) if cheap_info else 0
+        est_save = (flagship_cost - cheap_cost) * 4 / 1_000_000
+
+        self._total_swaps += 1
+        self._total_savings_est += est_save
+        self._swap_by_archetype[archetype] = self._swap_by_archetype.get(archetype, 0) + 1
+
+        logger.info(
+            "RAVS ROUTE: %s → %s [%s] n=%d pass=%.0f%% ci=%.3f save=$%.6f",
+            model, cheap_alt, archetype, n, mean * 100, ci_lo, est_save,
+        )
+
+        return RoutingDecision(
+            use_original=False,
+            recommended_model=cheap_alt,
+            reason=f"routed:{archetype} (n={n}, ci={ci_lo:.3f})",
+            risk_level=risk.value,
+            confidence=round(ci_lo, 3),
+        )
+
+    def _get_cells(self) -> dict[str, dict[str, Any]]:
+        with self._lock:
+            if not self._cache.is_stale():
+                return self._cache.cells
+        cells = _load_cells_from_log(self._resolve_log_path())
+        with self._lock:
+            self._cache.cells = cells
+            self._cache.loaded_at = time.time()
+        return cells
+
+    def _resolve_log_path(self) -> str:
+        if self._log_path:
+            return self._log_path
+        if "ENTROLY_DIR" in os.environ:
+            return str(Path(os.environ["ENTROLY_DIR"]) / "ravs" / "events.jsonl")
+        return str(Path.home() / ".entroly" / "ravs" / "events.jsonl")
+
+    def stats(self) -> dict[str, Any]:
+        return {
+            "enabled": self._enabled,
+            "total_decisions": self._total_decisions,
+            "total_swaps": self._total_swaps,
+            "swap_rate": round(self._total_swaps / max(self._total_decisions, 1), 4),
+            "est_savings_usd": round(self._total_savings_est, 6),
+            "swap_by_archetype": dict(self._swap_by_archetype),
+            "min_samples": self._min_samples,
+            "ci_threshold": self._ci_threshold,
+            "cells_loaded": len(self._cache.cells),
+        }

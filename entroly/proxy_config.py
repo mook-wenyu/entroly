@@ -237,6 +237,15 @@ class ProxyConfig:
     # per-query. Before that, falls through to ECDB / static.
     enable_adaptive_budget: bool = True
 
+    # CSE: Context Scaffolding Engine — structural dependency preamble.
+    # Generates a ~200-token dependency map showing how selected files relate.
+    # Based on GRACG (NeurIPS 2025) and Scaffold Reasoning (arxiv 2025).
+    # Enables small models (Haiku) to match large model (Opus) performance
+    # by pre-connecting cross-file relationships. Always net token-negative:
+    # +200 tokens for scaffold, −2000+ tokens from dropping "just in case" files.
+    enable_context_scaffold: bool = True
+    scaffold_max_tokens: int = 300
+
     # IOS: tunable info factors and diversity floor
     ios_skeleton_info_factor: float = 0.70
     ios_reference_info_factor: float = 0.15

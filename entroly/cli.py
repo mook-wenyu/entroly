@@ -1272,8 +1272,20 @@ def cmd_wrap(args):
         return
 
     spec = _WRAP_AGENTS[agent]
-    port = args.port or 9377
+    port = args.port
 
+    # If --port was passed after the agent, it gets swallowed by argparse.REMAINDER
+    if port is None and "--port" in args.agent_args:
+        idx = args.agent_args.index("--port")
+        if idx + 1 < len(args.agent_args):
+            try:
+                port = int(args.agent_args[idx + 1])
+                args.agent_args.pop(idx)
+                args.agent_args.pop(idx)
+            except ValueError:
+                pass
+                
+    port = port or 9377
     print(f"\n{C.CYAN}{C.BOLD}  Entroly Wrap — {spec['name']}{C.RESET}\n")
 
     # Check if proxy is already running
@@ -1284,7 +1296,7 @@ def cmd_wrap(args):
 
     if not proxy_running:
         print(f"  {C.GRAY}Starting proxy on port {port}...{C.RESET}")
-        proxy_cmd = [sys.executable, "-m", "entroly", "proxy", "--port", str(port)]
+        proxy_cmd = [sys.executable, "-m", "entroly.cli", "proxy", "--port", str(port)]
         subprocess.Popen(
             proxy_cmd,
             stdout=subprocess.DEVNULL,
@@ -1320,7 +1332,14 @@ def cmd_wrap(args):
     print(f"  {C.GREEN}Launching {spec['name']}...{C.RESET}\n")
 
     try:
+        import shutil
         agent_cmd = spec["cmd"] + args.agent_args
+        # On Windows, npm installs .cmd files which subprocess doesn't automatically resolve
+        executable = shutil.which(agent_cmd[0])
+        if executable is None:
+            raise FileNotFoundError()
+        
+        agent_cmd[0] = executable
         subprocess.run(agent_cmd, env=env)
     except FileNotFoundError:
         print(f"\n  {C.RED}{spec['name']} not found.{C.RESET}")
@@ -2901,7 +2920,7 @@ def cmd_finetune(args):
 
 
 def cmd_ravs(args):
-    """entroly ravs — RAVS v1 offline evaluation tools.
+    """entroly ravs — RAVS offline evaluation + passive capture tools.
 
     Subcommands:
       report  Read the JSONL event log, recompute labels from outcome events,
@@ -2916,9 +2935,36 @@ def cmd_ravs(args):
     from entroly.ravs.report import generate_report, format_report_text
 
     ravs_action = getattr(args, "ravs_action", None)
+
+    if ravs_action == "capture":
+        from entroly.ravs.capture import capture_from_stdin, capture_from_args
+        quiet = getattr(args, "quiet", False)
+        log_path = getattr(args, "log", None)
+        use_stdin = getattr(args, "stdin", False)
+        if use_stdin:
+            result = capture_from_stdin(log_path=log_path)
+        else:
+            command = getattr(args, "command", None)
+            exit_code = getattr(args, "exit_code", None)
+            if command is None or exit_code is None:
+                if not quiet:
+                    print(f"  {C.RED}--stdin or both --command and --exit-code required{C.RESET}")
+                return
+            result = capture_from_args(
+                command=command,
+                exit_code=exit_code,
+                stdout_tail=getattr(args, "stdout_text", "") or "",
+                log_path=log_path,
+            )
+        if not quiet:
+            if result:
+                print(f"  \u2713 Captured: {result.get('tool')} \u2192 {result.get('event_type')}/{result.get('value')}")
+            else:
+                print(f"  \u00b7 Skipped: not a verifiable command")
+        return
+
     if ravs_action != "report":
-        print(f"  {C.YELLOW}Unknown ravs action: {ravs_action}{C.RESET}")
-        print("  Usage: entroly ravs report [--log PATH] [--format json] [--since 7d] [--include-weak]")
+        print(f"  {C.YELLOW}Usage: entroly ravs [report|capture]{C.RESET}")
         return
 
     # Resolve log path
@@ -3461,6 +3507,36 @@ def main():
     ravs_report_parser.add_argument(
         "--include-weak", action="store_true",
         help="Include weak (agent self-report) signals in headline metrics",
+    )
+
+    # entroly ravs capture — called by the PostToolUse hook
+    ravs_capture_parser = ravs_subparsers.add_parser(
+        "capture",
+        help="Capture a tool outcome into the RAVS event log (called by PostToolUse hook)",
+    )
+    ravs_capture_parser.add_argument(
+        "--stdin", action="store_true",
+        help="Read Claude Code PostToolUse JSON payload from stdin",
+    )
+    ravs_capture_parser.add_argument(
+        "--quiet", action="store_true",
+        help="Suppress output (for hook usage)",
+    )
+    ravs_capture_parser.add_argument(
+        "--command", type=str, default=None,
+        help="Command string (used with --exit-code instead of --stdin)",
+    )
+    ravs_capture_parser.add_argument(
+        "--exit-code", dest="exit_code", type=int, default=None,
+        help="Exit code of the command",
+    )
+    ravs_capture_parser.add_argument(
+        "--stdout", dest="stdout_text", type=str, default="",
+        help="Last portion of stdout for verdict refinement",
+    )
+    ravs_capture_parser.add_argument(
+        "--log", type=str, default=None,
+        help="Override RAVS event log path",
     )
 
     args = parser.parse_args()
