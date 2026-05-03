@@ -427,6 +427,7 @@ MODEL_TIERS: dict[str, dict[str, Any]] = {
 
 import json
 import math
+import os
 import re
 from pathlib import Path
 from typing import Optional
