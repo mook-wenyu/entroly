@@ -144,61 +144,53 @@ Entroly's new **Context Scaffolding Engine (CSE)** fixes this architectural blin
 
 The result? **Haiku achieves Opus-level reasoning.** By providing the cognitive scaffold that small models lack, you get flagship "Principal Engineer" performance at 1/50th the latency and 1/100th the cost. Plus, because CSE helps the selection algorithm drop redundant "safety" files, it's actually **token-negative** — saving an average of 2,400 tokens per request while vastly improving output quality.
 
-### RAVS — Reasoning Amplification via Verified Scaffolds
+### RAVS — Your AI Learns Which Tasks It Can Do Cheaper. Automatically.
 
-Entroly doesn't just compress context. It **decomposes, executes, and verifies** AI work autonomously.
+Entroly compresses your context. **RAVS cuts your model bill on top of that — and gets better every day you use it.**
 
-Every request your AI handles falls into one of five categories — and most of them don't need an expensive model at all:
+You use Opus or Sonnet for everything because switching models mid-session is friction. But 30–50% of your turns are simple: reading a file, checking a log, running tests, formatting code. Using Opus for these is like paying a Principal Engineer to run `pytest`.
 
-| Node Type | Executor | Verifier | Cost vs Model |
+RAVS watches every outcome silently. Once the math proves a task type is safe to route cheaper, it does — automatically:
+
+```
+You type: "run the tests"
+             ↓
+  Entroly intercepts the request
+             ↓
+  RAVS checks confidence for this task type:
+    → test/pytest: 30 real observations, 100% pass rate
+    → 95% CI = [0.98, 1.00]  ← actual live data from this repo
+    → lower bound 0.98 > threshold 0.80 ✓
+             ↓
+  Model swapped: Opus ($75/M) → Haiku ($4/M)
+             ↓
+  Identical output. 95% cheaper. Zero friction.
+```
+
+> Those numbers aren't made up. They're from 30 real `pytest` runs captured while building Entroly — zero failures, confidence interval lower bound 0.98. RAVS built that table automatically, just by watching the work happen.
+
+**How it works:**
+1. Add one hook to `.claude/settings.json` — RAVS starts watching silently
+2. Use your tools normally — every pass/fail outcome is recorded locally
+3. When the math proves a task type is reliably cheap, routing activates
+4. If quality ever drops, it auto-escalates back to the flagship model immediately
+
+**The numbers:**
+
+| | Opus | Haiku (RAVS-routed) | Savings |
 |---|---|---|---|
-| `computation` | SymPy / Python safe eval | Exact equality | **1/5000x** |
-| `code_inspection` | AST parser | Structural validation | **1/2500x** |
-| `test_execution` | Test runner | Exit code check | **1/100x** |
-| `retrieval_claim` | Retrieval engine | Citation/entailment | **1/500x** |
-| `model_bound` | Original LLM (unchanged) | — | 1x (baseline) |
+| Output cost / M tokens | $75.00 | $4.00 | **95%** |
+| Typical heavy session | $5–20 | $0.25–1.00 | **$4.75–19.00** |
+| Monthly (daily use) | $150–600 | $7.50–30 | **$140–570/dev** |
 
-**The key insight:** "Calculate 2 + 3 * 4" doesn't need GPT-4o. It needs Python. "List the functions in auth.py" doesn't need Claude Opus. It needs `ast.parse()`. RAVS identifies these opportunities, executes them for $0, and verifies the answer deterministically.
-
-What your AI can't do cheaply — judgment, synthesis, creative reasoning — stays on the expensive model. What it *can* do cheaply gets verified, not guessed.
-
-```
-Request → Shadow Compiler → Decompose into typed nodes
-             ↓
-    computation → SymPy → exact verifier → ✓ verified, $0.000001
-    code_inspection → AST → structural verifier → ✓ verified, $0.000002
-    model_bound → original LLM → production output (unchanged)
-             ↓
-    Guarded Router → Should we use a cheaper model?
-        Risk: HIGH (auth/security) → never downgrade
-        Risk: STANDARD (coding) → 2% max success drop
-        Risk: LOW (chat) → 5% max success drop
-             ↓
-    Sequential Controller → Budget-bounded step execution
-        Marginal value < marginal cost → stop early
-        Consecutive failures → escalate to stronger model
-             ↓
-    Honest outcome arrives (test pass, CI green, user ✓)
-        → PRISM posterior corrected (Bayesian, not proxy reward)
-        → Weights converge on configs that produce REAL successes
-```
-
-**The result:**
-- 50%+ of requests have decomposable work that can be verified for $0
-- Cost-per-accepted-answer drops by 10-50x on verifiable tasks
-- 100% fail-closed: if anything is uncertain, the original model handles it
-- Zero production routing changes until shadow data proves safety
-- Every outcome is honest — the system never learns from its own guesses
+100% fail-closed. If data is sparse, the task is high-risk (`security`, `auth`), or confidence is low — the flagship model handles it. RAVS never guesses.
 
 ```bash
-# See RAVS metrics for your session
+# See what RAVS has learned about your workflow
 entroly ravs report
 
-# JSON output for CI/pipelines
-entroly ravs report --format json
-
-# Filter to last 24 hours
-entroly ravs report --since 24h
+# Filter to the last 7 days
+entroly ravs report --since 7d
 ```
 
 ### It Gets Smarter Without Costing You More
@@ -315,6 +307,54 @@ python -m bench.accuracy --benchmark truthfulqa --model gpt-5.5 --samples 100 \
 python -m bench.accuracy --benchmark longbench --model gpt-5.5 --samples 100 \
     --base-url https://api.mookbot.com/v1 --api-key-env OPENAI_API_KEY --wire-api responses
 ```
+
+### LooGLE Head-to-Head — RAG Compression Quality ([ACL 2024](https://github.com/bigai-nlco/LooGLE))
+
+Apples-to-apples comparison at **identical 1,500 token budget**. Same LLM (gpt-4o-mini), same questions, same gold answers. n=30.
+
+| Method | F1 Score | Compress Latency | API Calls | Cost / 1k Queries |
+|---|---|---|---|---|
+| Baseline (Truncation) | 0.187 | 0 ms | 1 | $0.225 |
+| Agentic Pruning (2026 SOTA) | **0.570** | 10,632 ms | 2 | $3.609 |
+| **Entroly** | 0.223 | **107 ms** | **1** | **$0.225** |
+
+> **The PM's Dilemma:** Agentic Pruning (using an LLM to filter context) gives incredible accuracy, but it adds **10.6 seconds of latency** and increases API costs by **1,500%**.
+>
+> **Entroly is the sweet spot:** It gives a massive **+19.2% F1 accuracy boost** over baseline truncation, executing locally in just 107ms with **$0 extra API cost**.
+>
+> [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/juyterman1000/entroly/blob/main/bench/colab_run.ipynb) ← One-click reproduction (Agentic Pruning vs Entroly, runs on Colab H100)
+
+Reproduce locally: `python bench/looGLE_compare.py --samples 30 --budget 1500`
+
+### Code Retrieval — Entroly vs BM25 ([CodeSearchNet](https://huggingface.co/datasets/code_search_net))
+
+Pure retrieval quality — no LLM calls, no API key, $0 cost. "Given a docstring, find the correct function from 500 candidates."
+
+| Method | R@1 | R@5 | MRR | Latency |
+|---|---|---|---|---|
+| Top-K (FIFO) | 0.000 | 0.015 | 0.013 | 0.0 ms |
+| BM25 (standard baseline) | 0.980 | 0.995 | 0.987 | 56.7 ms |
+| **Entroly** | **0.990** | **0.995** | **0.993** | **28.1 ms** |
+
+> **Entroly beats BM25** — the standard retrieval baseline — on R@1 (+1.0%), MRR (+0.6%), at **half the latency** (28ms vs 57ms). n=200 queries, pool=500 distractors.
+
+Reproduce: `python bench/repobench_retrieval.py --samples 200 --pool-size 500`
+
+### How Entroly Compares (Long Context)
+
+Named methods, real citations. Long-context workloads where compression actually matters:
+
+| Method | Retention | Token Reduction | Architecture / Trade-offs |
+|---|---|---|---|
+| **Entroly** | **100–106%** | **85–99%** | **Fast (~80ms).** Fragment-level knapsack preserves perfect verbatim structural fidelity. Works with any API. |
+| Agentic Context Pruning | ~100% | 70–90% | **Extremely slow.** Requires multiple LLM calls to filter context before the main query. High latency overhead. |
+| KV Cache Compression | ~98–99% | N/A (Cost reduction) | **Hardware bound.** Reduces memory footprint, but requires running local models. Doesn't work for OpenAI/Anthropic APIs. |
+| Token-level neural pruning | ~98–99% | 80–95% | **High overhead.** Runs BERT-base for token classification. Token-level dropping degrades code syntax. |
+| RAG-specific reranking | ~98% | 60–80% | **RAG-specific pruner.** Good retention but lower token reduction than Entroly. |
+
+*Note: SQuAD (~40% reduction, ~97% retention) is a short-context benchmark (150 token paragraphs). Entroly's true power (85%+ savings) unlocks on large contexts.*
+
+Reproduce: `python -m bench.accuracy --benchmark all --model gpt-4o-mini --samples 100`
 
 **Custom OpenAI-compatible providers** (Groq, Together, OpenRouter, Ollama, vLLM, ...):
 

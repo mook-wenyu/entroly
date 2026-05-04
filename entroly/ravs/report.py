@@ -50,6 +50,12 @@ _PRECEDENCE_ORDER = [
     ("ci_result", "strong"),
     ("test_result", "strong"),
     ("command_exit", "strong"),
+    # Hook-sourced verifiable categories
+    ("test", "strong"),
+    ("build", "strong"),
+    ("lint", "strong"),
+    ("typecheck", "strong"),
+    ("format", "strong"),
     ("escalation_event", "medium"),
     ("retry_event", "medium"),
     ("topic_change", "medium"),
@@ -132,13 +138,15 @@ def generate_report(
                     malformed_lines += 1
                     continue
 
-                kind = evt.get("kind")
+                # Support both original format (kind=trace/outcome)
+                # and hook/capture format (type=request/outcome)
+                kind = evt.get("kind") or evt.get("type")
                 rid = evt.get("request_id")
                 if not rid:
                     malformed_lines += 1
                     continue
 
-                if kind == "trace":
+                if kind in ("trace", "request"):
                     traces[rid] = evt
                 elif kind == "outcome":
                     outcomes.setdefault(rid, []).append(evt)
@@ -175,8 +183,9 @@ def generate_report(
     unknown_label_rate = _safe_rate(unknown_count, total_requests)
 
     # 4b. Success/failure breakdown (from derived labels)
-    success_values = frozenset({"success", "passed", "accepted"})
-    failure_values = frozenset({"failure", "failed", "rejected"})
+    # Include hook verdicts: "pass" maps to success, "fail" maps to failure
+    success_values = frozenset({"success", "passed", "accepted", "pass"})
+    failure_values = frozenset({"failure", "failed", "rejected", "fail"})
     labeled_count = honest_labeled if not include_weak else weak_labeled
 
     successes = sum(1 for v in labels.values() if v in success_values)
@@ -310,6 +319,55 @@ def generate_report(
             entry["total_estimated_delta_usd"] / max(entry["comparisons"], 1), 6
         )
 
+    # ── Phase 4½: Bayesian cells (Empirical Bayes) ─────────────────────
+    # Per-cell Beta-Bernoulli posteriors with hierarchical pooling.
+    # Each cell = (tool_category) from hook-sourced events.
+    # Sparse cells borrow from the global prior via Empirical Bayes.
+
+    bayesian_cells: dict[str, dict[str, Any]] = {}
+    _cell_counts: dict[str, dict[str, int]] = {}  # {cell: {pass: N, fail: N}}
+
+    for rid, outs in outcomes.items():
+        for o in outs:
+            evt_type = o.get("event_type", "")
+            tool = o.get("tool", evt_type)
+            value = o.get("value", "")
+            # Only process hook/CI-sourced verifiable events
+            if evt_type not in ("test", "build", "lint", "typecheck", "format",
+                                "test_result", "ci_result", "command_exit"):
+                continue
+
+            cell_key = f"{evt_type}/{tool}" if tool != evt_type else evt_type
+            cell = _cell_counts.setdefault(cell_key, {"pass": 0, "fail": 0})
+            if value in success_values:
+                cell["pass"] += 1
+            elif value in failure_values:
+                cell["fail"] += 1
+
+    # Compute global prior (Empirical Bayes: pool across all cells)
+    total_pass = sum(c["pass"] for c in _cell_counts.values())
+    total_fail = sum(c["fail"] for c in _cell_counts.values())
+    total_obs = total_pass + total_fail
+    # Global success rate as prior mean; prior strength = 2 (weak prior)
+    global_mean = total_pass / max(total_obs, 1)
+    prior_strength = 2.0  # equivalent sample size of prior
+    alpha_0 = max(global_mean * prior_strength, 0.1)
+    beta_0 = max((1 - global_mean) * prior_strength, 0.1)
+
+    for cell_key, counts in _cell_counts.items():
+        n = counts["pass"] + counts["fail"]
+        alpha = alpha_0 + counts["pass"]
+        beta_val = beta_0 + counts["fail"]
+        bayesian_cells[cell_key] = {
+            "n": n,
+            "passes": counts["pass"],
+            "failures": counts["fail"],
+            "alpha": round(alpha, 4),
+            "beta": round(beta_val, 4),
+            "posterior_mean": round(alpha / (alpha + beta_val), 4),
+            "prior": {"alpha_0": round(alpha_0, 4), "beta_0": round(beta_0, 4)},
+        }
+
     # ── Phase 5: Assemble report ──────────────────────────────────────
 
     report: dict[str, Any] = {
@@ -345,6 +403,7 @@ def generate_report(
         "shadow_policy_recommendation_cost_delta": dict(
             sorted(shadow_cost_delta.items())
         ),
+        "bayesian_cells": dict(sorted(bayesian_cells.items())),
     }
 
     return report
@@ -453,6 +512,38 @@ def format_report_text(report: dict[str, Any]) -> str:
             lines.append(f"  {policy:30s}  comparisons={comps}  avg_delta=${avg_d:+.6f}")
         lines.append(f"  {'':30s}  ⚠ These are estimates from avg model cost,")
         lines.append(f"  {'':30s}    NOT counterfactual truth.")
+        lines.append("")
+
+    # Bayesian cells (Empirical Bayes per-tool posteriors)
+    cells = report.get("bayesian_cells", {})
+    if cells:
+        lines.append("  ── Bayesian Cells (Empirical Bayes) ──────────────────────")
+        prior = None
+        for cell_key, cell in cells.items():
+            n = cell.get("n", 0)
+            mean = cell.get("posterior_mean", 0)
+            alpha = cell.get("alpha", 1)
+            beta = cell.get("beta", 1)
+            passes = cell.get("passes", 0)
+            fails = cell.get("failures", 0)
+            prior = cell.get("prior", {})
+
+            # Compute 95% CI via normal approximation of Beta
+            import math
+            ab = alpha + beta
+            var = (alpha * beta) / (ab * ab * (ab + 1)) if ab > 0 else 0
+            std = math.sqrt(var) if var > 0 else 0
+            ci_lo = max(0.0, mean - 1.96 * std)
+            ci_hi = min(1.0, mean + 1.96 * std)
+
+            lines.append(
+                f"  {cell_key:25s}  n={n:3d}  "
+                f"pass={passes} fail={fails}  "
+                f"P(success)={mean:.2f}  "
+                f"95%CI=[{ci_lo:.2f},{ci_hi:.2f}]"
+            )
+        if prior:
+            lines.append(f"  Prior: α₀={prior.get('alpha_0', '?')}, β₀={prior.get('beta_0', '?')} (hierarchical pool)")
         lines.append("")
 
     lines.append("  ══════════════════════════════════════════════════════════")

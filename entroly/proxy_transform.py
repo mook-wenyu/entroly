@@ -507,6 +507,7 @@ def format_context_block(
     ltm_memories: list[dict[str, Any]],
     refinement_info: dict[str, Any] | None,
     *,
+    scaffold: str = "",
     task_type: str = "Unknown",
     vagueness: float = 0.0,
     coverage_risk: str = "",
@@ -536,6 +537,13 @@ def format_context_block(
     )
     if preamble:
         parts.append(preamble)
+        parts.append("")
+
+    # Context Scaffolding: structural dependency map (CSE)
+    # Injected BEFORE code fragments so the model understands file
+    # relationships before encountering the actual code.
+    if scaffold:
+        parts.append(scaffold)
         parts.append("")
 
     # Refinement info (if query was refined)
@@ -631,6 +639,7 @@ def format_hierarchical_context(
     ltm_memories: list[dict[str, Any]],
     refinement_info: dict[str, Any] | None,
     *,
+    scaffold: str = "",
     task_type: str = "Unknown",
     vagueness: float = 0.0,
     coverage_risk: str = "",
@@ -663,6 +672,11 @@ def format_hierarchical_context(
     )
     if preamble:
         parts.append(preamble)
+        parts.append("")
+
+    # Context Scaffolding: structural dependency map (CSE)
+    if scaffold:
+        parts.append(scaffold)
         parts.append("")
 
     # Refinement info

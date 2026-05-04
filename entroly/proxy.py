@@ -38,6 +38,7 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
 from .adaptive_budget import AdaptiveBudgetModel, extract_features
+from .context_scaffold import generate_scaffold
 from .proxy_http import (
     build_downstream_headers,
     build_forward_headers,
@@ -731,6 +732,22 @@ class PromptCompilerProxy:
             os.environ.get("ENTROLY_PASSIVE_FEEDBACK", "1") != "0"
         )
 
+        # RAVS Bayesian Router — routes cheap tasks to cheaper models
+        # when hook-captured event data proves it's safe
+        self._ravs_router_enabled = (
+            os.environ.get("ENTROLY_RAVS_ROUTER", "1") != "0"
+        )
+        try:
+            from .ravs.router import BayesianRouter
+            self._ravs_router = BayesianRouter(
+                enabled=self._ravs_router_enabled,
+                min_samples=int(os.environ.get("ENTROLY_RAVS_MIN_SAMPLES", "10")),
+                ci_threshold=float(os.environ.get("ENTROLY_RAVS_CI_THRESHOLD", "0.80")),
+            )
+        except Exception as e:
+            logger.debug("RAVS router init skipped: %s", e)
+            self._ravs_router = None
+
     def _new_http_client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(
             timeout=httpx.Timeout(connect=10.0, read=120.0, write=10.0, pool=10.0),
@@ -1215,6 +1232,81 @@ class PromptCompilerProxy:
             except Exception:
                 pass  # Never block the request for feedback
 
+        # ── RAVS Bayesian Router: model swap if safe ──────────────
+        _ravs_swapped = False
+        _ravs_original_model = ""
+        _ravs_archetype = ""
+        if self._ravs_router and user_message:
+            try:
+                from .proxy_transform import extract_model as _extract_model
+                from .ravs.router import classify_archetype
+                _current_model = _extract_model(body, path) or ""
+                _ravs_archetype = classify_archetype(user_message)
+
+                # ── Implicit feedback → RAVS cells ──
+                # If the PREVIOUS request was routed and we now detect
+                # rephrase (failure) or topic change (success), record
+                # that outcome so prompt-level archetypes accumulate
+                # Bayesian evidence without needing shell exit codes.
+                prev_routed = getattr(self, "_ravs_prev_routed", None)
+                if prev_routed:
+                    prev_client, prev_arch, prev_model = prev_routed
+                    if prev_client == client_key:
+                        try:
+                            from entroly_core import py_simhash
+                            prev_query_data = self._feedback_tracker._trajectories.get(client_key)
+                            if prev_query_data:
+                                prev_hash = prev_query_data[0]
+                                curr_hash = py_simhash(user_message)
+                                xor = curr_hash ^ prev_hash
+                                hamming = bin(xor).count("1")
+                                similarity = 1.0 - (hamming / 64.0)
+
+                                verdict = None
+                                if similarity > 0.75:
+                                    verdict = "fail"  # rephrase = routed model failed
+                                elif similarity < 0.30:
+                                    verdict = "pass"  # topic change = routed model succeeded
+
+                                if verdict:
+                                    try:
+                                        from .ravs.capture import capture_from_args
+                                        capture_from_args(
+                                            command=f"[proxy:{prev_arch}]",
+                                            exit_code=0 if verdict == "pass" else 1,
+                                            stdout_tail=f"implicit_feedback:{verdict}",
+                                            source="proxy_feedback",
+                                            source_strength=0.4,
+                                        )
+                                        logger.debug(
+                                            "RAVS feedback: %s → %s (sim=%.2f)",
+                                            prev_arch, verdict, similarity,
+                                        )
+                                    except Exception:
+                                        pass
+                        except (ImportError, Exception):
+                            pass  # No simhash = no feedback, safe to skip
+
+                if _current_model:
+                    decision = self._ravs_router.route(_current_model, user_message)
+                    if not decision.use_original and decision.recommended_model:
+                        from .ravs.router import swap_model_in_body
+                        _ravs_original_model = _current_model
+                        body = swap_model_in_body(body, decision.recommended_model)
+                        _ravs_swapped = True
+                        logger.info(
+                            "RAVS: %s → %s (%s)",
+                            _current_model, decision.recommended_model, decision.reason,
+                        )
+
+                # Store for next-request feedback attribution
+                if _ravs_swapped:
+                    self._ravs_prev_routed = (client_key, _ravs_archetype, _current_model)
+                else:
+                    self._ravs_prev_routed = None
+            except Exception as e:
+                logger.debug("RAVS router error (forwarding original): %s", e)
+
         # Forward to real API (target_url already resolved above)
         forward_headers = self._build_headers(headers)
         is_streaming = self._is_streaming_request(body, path)
@@ -1422,6 +1514,31 @@ class PromptCompilerProxy:
                 user_message, top_k=3, min_retention=0.3
             )
 
+        # ── Context Scaffolding Engine (CSE) ──
+        # Generate a structural dependency preamble that shows the LLM
+        # how selected files relate to each other. Based on:
+        #   - GRACG (NeurIPS 2025): heterogeneous code graph rendering
+        #   - Scaffold Reasoning (arxiv 2025): structured reasoning streams
+        #   - S2LPP (arxiv 2025): prompt strategy transfer across model sizes
+        # Cost: ~200 tokens. Benefit: enables Haiku to match Opus quality
+        # by pre-connecting cross-file relationships.
+        scaffold = ""
+        if self.config.enable_context_scaffold and selected:
+            try:
+                scaffold = generate_scaffold(
+                    selected,
+                    task_type=task_type,
+                    max_tokens=self.config.scaffold_max_tokens,
+                )
+                if scaffold:
+                    scaffold_tokens = len(scaffold) // 4
+                    logger.debug(
+                        "CSE: scaffold generated, ~%d tokens, task=%s",
+                        scaffold_tokens, task_type,
+                    )
+            except Exception as e:
+                logger.debug("CSE scaffold generation failed: %s", e)
+
         # ── Format context block ──
         apa_kwargs: dict[str, Any] = {}
         if self.config.enable_prompt_directives:
@@ -1434,6 +1551,7 @@ class PromptCompilerProxy:
             # Hierarchical: 3-level compression
             context_text = format_hierarchical_context(
                 hcc_result, security_issues, ltm_memories, refinement_info,
+                scaffold=scaffold,
                 **apa_kwargs,
             )
             logger.info(
@@ -1446,6 +1564,7 @@ class PromptCompilerProxy:
             # Flat: original format_context_block
             context_text = format_context_block(
                 selected, security_issues, ltm_memories, refinement_info,
+                scaffold=scaffold,
                 **apa_kwargs,
             )
 

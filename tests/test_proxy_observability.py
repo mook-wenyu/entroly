@@ -273,3 +273,88 @@ async def test_optimized_responses_request_uses_instructions_and_is_logged(monke
     assert entry["tokens_saved"] >= 0
 
     await proxy._client.aclose()
+
+
+@pytest.mark.anyio
+async def test_ravs_routed_request_records_next_request_feedback(monkeypatch):
+    calls: list[dict[str, object]] = []
+    forwarded: list[dict[str, object]] = []
+
+    async def upstream_handler(request: httpx.Request) -> httpx.Response:
+        forwarded.append(json.loads(request.content.decode("utf-8")))
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/json"},
+            json={"id": "resp_mock", "choices": []},
+        )
+
+    class DummyRouter:
+        def __init__(self):
+            self.calls = 0
+
+        def route(self, model: str, user_message: str):
+            self.calls += 1
+            if self.calls == 1:
+                return SimpleNamespace(
+                    use_original=False,
+                    recommended_model="gpt-4o-mini",
+                    reason="test",
+                )
+            return SimpleNamespace(
+                use_original=True,
+                recommended_model=None,
+                reason="test",
+            )
+
+    proxy = PromptCompilerProxy(
+        engine=SimpleNamespace(),
+        config=ProxyConfig(openai_base_url="https://api.mookbot.com"),
+    )
+    proxy._client = httpx.AsyncClient(transport=httpx.MockTransport(upstream_handler))
+    proxy._ravs_router = DummyRouter()
+    proxy._feedback_tracker._trajectories["_default"] = (0, ["frag1"], 0.0)
+
+    def fake_pipeline(user_message: str, body: dict[str, object], path: str) -> dict[str, object]:
+        return {"context": "", "elapsed_ms": 1.0, "selected_fragments": []}
+
+    def fake_simhash(text: str) -> int:
+        return 0
+
+    def fake_capture(**kwargs):
+        calls.append(kwargs)
+        return {"event_type": "test_result"}
+
+    monkeypatch.setattr(proxy, "_run_pipeline", fake_pipeline)
+    monkeypatch.setattr("entroly_core.py_simhash", fake_simhash)
+    monkeypatch.setattr("entroly.ravs.capture.capture_from_args", fake_capture)
+
+    app = Starlette(routes=[Route("/responses", proxy.handle_proxy, methods=["POST"])])
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        first = await client.post(
+            "/responses",
+            json={"model": "gpt-5.4", "input": "read the file utils.py", "stream": False},
+        )
+        second = await client.post(
+            "/responses",
+            json={"model": "gpt-5.4", "input": "read the file utils.py again", "stream": False},
+        )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert forwarded[0]["model"] == "gpt-4o-mini"
+    assert forwarded[1]["model"] == "gpt-5.4"
+    assert calls == [
+        {
+            "command": "[proxy:inspect]",
+            "exit_code": 1,
+            "stdout_tail": "implicit_feedback:fail",
+            "source": "proxy_feedback",
+            "source_strength": 0.4,
+        }
+    ]
+
+    await proxy._client.aclose()
