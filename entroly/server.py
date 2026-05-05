@@ -1143,6 +1143,48 @@ class EntrolyEngine:
         # Feed FeedbackJournal from genuine outcome signal.
         self._log_outcome_to_journal(fragment_ids, reward=-1.0)
 
+    def record_retrieval_miss(self, source_paths: list[str]) -> None:
+        """Boost any fragments whose source matches a file the user actually
+        edited but retrieval did NOT surface.
+
+        This is the "should-have-retrieved" signal — the most valuable
+        learning input, since it tells PRISM where its blind spots are.
+        We translate the file-level miss into fragment-level positive
+        feedback by looking up every indexed fragment whose ``source``
+        matches one of the missed paths and giving it a moderate boost.
+        Magnitude is capped (0.5, half a verified-hit) to acknowledge
+        that "this file was relevant" is a weaker signal than "this
+        fragment was the one that helped".
+        """
+        if not source_paths:
+            return
+        wanted = {p.replace("\\", "/").lstrip("./") for p in source_paths if p}
+        if not wanted:
+            return
+        try:
+            promoted: list[str] = []
+            for frag in getattr(self, "_fragments", {}).values():
+                src = (getattr(frag, "source", "") or "").replace("\\", "/").lstrip("./")
+                if src in wanted:
+                    promoted.append(frag.id if hasattr(frag, "id") else getattr(frag, "fragment_id", ""))
+            promoted = [p for p in promoted if p]
+            if not promoted:
+                return
+            # Half-strength positive: real but weaker than a verified hit.
+            for fid in promoted:
+                self._pruner.apply_feedback(fid, 0.5)
+            # Wilson/Rust state also gets a half success — modeled as
+            # one success out of two trials so it nudges without claiming
+            # certainty.
+            if self._use_rust and hasattr(self._rust, "record_success"):
+                # Rust counter is integral; counts the fragments once.
+                self._rust.record_success(promoted)
+            else:
+                self._wilson.record_success(promoted)
+        except Exception:
+            # Best-effort; never break record_outcome on miss-promotion.
+            pass
+
     def record_reward(self, fragment_ids: list[str], reward: float) -> None:
         """Record a continuous reward signal for selected fragments.
 
@@ -1889,6 +1931,25 @@ def create_mcp_server():
             "task_type": task_type,
         }
         result["request_id"] = _opt_request_id
+
+        # ── Causal attribution snapshot ───────────────────────────────
+        # Capture git HEAD + currently-dirty files + the fragments we
+        # actually returned, so record_outcome() can later separate
+        # fragments whose source files were really edited from those the
+        # caller passed by mistake. Best-effort; never fail the request.
+        try:
+            from .causal_attribution import build_snapshot, global_store
+            _selected_for_snap = (
+                result.get("selected_fragments") or result.get("selected") or []
+            )
+            _snap = build_snapshot(
+                request_id=_opt_request_id,
+                repo_root=os.getcwd(),
+                selected_fragments=_selected_for_snap,
+            )
+            global_store().put(_snap)
+        except Exception as _snap_err:
+            logger.debug("causal snapshot skipped: %s", _snap_err)
         result["_task_profile"] = {"task_type": task_type, "confidence": task_confidence}
 
         # ── RAVS → PRISM bridge: cache observation for honest correction ──
@@ -2100,10 +2161,77 @@ def create_mcp_server():
         evaluation to actually train against.
         """
         ids = [fid.strip() for fid in fragment_ids.split(",") if fid.strip()]
-        if success:
-            engine.record_success(ids)
-        else:
-            engine.record_failure(ids)
+
+        # ── Causal attribution ────────────────────────────────────────
+        # Bind the outcome to fragments whose source files were ACTUALLY
+        # modified between optimize_context() and now. Prevents the
+        # filter-bubble drift where off-target retrievals get reinforced
+        # because the user solved the task via Grep, not via the surfaced
+        # context. Falls back to legacy (every passed id reinforces) when
+        # git is unavailable or the snapshot has expired.
+        causal_summary: dict | None = None
+        try:
+            from .causal_attribution import (
+                attribute, causal_credit_enabled, global_store,
+            )
+            if causal_credit_enabled():
+                snap_id = (_last_opt_ctx or {}).get("request_id")
+                snap = (
+                    global_store().get(snap_id) if snap_id else None
+                ) or global_store().latest()
+                if snap is not None:
+                    credit = attribute(snap, ids)
+                    causal_summary = credit.summary()
+                    # Only the verified-hit set drives the strong update.
+                    # Unverified ids ABSTAIN — no PRISM update at all —
+                    # which is the whole point of the bug fix.
+                    target_ids = credit.verified_hits
+                    if success:
+                        if target_ids:
+                            engine.record_success(target_ids)
+                    else:
+                        # On failure, penalize the ids that were causally
+                        # implicated. If none were, penalize the full
+                        # passed set — a failed task with no diff is a
+                        # "you handed me junk and I couldn't use any of
+                        # it" signal.
+                        engine.record_failure(target_ids or ids)
+                    # Emit a learning event for files that were modified
+                    # but never retrieved — PRISM's blind spot.
+                    if credit.should_have_retrieved:
+                        try:
+                            engine.record_retrieval_miss(
+                                credit.should_have_retrieved
+                            )
+                        except AttributeError:
+                            # Older engine builds without the new method
+                            # silently no-op; the snapshot still ran.
+                            pass
+                    logger.info(
+                        "causal_attribution: verified=%d unverified=%d "
+                        "should_have=%d (passed=%d)",
+                        len(credit.verified_hits),
+                        len(credit.unverified),
+                        len(credit.should_have_retrieved),
+                        len(ids),
+                    )
+                else:
+                    # No snapshot available — fall through to legacy.
+                    if success:
+                        engine.record_success(ids)
+                    else:
+                        engine.record_failure(ids)
+            else:
+                if success:
+                    engine.record_success(ids)
+                else:
+                    engine.record_failure(ids)
+        except Exception as _causal_err:
+            logger.debug("causal attribution failed, using legacy: %s", _causal_err)
+            if success:
+                engine.record_success(ids)
+            else:
+                engine.record_failure(ids)
 
         # Log to cross-session feedback journal for autotune
         if _last_opt_ctx:
@@ -2142,11 +2270,14 @@ def create_mcp_server():
         except Exception as _ravs_err:
             logger.debug("RAVS legacy bridge skipped: %s", _ravs_err)
 
-        return json.dumps({
+        response = {
             "status": "recorded",
             "fragment_ids": ids,
             "outcome": "success" if success else "failure",
-        }, indent=2)
+        }
+        if causal_summary is not None:
+            response["causal_attribution"] = causal_summary
+        return json.dumps(response, indent=2)
 
     # ── RAVS v1: structured honest-signal entry points ────────────────
     # Each of these records a STRONG event that the default reducer
