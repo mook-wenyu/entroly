@@ -420,6 +420,17 @@ class VerificationEngine:
         # Check for dependency contradictions
         # If A says it depends on B, but B doesn't exist as a belief
         known_entities = {b.get("entity", "").lower() for b in beliefs}
+        # Also index types/functions documented inside each belief body, so a
+        # wiki-link like [[ContextFragment]] resolves to the belief that
+        # defines `pub struct ContextFragment`, not just to a file named
+        # ContextFragment.md. Covers Python (class/def), Rust (struct/enum/
+        # fn/trait/type), and TS/JS (class/function/interface/type).
+        symbol_pattern = re.compile(
+            r'`(?:pub\s+)?(?:class|def|fn|struct|enum|interface|function|type|trait)\s+(\w+)'
+        )
+        for b in beliefs:
+            for sym_match in symbol_pattern.finditer(b.get("body", "")):
+                known_entities.add(sym_match.group(1).lower())
         for b in beliefs:
             body = b.get("body", "")
             # Find [[wiki links]]
