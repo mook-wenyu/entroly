@@ -26,13 +26,17 @@ def test_optional_component_loader_falls_back_to_ebbiforge_core(monkeypatch):
 
 def test_adaptive_pruner_missing_ebbiforge_core_is_not_info_noise(monkeypatch, caplog):
     monkeypatch.setattr(adaptive_pruner, "_PRUNER_AVAILABLE", False)
+    monkeypatch.setattr(adaptive_pruner, "_RUST_PRUNER_AVAILABLE", False)
     monkeypatch.setattr(adaptive_pruner, "_PRUNER_IMPORT_ERROR", "No module named 'ebbiforge_core'")
     monkeypatch.setattr(adaptive_pruner, "_RustPruner", None)
 
     with caplog.at_level(logging.INFO):
-        adaptive_pruner.EntrolyPruner()
+        pruner = adaptive_pruner.EntrolyPruner()
 
+    assert pruner.available is True
+    assert pruner.backend == "python"
     assert "AdaptivePruner: ebbiforge_core not available" not in caplog.text
+    assert "Python fallback active" in caplog.text
 
 
 def test_doctor_reports_optional_learning_component_status(monkeypatch, capsys):
