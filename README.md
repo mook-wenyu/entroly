@@ -132,6 +132,87 @@ Your AI now sees 100% of your codebase. You pay for 5–30% of the tokens. And t
 
 ---
 
+## Live Dashboard & Control Panel
+
+Every command auto-opens a browser dashboard at `http://localhost:9378` — no extra install, no React build, nothing to configure.
+
+**Dashboard** — real-time metrics (token savings, PRISM weights, health grade, cost savings, pipeline latency):
+
+```
+http://localhost:9378        ← auto-opens on entroly go / proxy / daemon
+```
+
+**Control Panel** — full control surface for the daemon:
+
+```
+http://localhost:9378/controls
+```
+
+| Control | What it does |
+|---|---|
+| **Optimization toggle** | Enable/pause context optimization |
+| **Bypass mode** | Forward requests raw for A/B testing |
+| **Quality selector** | Switch between Fast / Balanced / Max |
+| **Repo manager** | See indexed repos, trigger re-index |
+| **PRISM weights** | View learned weights, reset, run autotune |
+| **Federation** | Opt-in/out of anonymous global learning |
+| **Log viewer** | Real-time daemon logs in-browser |
+
+> Everything is served inline from the Python package — `pip install entroly` includes the full UI. Zero npm, zero build step.
+
+---
+
+## Daemon Supervisor (`entroly daemon`)
+
+One process that manages everything — proxy, dashboard, MCP server, file watcher, learning loop:
+
+```bash
+entroly daemon                 # start everything, opens browser
+entroly daemon --no-proxy      # dashboard + MCP only
+entroly daemon --quality max   # max quality mode
+```
+
+The daemon exposes a **Control API** at `http://localhost:9378/api/control/*`:
+
+```bash
+# Check daemon status
+curl http://localhost:9378/api/control/status
+
+# Toggle optimization
+curl -X POST http://localhost:9378/api/control/optimization/pause
+curl -X POST http://localhost:9378/api/control/optimization/enable
+
+# Switch quality mode
+curl -X POST http://localhost:9378/api/control/quality -d '{"mode":"max"}'
+
+# Re-index a repo
+curl -X POST http://localhost:9378/api/control/repos/reindex
+
+# View learning weights
+curl http://localhost:9378/api/control/learning
+
+# Stop the daemon
+curl -X POST http://localhost:9378/api/control/stop
+```
+
+> **Backward compatible:** Existing `entroly proxy`, `entroly serve`, `entroly dashboard` commands work exactly as before. The daemon is additive.
+
+### Codebase Detection
+
+If you run Entroly from a non-project directory (like your Desktop), it warns you:
+
+```
+  No codebase detected in: /Users/you/Desktop
+
+  Navigate to your codebase first:
+    cd /path/to/your/project
+    entroly go
+```
+
+Entroly auto-detects Python, JS/TS, Rust, Go, Java, Ruby, C/C++, and 10+ other project types.
+
+---
+
 ## The Competitive Edge — What Sets Entroly Apart
 
 ### Context Scaffolding Engine (CSE): Haiku = Opus
