@@ -277,7 +277,7 @@ async function refresh(){
     const sr=await fetch('/api/control/status');const s=await sr.json();
     const pill=document.getElementById('statusPill');const stxt=document.getElementById('statusText');
     if(s.error){pill.className='status-pill off';stxt.textContent='Daemon not running';return;}
-    pill.className='status-pill';stxt.textContent='v'+s.version+' &middot; '+(s.uptime_s>0?Math.round(s.uptime_s)+'s uptime':'starting');
+    pill.className='status-pill';stxt.textContent='v'+s.version+' \u00b7 '+(s.uptime_s>0?Math.round(s.uptime_s)+'s uptime':'starting');
     document.getElementById('daemonBadge').textContent=s.status;
     document.getElementById('daemonBadge').className='badge '+(s.status==='running'?'b-green':'b-rose');
     document.getElementById('daemonInfo').innerHTML=
@@ -300,6 +300,10 @@ async function refresh(){
   document.getElementById('learnToggle').checked=l.local_enabled;
   document.getElementById('vaultBadge').textContent=l.local_enabled?'Active':'Paused';
   document.getElementById('vaultBadge').className='badge '+(l.local_enabled?'b-green':'b-amber');
+  const w=l.weights||{};
+  document.getElementById('vaultInfo').innerHTML=w.recency?
+    'R='+w.recency.toFixed(2)+' F='+w.frequency.toFixed(2)+' S='+w.semantic.toFixed(2)+' E='+w.entropy.toFixed(2):
+    'No weight data';
   }catch(e){}
 
   try{const cr=await fetch('/api/control/context/last');const c=await cr.json();

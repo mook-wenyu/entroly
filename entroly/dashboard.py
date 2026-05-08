@@ -787,7 +787,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
         """Add security headers to prevent clickjacking and MIME sniffing."""
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
-        self.send_header("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; font-src https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com")
+        self.send_header("Content-Security-Policy",
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "connect-src 'self'; "
+            "img-src 'self' data:"
+        )
         self.send_header("Referrer-Policy", "no-referrer")
 
     def do_GET(self):
@@ -1032,6 +1039,8 @@ def start_dashboard(engine: Any = None, port: int = 9378, daemon: bool = True):
         _lite.state.started_at = __import__("time").time()
         _lite.state.dashboard.running = True
         _lite.state.dashboard.port = port
+        _lite.state.proxy.running = True  # proxy is live via entroly go
+        _lite.state.proxy.port = 9377
         _lite._engine = engine
         _lite._proxy_server = None
         _lite._dashboard_server = None
@@ -1051,7 +1060,7 @@ def start_dashboard(engine: Any = None, port: int = 9378, daemon: bool = True):
                 __import__("entroly.daemon", fromlist=["RepoState"]).RepoState(
                     path=__import__("os").getcwd(),
                     watching=True,
-                    indexed_files=sess.get("fragments_tracked", 0),
+                    indexed_files=sess.get("total_fragments", 0),
                     total_tokens=sess.get("total_tokens_tracked", 0),
                     last_sync=__import__("time").time(),
                 )
