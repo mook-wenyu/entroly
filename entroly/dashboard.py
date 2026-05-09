@@ -1034,7 +1034,8 @@ def start_dashboard(engine: Any = None, port: int = 9378, daemon: bool = True):
     # Auto-register a lightweight daemon state so the control API
     # works even when called from `entroly go` / `entroly proxy`
     # (not just `entroly daemon`).
-    from entroly.daemon import get_daemon, _register_control_api, EntrolyDaemon
+    from entroly.daemon import get_daemon, _register_control_api, EntrolyDaemon, _install_log_buffer
+    _install_log_buffer()  # Ensure live logs work from any entry point
     if get_daemon() is None:
         _lite = EntrolyDaemon.__new__(EntrolyDaemon)
         _lite.state = __import__("entroly.daemon", fromlist=["EntrolyDaemonState"]).EntrolyDaemonState()
