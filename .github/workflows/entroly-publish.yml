@@ -87,9 +87,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           skip-existing: true
-          # Authenticated via PyPI Trusted Publishers (OIDC) — no token needed.
-          # Configure at:
-          # https://pypi.org/manage/project/entroly/settings/publishing/
+          password: ${{ secrets.TESTING_API_TOKEN }}
 
   publish-npm:
     needs: build-and-push
