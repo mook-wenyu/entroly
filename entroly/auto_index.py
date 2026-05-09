@@ -273,6 +273,63 @@ def _priority_score(rel_path: str) -> int:
     return 50
 
 
+def _source_type_token_weight(rel_path: str) -> float:
+    """Source-type importance weight for knapsack efficiency correction.
+
+    The knapsack selects fragments by efficiency = entropy_score / token_count.
+    Config files (YAML, JSON) get artificially high efficiency because they are
+    tiny and have high character entropy. Inflating their token count corrects
+    this by reducing their apparent efficiency.
+
+    Mathematically equivalent to multiplying the fragment's knapsack *value*
+    by 1/weight, without modifying the Rust engine's scoring internals.
+
+    Calibration (measured on Kubeflow Trainer, a Go/K8s project):
+      Before fix: top 10 selected = all YAML patches (19-72 tokens)
+      After fix:  top 10 selected = Go controller/reconciler source code
+
+    Returns:
+        Token inflation factor. 1.0 = no inflation (source code).
+        Values > 1.0 make the fragment appear more expensive to the knapsack.
+    """
+    _, ext = os.path.splitext(rel_path.lower())
+    basename = os.path.basename(rel_path.lower())
+
+    # Source code: no inflation — full knapsack priority
+    if ext in {
+        '.go', '.py', '.pyw', '.rs',
+        '.ts', '.tsx', '.js', '.jsx', '.mjs', '.mts', '.cjs', '.cts',
+        '.java', '.kt', '.scala',
+        '.cs', '.csx', '.fs',
+        '.swift',
+        '.cpp', '.cc', '.c', '.h', '.hpp', '.hxx',
+        '.rb', '.php',
+        '.ex', '.exs',
+        '.dart', '.lua', '.zig',
+        '.vue', '.svelte',
+    }:
+        return 1.0
+
+    # Config / declarative: 3x inflation → 3x lower knapsack efficiency
+    if ext in {'.yaml', '.yml', '.json', '.toml'}:
+        return 3.0
+
+    # Documentation: 2x inflation
+    if ext in {'.md', '.rst'}:
+        return 2.0
+
+    # Infrastructure scripts / Docker / CI
+    if ext in {'.sh', '.bash', '.zsh', '.dockerfile'} or basename.startswith('dockerfile'):
+        return 2.0
+
+    # SQL: moderate inflation (schemas are useful)
+    if ext == '.sql':
+        return 1.3
+
+    # Unknown: slight inflation
+    return 1.5
+
+
 def auto_index(
     engine: EntrolyEngine,
     project_dir: str | None = None,
@@ -392,7 +449,11 @@ def auto_index(
                 skipped_read += 1
                 continue
             content, rel_path, tokens = data
-            batch.append((content, f"file:{rel_path}", tokens))
+            # Apply source-type weighting: inflate token count for config files
+            # so the knapsack deprioritizes them vs source code.
+            weight = _source_type_token_weight(rel_path)
+            weighted_tokens = int(tokens * weight)
+            batch.append((content, f"file:{rel_path}", weighted_tokens))
 
     t_read = time.perf_counter()
 
