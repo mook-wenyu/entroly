@@ -118,11 +118,10 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#entroly-v}" >> $GITHUB_OUTPUT
 
-      - name: Update package.json (name + version)
+      - name: Update package.json version
         working-directory: entroly-wasm/pkg
         run: |
-          # wasm-pack generates name as "entroly-wasm" but npm package is "entroly"
-          node -e "const p=require('./package.json'); p.name='entroly'; p.version='${{ steps.version.outputs.VERSION }}'; require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2)+'\n')"
+          node -e "const p=require('./package.json'); p.name='entroly-wasm'; p.version='${{ steps.version.outputs.VERSION }}'; require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2)+'\n')"
 
       - name: Publish to npm
         working-directory: entroly-wasm/pkg
