@@ -78,20 +78,23 @@ def _get_full_snapshot() -> dict:
 
     try:
         # 1. Core stats — tokens saved, cost, dedup, turns
-        stats = _engine.stats() if hasattr(_engine, "stats") else {}
-        if hasattr(_engine, "_use_rust") and _engine._use_rust:
+        if hasattr(_engine, "_rust") and _engine._rust is not None:
             stats = _engine._rust.stats()
             stats = dict(stats)
             for k, v in stats.items():
                 if hasattr(v, "items"):
                     stats[k] = dict(v)
+        elif hasattr(_engine, "stats"):
+            stats = _engine.stats()
+        else:
+            stats = {}
         snap["stats"] = _safe_json(stats)
     except Exception as e:
         snap["stats"] = {"error": str(e)}
 
     try:
         # 2. PRISM RL weights — the learned scoring weights
-        if hasattr(_engine, "_use_rust") and _engine._use_rust:
+        if hasattr(_engine, "_rust") and _engine._rust is not None:
             rust = _engine._rust
             snap["prism_weights"] = {
                 "recency": round(getattr(rust, "w_recency", 0.3), 4),
@@ -104,7 +107,7 @@ def _get_full_snapshot() -> dict:
 
     try:
         # 3. Health analysis — code health grade
-        if hasattr(_engine, "_use_rust") and _engine._use_rust:
+        if hasattr(_engine, "_rust") and _engine._rust is not None:
             health_json = _engine._rust.analyze_health()
             snap["health"] = _safe_json(json.loads(health_json))
     except Exception:
@@ -112,7 +115,7 @@ def _get_full_snapshot() -> dict:
 
     try:
         # 4. SAST security report
-        if hasattr(_engine, "_use_rust") and _engine._use_rust:
+        if hasattr(_engine, "_rust") and _engine._rust is not None:
             sec_json = _engine._rust.security_report()
             snap["security"] = _safe_json(json.loads(sec_json))
     except Exception:
@@ -120,7 +123,7 @@ def _get_full_snapshot() -> dict:
 
     try:
         # 5. Knapsack explainability — last optimization decisions
-        if hasattr(_engine, "_use_rust") and _engine._use_rust:
+        if hasattr(_engine, "_rust") and _engine._rust is not None:
             explain = _engine._rust.explain_selection()
             snap["explain"] = _safe_json(dict(explain))
     except Exception:
@@ -128,7 +131,7 @@ def _get_full_snapshot() -> dict:
 
     try:
         # 6. Dependency graph stats
-        if hasattr(_engine, "_use_rust") and _engine._use_rust:
+        if hasattr(_engine, "_rust") and _engine._rust is not None:
             dg = _engine._rust.dep_graph_stats()
             snap["dep_graph"] = _safe_json(dict(dg))
     except Exception:
