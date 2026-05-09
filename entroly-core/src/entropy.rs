@@ -743,37 +743,7 @@ pub fn information_mass_factor(token_count: u32) -> f64 {
     0.3 + 0.7 * sigma
 }
 
-/// Context-aware information score — the production scoring function.
-///
-/// Combines three orthogonal, independently meaningful signals:
-///
-///   1. **Information density** (Shannon entropy, boilerplate, uniqueness)
-///      Measures how much novel information per byte the fragment contains.
-///
-///   2. **Source type multiplier** (code=1.0, config=0.35, docs=0.45)
-///      Encodes the prior that source code is more valuable than config
-///      for AI coding tasks. This is the key fix for the Go/K8s failure.
-///
-///   3. **Information mass factor** (sigmoid on token count)
-///      Prevents tiny fragments from dominating the knapsack via
-///      artificially high efficiency (score/tokens).
-///
-/// Final score = density × type_weight × mass_factor
-///
-/// This replaces the density-only `information_score` for all paths
-/// that feed into knapsack selection.
-pub fn information_score_contextual(
-    text: &str,
-    source: &str,
-    other_fragments: &[&str],
-    token_count: u32,
-) -> f64 {
-    let density = information_score(text, other_fragments);
-    let type_weight = source_type_multiplier(source);
-    let mass = information_mass_factor(token_count);
 
-    (density * type_weight * mass).clamp(0.0, 1.0)
-}
 
 #[cfg(test)]
 mod tests {
