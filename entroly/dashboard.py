@@ -325,22 +325,50 @@ body::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%
 .whisper code{background:rgba(96,165,250,0.15);padding:2px 8px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:12px;}
 .whisper .dismiss{margin-left:auto;cursor:pointer;opacity:0.5;font-size:16px;}
 .whisper .dismiss:hover{opacity:1;}
-/* Hero */
-.hero{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;margin-bottom:20px;}
-.hero-card{padding:20px 24px;background:var(--card);border:1px solid var(--border);border-radius:16px;position:relative;overflow:hidden;}
-.hero-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;}
-.hc-files::before{background:var(--grad2);}
-.hc-health::before{background:linear-gradient(90deg,var(--blue),var(--violet));}
-.hc-sast::before{background:linear-gradient(90deg,var(--rose),var(--amber));}
-.hc-savings::before{background:linear-gradient(90deg,var(--emerald),var(--cyan));}
-.hero-icon{font-size:28px;margin-bottom:8px;}
-.hero-val{font-size:36px;font-weight:900;letter-spacing:-2px;font-feature-settings:'tnum';}
-.hero-label{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1.2px;margin-top:4px;}
-.hero-sub{font-size:12px;color:var(--dim);margin-top:8px;}
+/* Hero — Impact-first design */
+.hero{margin-bottom:20px;}
+.hero-impact{text-align:center;padding:32px 24px 24px;background:var(--card);border:1px solid var(--border);
+  border-radius:20px;position:relative;overflow:hidden;margin-bottom:16px;}
+.hero-impact::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--grad2);}
+.hero-impact::after{content:'';position:absolute;top:50%;left:50%;width:400px;height:400px;transform:translate(-50%,-50%);
+  background:radial-gradient(circle,rgba(52,211,153,0.06),transparent 70%);pointer-events:none;}
+.hero-big{font-size:64px;font-weight:900;letter-spacing:-3px;font-feature-settings:'tnum';
+  background:var(--grad2);-webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 30px rgba(52,211,153,0.2));line-height:1.1;}
+.hero-big-label{font-size:13px;color:var(--dim);text-transform:uppercase;letter-spacing:2px;margin-top:6px;font-weight:600;}
+.hero-subtitle{font-size:13px;color:var(--dim);margin-top:12px;}
+.hero-subtitle b{color:var(--text);font-weight:700;}
+.hero-spark{height:48px;display:flex;align-items:flex-end;gap:2px;margin:16px auto 0;max-width:500px;}
+.hero-spark .hbar{flex:1;background:var(--grad2);border-radius:3px 3px 0 0;min-width:4px;
+  transition:height 0.6s cubic-bezier(0.16,1,0.3,1);opacity:0.6;}
+.hero-spark .hbar:last-child{opacity:1;}
+.hero-spark .hbar:hover{opacity:1;}
+.hero-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+.hero-metric{padding:16px 20px;background:var(--card);border:1px solid var(--border);border-radius:14px;
+  position:relative;overflow:hidden;transition:border-color 0.3s,transform 0.2s;}
+.hero-metric:hover{border-color:var(--border2);transform:translateY(-2px);}
+.hero-metric::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+.hm-files::before{background:var(--grad2);}
+.hm-health::before{background:linear-gradient(90deg,var(--blue),var(--violet));}
+.hm-sast::before{background:linear-gradient(90deg,var(--rose),var(--amber));}
+.hm-reqs::before{background:linear-gradient(90deg,var(--cyan),var(--blue));}
+.hm-icon{font-size:20px;margin-bottom:6px;}
+.hm-val{font-size:28px;font-weight:900;letter-spacing:-1px;font-feature-settings:'tnum';}
+.hm-label{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:1.2px;margin-top:2px;}
+.hm-sub{font-size:11px;color:var(--dim);margin-top:6px;}
 .hv-green{color:var(--emerald);}
 .hv-blue{color:var(--blue);}
 .hv-rose{color:var(--rose);}
 .hv-amber{color:var(--amber);}
+.hv-cyan{color:var(--cyan);}
+/* Empty state */
+.empty-hero{text-align:center;padding:48px 24px;background:var(--card);border:1px solid var(--border);
+  border-radius:20px;margin-bottom:20px;}
+.empty-icon{font-size:48px;margin-bottom:12px;filter:grayscale(0.5);opacity:0.7;}
+.empty-title{font-size:18px;font-weight:700;color:var(--text);margin-bottom:8px;}
+.empty-desc{font-size:13px;color:var(--dim);max-width:400px;margin:0 auto;line-height:1.6;}
+.empty-desc code{background:rgba(96,165,250,0.15);padding:2px 8px;border-radius:4px;
+  font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--blue);}
 /* Before/After */
 .ba-panel{display:grid;grid-template-columns:1fr auto 1fr;gap:0;margin-bottom:20px;
   background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden;}
@@ -451,8 +479,8 @@ tr:hover td{background:rgba(255,255,255,0.015);}
   background:var(--glass);border:1px solid var(--border);color:var(--dim);transition:all 0.2s;}
 .trends-tab.active{background:var(--emerald-glow);color:var(--emerald);border-color:rgba(52,211,153,0.3);}
 .trends-tab:hover{border-color:var(--border2);}
-@media(max-width:1100px){.hero{grid-template-columns:1fr 1fr;}.grid3{grid-template-columns:1fr 1fr;}.ba-panel{grid-template-columns:1fr;}.cache-kpis{grid-template-columns:1fr 1fr;}.cache-split{grid-template-columns:1fr;}}
-@media(max-width:768px){.hero,.grid2,.grid3,.cache-kpis{grid-template-columns:1fr;}.main{padding:16px;}}
+@media(max-width:1100px){.hero-metrics{grid-template-columns:1fr 1fr;}.grid3{grid-template-columns:1fr 1fr;}.ba-panel{grid-template-columns:1fr;}.cache-kpis{grid-template-columns:1fr 1fr;}.cache-split{grid-template-columns:1fr;}}
+@media(max-width:768px){.hero-metrics,.grid2,.grid3,.cache-kpis{grid-template-columns:1fr;}.main{padding:16px;}.hero-big{font-size:48px;}}
 </style>
 </head>
 <body>
@@ -507,6 +535,7 @@ const pct=n=>Math.round((n||0)*100)+'%';
 const ago=ts=>{const s=Math.floor(Date.now()/1000-ts);return s<60?s+'s ago':s<3600?Math.floor(s/60)+'m ago':Math.floor(s/3600)+'h ago';};
 let hasRequests=false;
 
+let heroSparkData=[];
 function renderHero(d){
   const s=d.stats||{},sv=s.savings||{},ss=s.session||{},dd=s.dedup||{};
   const frags=ss.total_fragments||0;
@@ -519,27 +548,57 @@ function renderHero(d){
   const costSaved=sv.estimated_cost_saved_usd||0;
   const reqs=d.recent_requests||[];
   if(reqs.length>0)hasRequests=true;
-  // Hide whisper after first request
   const w=document.getElementById('whisper');
   if(w&&hasRequests)w.style.display='none';
 
+  // Track sparkline data
+  if(reqs.length>0){reqs.forEach(r=>{if(heroSparkData.length>=40)heroSparkData.shift();heroSparkData.push(r.tokens_saved||0);});}
+
+  // Empty state — no fragments indexed yet
+  if(frags===0&&!hasRequests){
+    document.getElementById('hero').innerHTML=`<div class="empty-hero">
+      <div class="empty-icon">🚀</div>
+      <div class="empty-title">Ready to optimize</div>
+      <div class="empty-desc">Point your AI tool to <code>http://localhost:9377/v1</code> and Entroly will start optimizing every LLM call automatically.</div>
+    </div>`;return;
+  }
+
+  // Impact sparkline
+  const mx=Math.max(...heroSparkData,1);
+  const sparkBars=heroSparkData.map(v=>'<div class="hbar" style="height:'+Math.max(3,v/mx*44)+'px;"></div>').join('');
+  const sparkHTML=heroSparkData.length>0?'<div class="hero-spark">'+sparkBars+'</div>':'';
+
+  // Big number: cost if available, else tokens
+  const bigNum=costSaved>0?'$'+costSaved.toFixed(2):tokensSaved>0?fmt(tokensSaved):'—';
+  const bigLabel=costSaved>0?'ESTIMATED COST SAVED':tokensSaved>0?'TOKENS SAVED':'AWAITING FIRST REQUEST';
+  const reqCount=reqs.length;
+  const subtitle=tokensSaved>0?`<b>${fmt(tokensSaved)}</b> tokens optimized across <b>${reqCount}</b> request${reqCount!==1?'s':''}`:'Send your first LLM request through the proxy to see savings';
+
   document.getElementById('hero').innerHTML=`
-    <div class="hero-card hc-files"><div class="hero-icon">📁</div>
-      <div class="hero-val hv-blue">${frags}</div>
-      <div class="hero-label">Files Indexed</div>
-      <div class="hero-sub">${fmt(ss.total_tokens_tracked||ss.total_tokens_ingested||ss.total_token_count||0)} tokens scanned</div></div>
-    <div class="hero-card hc-health"><div class="hero-icon">🏥</div>
-      <div class="hero-val" style="color:${gc}">${grade}</div>
-      <div class="hero-label">Code Health</div>
-      <div class="hero-sub">${score}/100 · ${(h.god_files||[]).length} god files</div></div>
-    <div class="hero-card hc-sast"><div class="hero-icon">🛡️</div>
-      <div class="hero-val ${secTotal>0?'hv-rose':'hv-green'}">${secTotal>0?secTotal:'✓'}</div>
-      <div class="hero-label">${secTotal>0?'Security Findings':'All Clear'}</div>
-      <div class="hero-sub">${secTotal>0?(d.security.critical_total||0)+' critical · '+(d.security.high_total||0)+' high':'No vulnerabilities found'}</div></div>
-    <div class="hero-card hc-savings"><div class="hero-icon">💰</div>
-      <div class="hero-val hv-green">${tokensSaved>0?fmt(tokensSaved):(costSaved>0?money(costSaved):'—')}</div>
-      <div class="hero-label">${tokensSaved>0?'Tokens Saved':'Savings'}</div>
-      <div class="hero-sub">${tokensSaved>0?money(costSaved)+' saved · '+(dd.duplicates_detected||sv.total_duplicates_caught||0)+' dedup hits':'Starts counting with proxy requests'}</div></div>`;
+    <div class="hero-impact">
+      <div class="hero-big">${bigNum}</div>
+      <div class="hero-big-label">${bigLabel}</div>
+      <div class="hero-subtitle">${subtitle}</div>
+      ${sparkHTML}
+    </div>
+    <div class="hero-metrics">
+      <div class="hero-metric hm-files"><div class="hm-icon">📁</div>
+        <div class="hm-val hv-blue">${frags}</div>
+        <div class="hm-label">Files Indexed</div>
+        <div class="hm-sub">${fmt(ss.total_tokens_tracked||ss.total_tokens_ingested||ss.total_token_count||0)} tokens</div></div>
+      <div class="hero-metric hm-health"><div class="hm-icon">🏥</div>
+        <div class="hm-val" style="color:${gc}">${grade}</div>
+        <div class="hm-label">Code Health</div>
+        <div class="hm-sub">${score}/100 · ${(h.god_files||[]).length} god files</div></div>
+      <div class="hero-metric hm-sast"><div class="hm-icon">🛡️</div>
+        <div class="hm-val ${secTotal>0?'hv-rose':'hv-green'}">${secTotal>0?secTotal:'✓'}</div>
+        <div class="hm-label">${secTotal>0?'Findings':'All Clear'}</div>
+        <div class="hm-sub">${secTotal>0?(d.security.critical_total||0)+' crit · '+(d.security.high_total||0)+' high':'No vulnerabilities'}</div></div>
+      <div class="hero-metric hm-reqs"><div class="hm-icon">⚡</div>
+        <div class="hm-val hv-cyan">${reqCount}</div>
+        <div class="hm-label">Requests</div>
+        <div class="hm-sub">${(dd.duplicates_detected||sv.total_duplicates_caught||0)} dedup hits</div></div>
+    </div>`;
 }
 
 function renderBA(d){
