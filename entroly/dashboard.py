@@ -1055,6 +1055,7 @@ def start_dashboard(engine: Any = None, port: int = 9378, daemon: bool = True):
         _lite._enable_proxy = True
         _lite._enable_mcp = False
         _lite._repo_paths = [__import__("os").getcwd()]
+        _lite._proxy_config = None  # will be set if proxy is running
 
         # Populate repo state from engine
         try:
