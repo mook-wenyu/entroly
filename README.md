@@ -29,7 +29,29 @@
 <h3 align="center">Your AI coding tools only see 5% of your codebase.<br/>Entroly gives them the full picture — for a fraction of the cost.</h3>
 
 <p align="center">
-  <code>npm install entroly-wasm && npx entroly-wasm</code>&nbsp;&nbsp;|&nbsp;&nbsp;<code>pip install entroly && entroly go</code>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="https://juyterman1000.github.io/entroly/docs/dashboard.html"><b>📊 Live Dashboard →</b></a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="https://raw.githubusercontent.com/juyterman1000/entroly/main/docs/assets/demo.svg"><b>Live demo →</b></a>
+  <a href="#install"><b>Install</b></a> ·
+  <a href="cookbook/README.md"><b>Cookbook</b></a> ·
+  <a href="#benchmarks"><b>Benchmarks</b></a> ·
+  <a href="#works-with-your-stack"><b>38 supported agents</b></a> ·
+  <a href="https://juyterman1000.github.io/entroly/docs/dashboard.html"><b>Dashboard</b></a>
+</p>
+
+<a id="install"></a>
+
+<p align="center">
+  <code>brew tap juyterman1000/entroly && brew install entroly</code>&nbsp;&nbsp;|&nbsp;&nbsp;
+  <code>pip install entroly</code>&nbsp;&nbsp;|&nbsp;&nbsp;
+  <code>npm i -g entroly-wasm</code>
+</p>
+
+<p align="center">
+  <sub>
+    Then: <code>cd /your/repo && entroly go</code> — auto-opens the dashboard at
+    <code>http://localhost:9378</code>.
+    <br/>
+    See the <a href="cookbook/README.md"><b>Cookbook</b></a> for 10 concrete recipes,
+    or pick your stack from the <a href="#works-with-your-stack">38 supported agents</a> below.
+  </sub>
 </p>
 
 <p align="center">
@@ -331,20 +353,71 @@ Zero cloud dependencies. Zero data exfiltration risk. Everything runs on your CP
 
 ---
 
-## Works With Your Stack
+<a id="works-with-your-stack"></a>
 
-| Tool | Setup |
+## Works With Your Stack — 38 Agents, One Command
+
+`entroly wrap <agent>` does the right thing for every tool. Three integration kinds, picked automatically:
+
+- **CLI agents** — entroly starts the proxy, sets the right env var, exec's the binary. Zero config files touched.
+- **MCP-aware IDEs** — entroly auto-merges its MCP server into the IDE's `mcp.json` (with a `.entroly-backup` of any prior config). Restart the IDE.
+- **Other IDEs** — entroly prints a copy-paste-ready snippet with the exact file path and field to set.
+
+### CLI agents (env-wrap, exec)
+
+| Agent | Command |
 |---|---|
-| **Claude Code** | `entroly wrap claude` or `claude mcp add entroly -- entroly` |
-| **Cursor** | `entroly wrap cursor` → prints config, paste once |
-| **Codex CLI** | `entroly wrap codex` |
-| **GitHub Copilot** | `entroly wrap copilot` |
-| **Aider** | `entroly wrap aider` |
-| **Windsurf / Cline / Cody** | `entroly init` → MCP server |
-| **Any LLM API** | `entroly proxy` → HTTP proxy on `localhost:9377` |
-| **LangChain / LlamaIndex** | `from entroly import compress` |
+| Claude Code | `entroly wrap claude` |
+| OpenAI Codex CLI | `entroly wrap codex` |
+| Aider | `entroly wrap aider` |
+| GitHub Copilot CLI | `entroly wrap copilot` |
+| Gemini CLI | `entroly wrap gemini` |
+| Qwen Code | `entroly wrap qwen` |
+| OpenCode | `entroly wrap opencode` |
+| Charm CRUSH | `entroly wrap crush` |
+| Hermes | `entroly wrap hermes` |
+| Pi Coding Agent | `entroly wrap pi` |
+| Ollama | `entroly wrap ollama` |
 
-Also: OpenAI API • Anthropic API • Google Vertex • AWS Bedrock • Groq • Together • OpenRouter • Ollama • vLLM • 100+ models
+### MCP-aware IDEs (auto-merge `mcp.json`)
+
+| IDE | Command | Config file written |
+|---|---|---|
+| Cursor | `entroly wrap cursor` | `.cursor/mcp.json` |
+| Windsurf | `entroly wrap windsurf` | `.windsurf/mcp.json` |
+| VS Code (Copilot Chat / MCP) | `entroly wrap vscode` | `.vscode/mcp.json` |
+| Claude Desktop | `entroly wrap claude-desktop` | OS-specific Claude config dir |
+| Zed | `entroly wrap zed` | `~/.config/zed/settings.json` |
+
+### Other IDEs (copy-paste snippet)
+
+`entroly wrap <agent>` prints the exact file path and field name. Paste once, restart, done.
+
+| Agent | Slug |  | Agent | Slug |
+|---|---|---|---|---|
+| Cline (VS Code) | `cline` | | Helix | `helix` |
+| Roo Code (VS Code) | `roo` | | Tabby | `tabby` |
+| Continue | `continue` | | Twinny | `twinny` |
+| Sourcegraph Cody | `cody` | | Fitten Code | `fittencode` |
+| Sourcegraph Amp | `amp` | | Tabnine Enterprise | `tabnine` |
+| Kiro | `kiro` | | Supermaven | `supermaven` |
+| Qoder | `qoder` | | Sublime Text | `sublime` |
+| Trae | `trae` | | Emacs (gptel / aider.el) | `emacs` |
+| Antigravity | `antigravity` | | Neovim (avante / codecompanion) | `neovim` |
+| Amazon Q Developer | `amazonq` | | JetBrains AI Assistant | `jetbrains` |
+| Verdent | `verdent` | | | |
+
+### Library / framework integration
+
+| Use case | One-liner |
+|---|---|
+| **Any LLM API** | `entroly proxy` → HTTP proxy on `localhost:9377` |
+| **LangChain / LlamaIndex / your code** | `from entroly import compress, compress_messages` |
+| **CI / token-budget gate** | `entroly batch --budget 8000 --fail-over-budget` |
+
+Also: OpenAI API · Anthropic API · Google Vertex · AWS Bedrock · Groq · Together · OpenRouter · Ollama · vLLM · 100+ models.
+
+> Don't see your tool? `entroly wrap` (no agent) prints the full grouped list, and the [Cookbook](cookbook/README.md) has copy-paste recipes for the most common workflows.
 
 ---
 
