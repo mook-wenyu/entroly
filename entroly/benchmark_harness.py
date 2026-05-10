@@ -49,8 +49,8 @@ def run_benchmark(engine: Any, budget_seconds: float = 10.0) -> dict[str, Any]:
 
     Returns:
         {
-            "context_efficiency": float,   # primary metric (higher = better)
-            "total_tokens_saved": int,
+            "context_efficiency": float,        # primary metric (higher = better)
+            "dedup_tokens_avoided": int,        # engine telemetry, NOT $ saved
             "num_fragments_selected": int,
             "wall_seconds": float,
             "timed_out": bool,
@@ -78,7 +78,7 @@ def run_benchmark(engine: Any, budget_seconds: float = 10.0) -> dict[str, Any]:
     if timed_out:
         return {
             "context_efficiency": 0.0,
-            "total_tokens_saved": 0,
+            "dedup_tokens_avoided": 0,
             "num_fragments_selected": 0,
             "wall_seconds": time.monotonic() - t_start,
             "timed_out": True,

@@ -2505,7 +2505,11 @@ def create_mcp_server():
 
         # ── Real session metrics ──
         session = stats.get("session", {})
-        savings = stats.get("savings", {})
+        # `engine` is the renamed (post-0.16.0) telemetry block. Fall back to
+        # the legacy `savings` key so this tool keeps working if the engine
+        # wrapper class is downgraded or replaced — keeps the boundary tolerant
+        # without re-introducing the dishonest $ field downstream.
+        engine_tel = stats.get("engine", stats.get("savings", {}))
         dep = stats.get("dep_graph", {})
         perf = stats.get("performance", {})
         mem = stats.get("memory", {})
@@ -2519,9 +2523,11 @@ def create_mcp_server():
 
         # Engine-internal telemetry (incremented by ingest/optimize regardless
         # of real LLM traffic). Safe to display as engine activity, NOT money.
-        dupes = savings.get("total_duplicates_caught", 0)
-        total_opts = savings.get("total_optimizations", 0)
-        total_ingested = savings.get("total_fragments_ingested", 0)
+        # Field names try both the new (0.16.0+) and legacy keys so this works
+        # against either shape.
+        dupes = engine_tel.get("duplicates_caught", engine_tel.get("total_duplicates_caught", 0))
+        total_opts = engine_tel.get("optimize_calls", engine_tel.get("total_optimizations", 0))
+        total_ingested = engine_tel.get("fragments_ingested", engine_tel.get("total_fragments_ingested", 0))
 
         # ── 💰 MONEY ──
         # Truth source: value_tracker (proxy-only). Never derive $ from
@@ -2529,7 +2535,6 @@ def create_mcp_server():
         naive_cost = mem.get("naive_cost_per_call_usd", 0)
         optimized_cost = mem.get("optimized_cost_per_call_usd", 0)
         try:
-            from entroly.value_tracker import get_tracker
             _lt = get_tracker().get_trends().get("lifetime", {})
             cost_saved_usd = float(_lt.get("cost_saved_usd", 0) or 0)
             real_tokens_saved = int(_lt.get("tokens_saved", 0) or 0)
