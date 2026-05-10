@@ -317,7 +317,6 @@ async function refresh(){
   document.getElementById('learnToggle').checked=l.local_enabled;
   document.getElementById('vaultBadge').textContent=l.local_enabled?'Active':'Paused';
   document.getElementById('vaultBadge').className='badge '+(l.local_enabled?'b-green':'b-amber');
-  const w=l.weights||{};
   document.getElementById('vaultInfo').innerHTML=w.recency?
     'R='+w.recency.toFixed(2)+' F='+w.frequency.toFixed(2)+' S='+w.semantic.toFixed(2)+' E='+w.entropy.toFixed(2):
     'No weight data';
