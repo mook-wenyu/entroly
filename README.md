@@ -413,6 +413,7 @@ Zero cloud dependencies. Zero data exfiltration risk. Everything runs on your CP
 |---|---|
 | **Any LLM API** | `entroly proxy` → HTTP proxy on `localhost:9377` |
 | **LangChain / LlamaIndex / your code** | `from entroly import compress, compress_messages` |
+| **Nous Hermes (Local/ChatML)** | `from entroly.integrations.hermes import safe_compress_hermes` |
 | **CI / token-budget gate** | `entroly batch --budget 8000 --fail-over-budget` |
 
 Also: OpenAI API · Anthropic API · Google Vertex · AWS Bedrock · Groq · Together · OpenRouter · Ollama · vLLM · 100+ models.
