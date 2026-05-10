@@ -540,7 +540,7 @@ tr:hover td{background:rgba(255,255,255,0.015);}
   <div id="ba"></div>
   <div class="grid2">
     <div class="panel">
-      <div class="ph"><h2>🧠 PRISM Intelligence</h2><span class="badge b-violet">RL-Learned</span></div>
+      <div class="ph"><h2>🧠 PRISM Intelligence</h2><span id="pb" class="badge b-amber">Default</span></div>
       <div class="pb" id="prism"></div>
     </div>
     <div class="panel">
@@ -643,7 +643,7 @@ function renderHero(d){
       <div class="hero-metric hm-reqs"><div class="hm-icon">⚡</div>
         <div class="hm-val hv-cyan">${realReqs}</div>
         <div class="hm-label">Requests</div>
-        <div class="hm-sub">${dedupCount} dedup hits</div></div>
+        <div class="hm-sub">${dedupCount} fragments deduped</div></div>
     </div>`;
 }
 
@@ -690,10 +690,15 @@ function drawRadar(ctx,w,vals,colors){
 }
 
 function renderPrism(d){
-  const w=d.prism_weights;
+  const w=d.prism_weights,pb=document.getElementById('pb');
   if(!w){document.getElementById('prism').innerHTML='<div class="empty">Engine not initialized</div>';return;}
   const names=['Recency','Frequency','Semantic','Entropy'];
   const vals=[w.recency,w.frequency,w.semantic,w.entropy];
+  const defaults=[0.3,0.25,0.25,0.2];
+  // L-infinity norm: if max absolute deviation from defaults < 0.01, weights are default
+  const maxDev=Math.max(...vals.map((v,i)=>Math.abs(v-defaults[i])));
+  const isLearned=maxDev>=0.01;
+  if(pb){pb.textContent=isLearned?'RL-Learned':'Default';pb.className='badge '+(isLearned?'b-violet':'b-amber');}
   const colors=['#667eea','#f5576c','#4facfe','#43e97b'];
   const maxIdx=vals.indexOf(Math.max(...vals));
   const insight=`Your codebase responds best to <b>${names[maxIdx].toLowerCase()}</b> — ${names[maxIdx]==='Recency'?'recent edits are most predictive of what the LLM needs next':names[maxIdx]==='Frequency'?'frequently accessed files are the best context signal':names[maxIdx]==='Semantic'?'semantic similarity to the query drives the best results':'information-dense files contribute most to LLM accuracy'}.`;
@@ -731,9 +736,12 @@ function renderCache(d){
   if(!el||!b){return;}
   const entries=c.entries||0,lookups=c.lookups||0,exact=c.exact_hits||0,semantic=c.semantic_hits||0;
   const hitRateEma=c.hit_rate_ema||0,exploreRatio=c.explore_ratio||0,exploitRatio=c.exploit_ratio||0;
-  const warmState=entries===0?'Cold':hitRateEma>=0.30?'Warm':lookups>0?'Warming':'Idle';
-  b.textContent=warmState+' · '+pct(hitRateEma);
-  b.className='badge '+(hitRateEma>=0.30?'b-green':entries>0?'b-amber':'b-blue');
+  // Use actual hit rate (hits/lookups), not the EMA prior which starts at ~0.485
+  const realHits=exact+semantic;
+  const realHitRate=lookups>0?realHits/lookups:0;
+  const warmState=entries===0?'Cold':realHits>0?'Warm':lookups>0?'Warming':'Idle';
+  b.textContent=warmState+' · '+pct(realHitRate);
+  b.className='badge '+(realHits>0?'b-green':entries>0?'b-amber':'b-blue');
   el.innerHTML=`<div class="cache-kpis">
     <div class="cache-kpi"><div class="cache-kpi-label">Hit Rate EMA</div><div class="cache-kpi-val hv-green">${pct(hitRateEma)}</div><div class="cache-kpi-sub">${exact} exact · ${semantic} semantic</div></div>
     <div class="cache-kpi"><div class="cache-kpi-label">Entries</div><div class="cache-kpi-val hv-blue">${fmt(entries)}</div><div class="cache-kpi-sub">${fmt(lookups)} lookups processed</div></div>
