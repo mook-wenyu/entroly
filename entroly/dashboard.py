@@ -196,6 +196,18 @@ def _capability(available: bool, reason: str, *, degraded: bool = False) -> dict
     return {"status": "degraded" if degraded else "unavailable", "reason": reason}
 
 
+def _record_section_error(snap: dict, section: str, exc: BaseException) -> None:
+    """Append a structured error so the dashboard JS can render a banner.
+    Per-section error fields (`snap[section] = {"error": str(e)}` or `None`)
+    are kept for backward-compat, but they're invisible to the user — the
+    `errors` array is what gets surfaced in the UI."""
+    snap.setdefault("errors", []).append({
+        "section": section,
+        "type": type(exc).__name__,
+        "message": str(exc) or repr(exc),
+    })
+
+
 def _get_full_snapshot() -> dict:
     """Pull ALL real data from the engine subsystems."""
     snap: dict[str, Any] = {
@@ -203,6 +215,7 @@ def _get_full_snapshot() -> dict:
         "engine_available": _engine is not None,
         "proxy_base_url": _proxy_base_url,
         "last_optimization": _snapshot_last_optimization(),
+        "errors": [],
     }
 
     # Persistent value tracker (independent of engine — always available)
@@ -211,9 +224,10 @@ def _get_full_snapshot() -> dict:
         tracker = get_tracker()
         snap["value_trends"] = tracker.get_trends()
         snap["value_confidence"] = tracker.get_confidence()
-    except Exception:
+    except Exception as e:
         snap["value_trends"] = None
         snap["value_confidence"] = None
+        _record_section_error(snap, "value_tracker", e)
 
     if _engine is None:
         snap["cogops"] = _snapshot_cogops()
@@ -221,21 +235,39 @@ def _get_full_snapshot() -> dict:
         return snap
 
     try:
-        # 1. Core stats — tokens saved, cost, dedup, turns
-        stats = _engine.stats() if hasattr(_engine, "stats") else {}
-        if hasattr(_engine, "_use_rust") and _engine._use_rust:
+        # 1. Core stats — engine telemetry only. NEVER prices "$ saved" from
+        # these numbers; the only source of truth for money saved is
+        # value_trends.lifetime (proxy-only). The Rust struct historically
+        # exposed a `savings` block with a fabricated `estimated_cost_saved_usd`
+        # field that conflated CLI dedup with real LLM savings — we normalize
+        # that block to `engine` here and strip the misleading cost field.
+        if hasattr(_engine, "_rust") and _engine._rust is not None:
             stats = _engine._rust.stats()
             stats = dict(stats)
             for k, v in stats.items():
                 if hasattr(v, "items"):
                     stats[k] = dict(v)
+        elif hasattr(_engine, "stats"):
+            stats = _engine.stats()
+        else:
+            stats = {}
+        if isinstance(stats, dict) and "savings" in stats:
+            sv = stats.pop("savings")
+            if isinstance(sv, dict):
+                stats["engine"] = {
+                    "dedup_tokens_avoided": sv.get("total_tokens_saved", 0),
+                    "duplicates_caught": sv.get("total_duplicates_caught", 0),
+                    "optimize_calls": sv.get("total_optimizations", 0),
+                    "fragments_ingested": sv.get("total_fragments_ingested", 0),
+                }
         snap["stats"] = _safe_json(stats)
     except Exception as e:
         snap["stats"] = {"error": str(e)}
+        _record_section_error(snap, "stats", e)
 
     try:
         # 2. PRISM RL weights — the learned scoring weights
-        if hasattr(_engine, "_use_rust") and _engine._use_rust:
+        if hasattr(_engine, "_rust") and _engine._rust is not None:
             rust = _engine._rust
             snap["prism_weights"] = {
                 "recency": round(getattr(rust, "w_recency", 0.3), 4),
@@ -243,40 +275,45 @@ def _get_full_snapshot() -> dict:
                 "semantic": round(getattr(rust, "w_semantic", 0.25), 4),
                 "entropy": round(getattr(rust, "w_entropy", 0.2), 4),
             }
-    except Exception:
+    except Exception as e:
         snap["prism_weights"] = None
+        _record_section_error(snap, "prism_weights", e)
 
     try:
         # 3. Health analysis — code health grade
-        if hasattr(_engine, "_use_rust") and _engine._use_rust:
+        if hasattr(_engine, "_rust") and _engine._rust is not None:
             health_json = _engine._rust.analyze_health()
             snap["health"] = _safe_json(json.loads(health_json))
-    except Exception:
+    except Exception as e:
         snap["health"] = None
+        _record_section_error(snap, "health", e)
 
     try:
         # 4. SAST security report
-        if hasattr(_engine, "_use_rust") and _engine._use_rust:
+        if hasattr(_engine, "_rust") and _engine._rust is not None:
             sec_json = _engine._rust.security_report()
             snap["security"] = _safe_json(json.loads(sec_json))
-    except Exception:
+    except Exception as e:
         snap["security"] = None
+        _record_section_error(snap, "security", e)
 
     try:
         # 5. Knapsack explainability — last optimization decisions
-        if hasattr(_engine, "_use_rust") and _engine._use_rust:
+        if hasattr(_engine, "_rust") and _engine._rust is not None:
             explain = _engine._rust.explain_selection()
             snap["explain"] = _safe_json(dict(explain))
-    except Exception:
+    except Exception as e:
         snap["explain"] = None
+        _record_section_error(snap, "explain", e)
 
     try:
         # 6. Dependency graph stats
-        if hasattr(_engine, "_use_rust") and _engine._use_rust:
+        if hasattr(_engine, "_rust") and _engine._rust is not None:
             dg = _engine._rust.dep_graph_stats()
             snap["dep_graph"] = _safe_json(dict(dg))
-    except Exception:
+    except Exception as e:
         snap["dep_graph"] = None
+        _record_section_error(snap, "dep_graph", e)
 
     try:
         # 7. Cache intelligence — live EGSC + RAVEN-UCB observability
@@ -308,8 +345,9 @@ def _get_full_snapshot() -> dict:
                 "exploit_ratio": policy.get("exploit_ratio", 0.0),
             }
         )
-    except Exception:
+    except Exception as e:
         snap["cache_intelligence"] = None
+        _record_section_error(snap, "cache_intelligence", e)
 
     try:
         # 8. Context Resonance + Coverage + Consolidation stats
@@ -339,10 +377,11 @@ def _get_full_snapshot() -> dict:
             "mean_causal_mass": causal.get("mean_causal_mass", 0.0),
             "base_rate": causal.get("base_rate", 0.0),
         })
-    except Exception:
+    except Exception as e:
         snap["resonance"] = None
         snap["consolidation"] = None
         snap["causal"] = None
+        _record_section_error(snap, "resonance/consolidation/causal", e)
 
     # 9. Recent proxy requests
     snap["recent_requests"] = get_recent_requests()
@@ -401,22 +440,50 @@ body::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%
 .whisper code{background:rgba(96,165,250,0.15);padding:2px 8px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:12px;}
 .whisper .dismiss{margin-left:auto;cursor:pointer;opacity:0.5;font-size:16px;}
 .whisper .dismiss:hover{opacity:1;}
-/* Hero */
-.hero{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;margin-bottom:20px;}
-.hero-card{padding:20px 24px;background:var(--card);border:1px solid var(--border);border-radius:16px;position:relative;overflow:hidden;}
-.hero-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;}
-.hc-files::before{background:var(--grad2);}
-.hc-health::before{background:linear-gradient(90deg,var(--blue),var(--violet));}
-.hc-sast::before{background:linear-gradient(90deg,var(--rose),var(--amber));}
-.hc-savings::before{background:linear-gradient(90deg,var(--emerald),var(--cyan));}
-.hero-icon{font-size:28px;margin-bottom:8px;}
-.hero-val{font-size:36px;font-weight:900;letter-spacing:-2px;font-feature-settings:'tnum';}
-.hero-label{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1.2px;margin-top:4px;}
-.hero-sub{font-size:12px;color:var(--dim);margin-top:8px;}
+/* Hero — Impact-first design */
+.hero{margin-bottom:20px;}
+.hero-impact{text-align:center;padding:32px 24px 24px;background:var(--card);border:1px solid var(--border);
+  border-radius:20px;position:relative;overflow:hidden;margin-bottom:16px;}
+.hero-impact::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--grad2);}
+.hero-impact::after{content:'';position:absolute;top:50%;left:50%;width:400px;height:400px;transform:translate(-50%,-50%);
+  background:radial-gradient(circle,rgba(52,211,153,0.06),transparent 70%);pointer-events:none;}
+.hero-big{font-size:64px;font-weight:900;letter-spacing:-3px;font-feature-settings:'tnum';
+  background:var(--grad2);-webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 30px rgba(52,211,153,0.2));line-height:1.1;}
+.hero-big-label{font-size:13px;color:var(--dim);text-transform:uppercase;letter-spacing:2px;margin-top:6px;font-weight:600;}
+.hero-subtitle{font-size:13px;color:var(--dim);margin-top:12px;}
+.hero-subtitle b{color:var(--text);font-weight:700;}
+.hero-spark{height:48px;display:flex;align-items:flex-end;gap:2px;margin:16px auto 0;max-width:500px;}
+.hero-spark .hbar{flex:1;background:var(--grad2);border-radius:3px 3px 0 0;min-width:4px;
+  transition:height 0.6s cubic-bezier(0.16,1,0.3,1);opacity:0.6;}
+.hero-spark .hbar:last-child{opacity:1;}
+.hero-spark .hbar:hover{opacity:1;}
+.hero-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+.hero-metric{padding:16px 20px;background:var(--card);border:1px solid var(--border);border-radius:14px;
+  position:relative;overflow:hidden;transition:border-color 0.3s,transform 0.2s;}
+.hero-metric:hover{border-color:var(--border2);transform:translateY(-2px);}
+.hero-metric::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+.hm-files::before{background:var(--grad2);}
+.hm-health::before{background:linear-gradient(90deg,var(--blue),var(--violet));}
+.hm-sast::before{background:linear-gradient(90deg,var(--rose),var(--amber));}
+.hm-reqs::before{background:linear-gradient(90deg,var(--cyan),var(--blue));}
+.hm-icon{font-size:20px;margin-bottom:6px;}
+.hm-val{font-size:28px;font-weight:900;letter-spacing:-1px;font-feature-settings:'tnum';}
+.hm-label{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:1.2px;margin-top:2px;}
+.hm-sub{font-size:11px;color:var(--dim);margin-top:6px;}
 .hv-green{color:var(--emerald);}
 .hv-blue{color:var(--blue);}
 .hv-rose{color:var(--rose);}
 .hv-amber{color:var(--amber);}
+.hv-cyan{color:var(--cyan);}
+/* Empty state */
+.empty-hero{text-align:center;padding:48px 24px;background:var(--card);border:1px solid var(--border);
+  border-radius:20px;margin-bottom:20px;}
+.empty-icon{font-size:48px;margin-bottom:12px;filter:grayscale(0.5);opacity:0.7;}
+.empty-title{font-size:18px;font-weight:700;color:var(--text);margin-bottom:8px;}
+.empty-desc{font-size:13px;color:var(--dim);max-width:400px;margin:0 auto;line-height:1.6;}
+.empty-desc code{background:rgba(96,165,250,0.15);padding:2px 8px;border-radius:4px;
+  font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--blue);}
 /* Before/After */
 .ba-panel{display:grid;grid-template-columns:1fr auto 1fr;gap:0;margin-bottom:20px;
   background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden;}
@@ -527,8 +594,8 @@ tr:hover td{background:rgba(255,255,255,0.015);}
   background:var(--glass);border:1px solid var(--border);color:var(--dim);transition:all 0.2s;}
 .trends-tab.active{background:var(--emerald-glow);color:var(--emerald);border-color:rgba(52,211,153,0.3);}
 .trends-tab:hover{border-color:var(--border2);}
-@media(max-width:1100px){.hero{grid-template-columns:1fr 1fr;}.grid3{grid-template-columns:1fr 1fr;}.ba-panel{grid-template-columns:1fr;}.cache-kpis{grid-template-columns:1fr 1fr;}.cache-split{grid-template-columns:1fr;}}
-@media(max-width:768px){.hero,.grid2,.grid3,.cache-kpis{grid-template-columns:1fr;}.main{padding:16px;}}
+@media(max-width:1100px){.hero-metrics{grid-template-columns:1fr 1fr;}.grid3{grid-template-columns:1fr 1fr;}.ba-panel{grid-template-columns:1fr;}.cache-kpis{grid-template-columns:1fr 1fr;}.cache-split{grid-template-columns:1fr;}}
+@media(max-width:768px){.hero-metrics,.grid2,.grid3,.cache-kpis{grid-template-columns:1fr;}.main{padding:16px;}.hero-big{font-size:48px;}}
 </style>
 </head>
 <body>
@@ -545,12 +612,13 @@ tr:hover td{background:rgba(255,255,255,0.015);}
     💡 Point your AI tool's API base URL to <code>{_proxy_base_url}</code> to start optimizing every LLM call.
     <span class="dismiss" onclick="this.parentElement.style.display='none'">✕</span>
   </div>
+  <div id="errBanner" style="display:none;margin-bottom:16px;padding:12px 16px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.4);border-radius:10px;color:#fecaca;font-size:13px;line-height:1.5;"></div>
   <div class="hero" id="hero"></div>
   <div id="valueTrends"></div>
   <div id="ba"></div>
   <div class="grid2">
     <div class="panel">
-      <div class="ph"><h2>🧠 PRISM Intelligence</h2><span class="badge b-violet">RL-Learned</span></div>
+      <div class="ph"><h2>🧠 PRISM Intelligence</h2><span id="pb" class="badge b-amber">Default</span></div>
       <div class="pb" id="prism"></div>
     </div>
     <div class="panel">
@@ -583,43 +651,82 @@ const pct=n=>Math.round((n||0)*100)+'%';
 const ago=ts=>{const s=Math.floor(Date.now()/1000-ts);return s<60?s+'s ago':s<3600?Math.floor(s/60)+'m ago':Math.floor(s/3600)+'h ago';};
 let hasRequests=false;
 
+let heroSparkData=[];
 function renderHero(d){
-  const s=d.stats||{},sv=s.savings||{},ss=s.session||{},dd=s.dedup||{};
+  // Single source of truth for "saved": value_trends.lifetime (proxy-only).
+  // stats.engine is internal efficiency telemetry — never priced as $$.
+  const s=d.stats||{},eng=s.engine||s.savings||{},ss=s.session||{},dd=s.dedup||{};
   const frags=ss.total_fragments||0;
   const secTotal=(d.security&&!d.security.error)?((d.security.critical_total||0)+(d.security.high_total||0)):0;
   const h=d.health||{};
   const grade=h.health_grade||'?';
   const score=h.code_health_score||0;
   const gc={'A':'var(--emerald)','B':'var(--blue)','C':'var(--amber)','D':'#e3872d','F':'var(--rose)'}[grade]||'var(--dim)';
-  const tokensSaved=sv.total_tokens_saved||0;
-  const costSaved=sv.estimated_cost_saved_usd||0;
+  const lt=(d.value_trends&&d.value_trends.lifetime)||{};
+  const realCost=lt.cost_saved_usd||0;
+  const realTokens=lt.tokens_saved||0;
+  const realReqs=lt.requests_optimized||0;
+  const dedupCount=dd.duplicates_detected||eng.duplicates_caught||eng.total_duplicates_caught||0;
+  const optCalls=eng.optimize_calls||eng.total_optimizations||0;
   const reqs=d.recent_requests||[];
-  if(reqs.length>0)hasRequests=true;
-  // Hide whisper after first request
+  if(realReqs>0)hasRequests=true;
   const w=document.getElementById('whisper');
   if(w&&hasRequests)w.style.display='none';
 
+  // Track sparkline data
+  if(reqs.length>0){reqs.forEach(r=>{if(heroSparkData.length>=40)heroSparkData.shift();heroSparkData.push(r.tokens_saved||0);});}
+
+  // Empty state — no fragments indexed yet
+  if(frags===0&&!hasRequests){
+    document.getElementById('hero').innerHTML=`<div class="empty-hero">
+      <div class="empty-icon">🚀</div>
+      <div class="empty-title">Ready to optimize</div>
+      <div class="empty-desc">Point your AI tool to <code>http://localhost:9377/v1</code> and Entroly will start optimizing every LLM call automatically.</div>
+    </div>`;return;
+  }
+
+  // Impact sparkline
+  const mx=Math.max(...heroSparkData,1);
+  const sparkBars=heroSparkData.map(v=>'<div class="hbar" style="height:'+Math.max(3,v/mx*44)+'px;"></div>').join('');
+  const sparkHTML=heroSparkData.length>0?'<div class="hero-spark">'+sparkBars+'</div>':'';
+
+  // Headline = REAL savings only. Pre-traffic state shows what's READY,
+  // not a fake projected dollar amount.
+  const bigNum=realReqs>0?'$'+realCost.toFixed(2):fmt(frags);
+  const bigLabel=realReqs>0?'COST SAVED':'FRAGMENTS READY';
+  const subtitle=realReqs>0
+    ?`<b>${fmt(realTokens)}</b> tokens saved across <b>${realReqs}</b> real LLM request${realReqs!==1?'s':''}`
+    :`Indexed and ready · <span style="opacity:.7">point your AI tool to <code>http://localhost:9377/v1</code> to start saving on real requests</span>`;
+
   document.getElementById('hero').innerHTML=`
-    <div class="hero-card hc-files"><div class="hero-icon">📁</div>
-      <div class="hero-val hv-blue">${frags}</div>
-      <div class="hero-label">Files Indexed</div>
-      <div class="hero-sub">${fmt(ss.total_tokens_tracked||ss.total_tokens_ingested||ss.total_token_count||0)} tokens scanned</div></div>
-    <div class="hero-card hc-health"><div class="hero-icon">🏥</div>
-      <div class="hero-val" style="color:${gc}">${grade}</div>
-      <div class="hero-label">Code Health</div>
-      <div class="hero-sub">${score}/100 · ${(h.god_files||[]).length} god files</div></div>
-    <div class="hero-card hc-sast"><div class="hero-icon">🛡️</div>
-      <div class="hero-val ${secTotal>0?'hv-rose':'hv-green'}">${secTotal>0?secTotal:'✓'}</div>
-      <div class="hero-label">${secTotal>0?'Security Findings':'All Clear'}</div>
-      <div class="hero-sub">${secTotal>0?(d.security.critical_total||0)+' critical · '+(d.security.high_total||0)+' high':'No vulnerabilities found'}</div></div>
-    <div class="hero-card hc-savings"><div class="hero-icon">💰</div>
-      <div class="hero-val hv-green">${tokensSaved>0?fmt(tokensSaved):(costSaved>0?money(costSaved):'—')}</div>
-      <div class="hero-label">${tokensSaved>0?'Tokens Saved':'Savings'}</div>
-      <div class="hero-sub">${tokensSaved>0?money(costSaved)+' saved · '+(dd.duplicates_detected||sv.total_duplicates_caught||0)+' dedup hits':'Starts counting with proxy requests'}</div></div>`;
+    <div class="hero-impact">
+      <div class="hero-big">${bigNum}</div>
+      <div class="hero-big-label">${bigLabel}</div>
+      <div class="hero-subtitle">${subtitle}</div>
+      ${sparkHTML}
+    </div>
+    <div class="hero-metrics">
+      <div class="hero-metric hm-files"><div class="hm-icon">📁</div>
+        <div class="hm-val hv-blue">${frags}</div>
+        <div class="hm-label">Files Indexed</div>
+        <div class="hm-sub">${fmt(ss.total_tokens_tracked||ss.total_tokens_ingested||ss.total_token_count||0)} tokens</div></div>
+      <div class="hero-metric hm-health"><div class="hm-icon">🏥</div>
+        <div class="hm-val" style="color:${gc}">${grade}</div>
+        <div class="hm-label">Code Health</div>
+        <div class="hm-sub">${score}/100 · ${(h.god_files||[]).length} god files</div></div>
+      <div class="hero-metric hm-sast"><div class="hm-icon">🛡️</div>
+        <div class="hm-val ${secTotal>0?'hv-rose':'hv-green'}">${secTotal>0?secTotal:'✓'}</div>
+        <div class="hm-label">${secTotal>0?'Findings':'All Clear'}</div>
+        <div class="hm-sub">${secTotal>0?(d.security.critical_total||0)+' crit · '+(d.security.high_total||0)+' high':'No vulnerabilities'}</div></div>
+      <div class="hero-metric hm-reqs"><div class="hm-icon">⚡</div>
+        <div class="hm-val hv-cyan">${realReqs}</div>
+        <div class="hm-label">Requests</div>
+        <div class="hm-sub">${dedupCount} fragments deduped</div></div>
+    </div>`;
 }
 
 function renderBA(d){
-  const s=d.stats||{},ss=s.session||{},sv=s.savings||{};
+  const s=d.stats||{},ss=s.session||{};
   const ex=d.explain||{};
   const lastOpt=d.last_optimization||{};
   const totalTokens=ss.total_tokens_tracked||ss.total_token_count||ss.total_tokens_ingested||0;
@@ -669,10 +776,15 @@ function drawRadar(ctx,w,vals,colors){
 }
 
 function renderPrism(d){
-  const w=d.prism_weights;
+  const w=d.prism_weights,pb=document.getElementById('pb');
   if(!w){document.getElementById('prism').innerHTML='<div class="empty">Engine not initialized</div>';return;}
   const names=['Recency','Frequency','Semantic','Entropy'];
   const vals=[w.recency,w.frequency,w.semantic,w.entropy];
+  const defaults=[0.3,0.25,0.25,0.2];
+  // L-infinity norm: if max absolute deviation from defaults < 0.01, weights are default
+  const maxDev=Math.max(...vals.map((v,i)=>Math.abs(v-defaults[i])));
+  const isLearned=maxDev>=0.01;
+  if(pb){pb.textContent=isLearned?'RL-Learned':'Default';pb.className='badge '+(isLearned?'b-violet':'b-amber');}
   const colors=['#667eea','#f5576c','#4facfe','#43e97b'];
   const maxIdx=vals.indexOf(Math.max(...vals));
   const insight=`Your codebase responds best to <b>${names[maxIdx].toLowerCase()}</b> — ${names[maxIdx]==='Recency'?'recent edits are most predictive of what the LLM needs next':names[maxIdx]==='Frequency'?'frequently accessed files are the best context signal':names[maxIdx]==='Semantic'?'semantic similarity to the query drives the best results':'information-dense files contribute most to LLM accuracy'}.`;
@@ -710,9 +822,12 @@ function renderCache(d){
   if(!el||!b){return;}
   const entries=c.entries||0,lookups=c.lookups||0,exact=c.exact_hits||0,semantic=c.semantic_hits||0;
   const hitRateEma=c.hit_rate_ema||0,exploreRatio=c.explore_ratio||0,exploitRatio=c.exploit_ratio||0;
-  const warmState=entries===0?'Cold':hitRateEma>=0.30?'Warm':lookups>0?'Warming':'Idle';
-  b.textContent=warmState+' · '+pct(hitRateEma);
-  b.className='badge '+(hitRateEma>=0.30?'b-green':entries>0?'b-amber':'b-blue');
+  // Use actual hit rate (hits/lookups), not the EMA prior which starts at ~0.485
+  const realHits=exact+semantic;
+  const realHitRate=lookups>0?realHits/lookups:0;
+  const warmState=entries===0?'Cold':realHits>0?'Warm':lookups>0?'Warming':'Idle';
+  b.textContent=warmState+' · '+pct(realHitRate);
+  b.className='badge '+(realHits>0?'b-green':entries>0?'b-amber':'b-blue');
   el.innerHTML=`<div class="cache-kpis">
     <div class="cache-kpi"><div class="cache-kpi-label">Hit Rate EMA</div><div class="cache-kpi-val hv-green">${pct(hitRateEma)}</div><div class="cache-kpi-sub">${exact} exact · ${semantic} semantic</div></div>
     <div class="cache-kpi"><div class="cache-kpi-label">Entries</div><div class="cache-kpi-val hv-blue">${fmt(entries)}</div><div class="cache-kpi-sub">${fmt(lookups)} lookups processed</div></div>
@@ -856,10 +971,27 @@ function renderCogops(d){
   </div>`;
 }
 
+function renderErrors(items){
+  const el=document.getElementById('errBanner');
+  if(!el){return;}
+  if(!items||items.length===0){el.style.display='none';el.innerHTML='';return;}
+  const head=`<b>${items.length} subsystem error${items.length!==1?'s':''}</b> — dashboard data may be incomplete.`;
+  const list=items.slice(0,5).map(x=>`<div style="margin-top:6px;opacity:.85"><code style="background:rgba(239,68,68,.12);padding:1px 6px;border-radius:4px">${x.section||'?'}</code> ${x.type||'Error'}: ${(x.message||'').substring(0,200)}</div>`).join('');
+  const more=items.length>5?`<div style="margin-top:6px;opacity:.6">…and ${items.length-5} more</div>`:'';
+  el.innerHTML=head+list+more;el.style.display='block';
+}
+
 async function refresh(){
-  try{const r=await fetch('/api/metrics');const d=await r.json();
+  try{
+    const r=await fetch('/api/metrics');
+    if(!r.ok){renderErrors([{section:'http',type:'HTTPError',message:'/api/metrics returned '+r.status}]);return;}
+    const d=await r.json();
+    renderErrors(d.errors||[]);
     renderHero(d);renderValueTrends(d);renderBA(d);renderPrism(d);renderHealth(d);renderCache(d);renderCogops(d);renderSecAndKnapsack(d);renderRequests(d);
-  }catch(e){console.error('Refresh:',e);}
+  }catch(e){
+    console.error('Refresh:',e);
+    renderErrors([{section:'fetch',type:e.name||'Error',message:e.message||String(e)}]);
+  }
 }
 refresh();setInterval(refresh,3000);
 </script>
@@ -880,105 +1012,89 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("X-Frame-Options", "DENY")
         self.send_header(
             "Content-Security-Policy",
-            "default-src 'self' 'unsafe-inline'; "
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-            "font-src 'self' https://fonts.gstatic.com data:",
+            "font-src 'self' https://fonts.gstatic.com data:; "
+            "connect-src 'self'; "
+            "img-src 'self' data:"
         )
         self.send_header("Referrer-Policy", "no-referrer")
 
+    # Maps URL path → daemon-state key for the read-only control GETs.
+    _CONTROL_GET_ROUTES = {
+        "/api/control/status": "status",
+        "/api/control/repos": "repos",
+        "/api/control/learning": "learning",
+        "/api/control/federation": "federation",
+        "/api/control/context/last": "context_last",
+        "/api/control/logs": "logs",
+    }
+
     def do_GET(self):
-        if self.path == "/" or self.path == "/dashboard":
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Cache-Control", "no-cache")
-            self._send_security_headers()
-            self.end_headers()
-            html = DASHBOARD_HTML.replace("{_proxy_base_url}", _proxy_base_url)
-            self.wfile.write(html.encode())
+        if self.path in ("/", "/dashboard"):
+            self._send_html(DASHBOARD_HTML.replace("{_proxy_base_url}", _proxy_base_url))
         elif self.path == "/favicon.ico":
-            self.send_response(204)
-            self.send_header("Cache-Control", "no-cache")
-            self._send_security_headers()
-            self.end_headers()
+            self._respond(204, "image/x-icon", b"", no_cache=True)
         elif self.path == "/controls":
             from entroly.controls_html import CONTROLS_HTML
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Cache-Control", "no-cache")
-            self._send_security_headers()
-            self.end_headers()
-            self.wfile.write(CONTROLS_HTML.encode())
+            self._send_html(CONTROLS_HTML)
+        # JSON read APIs (CORS so other localhost dashboards can query)
         elif self.path == "/api/metrics":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "http://localhost:9378")
-            self.send_header("Cache-Control", "no-cache")
-            self._send_security_headers()
-            self.end_headers()
-            snap = _get_full_snapshot()
-            self.wfile.write(json.dumps(snap, default=str).encode())
+            self._send_json(200, _get_full_snapshot())
         elif self.path == "/api/trends":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "http://localhost:9378")
-            self.send_header("Cache-Control", "no-cache")
-            self._send_security_headers()
-            self.end_headers()
-            try:
-                from entroly.value_tracker import get_tracker
-                data = get_tracker().get_trends()
-            except Exception:
-                data = {}
-            self.wfile.write(json.dumps(data, default=str).encode())
+            self._send_json(200, self._safe_tracker_call("get_trends"))
         elif self.path == "/api/confidence":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "http://localhost:9378")
-            self.send_header("Cache-Control", "no-cache")
-            self._send_security_headers()
-            self.end_headers()
-            try:
-                from entroly.value_tracker import get_tracker
-                data = get_tracker().get_confidence()
-            except Exception:
-                data = {}
-            self.wfile.write(json.dumps(data, default=str).encode())
+            self._send_json(200, self._safe_tracker_call("get_confidence"))
         elif self.path == "/health":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self._send_security_headers()
-            self.end_headers()
-            self.wfile.write(b'{"status":"ok"}')
-        elif self.path == "/api/control/status":
-            self._handle_control_get("status")
-        elif self.path == "/api/control/repos":
-            self._handle_control_get("repos")
-        elif self.path == "/api/control/learning":
-            self._handle_control_get("learning")
-        elif self.path == "/api/control/federation":
-            self._handle_control_get("federation")
-        elif self.path == "/api/control/context/last":
-            self._handle_control_get("context_last")
-        elif self.path == "/api/control/logs":
-            self._handle_control_get("logs")
+            # Health probe — no CORS, kept tight for internal liveness checks.
+            self._respond(200, "application/json", b'{"status":"ok"}')
+        # Control API reads
+        elif self.path in self._CONTROL_GET_ROUTES:
+            self._handle_control_get(self._CONTROL_GET_ROUTES[self.path])
         else:
-            self.send_response(404)
-            self.end_headers()
+            self._send_json(404, {"error": "not found", "path": self.path})
+
+    @staticmethod
+    def _safe_tracker_call(method: str) -> dict:
+        """Call a value_tracker method, returning {} on any failure rather
+        than letting the exception bubble into a 500. The caller decides
+        what HTTP status to send."""
+        try:
+            from entroly.value_tracker import get_tracker
+            return getattr(get_tracker(), method)()
+        except Exception:
+            return {}
 
     def do_POST(self):
         """Handle Control API POST requests."""
         from entroly.daemon import get_daemon
         daemon = get_daemon()
 
-        # Read POST body
+        # Read POST body. Reject malformed JSON loudly — silent fallback to
+        # `{}` lets bad payloads enable features by accident (every handler
+        # below uses `body.get("enabled", True)` style defaults).
         content_length = int(self.headers.get("Content-Length", 0))
-        body = {}
+        body: dict = {}
         if content_length > 0:
             raw = self.rfile.read(content_length)
             try:
-                body = json.loads(raw)
-            except (json.JSONDecodeError, ValueError):
-                body = {}
+                parsed = json.loads(raw)
+            except (json.JSONDecodeError, ValueError) as e:
+                self._send_json(400, {
+                    "ok": False,
+                    "error": "invalid JSON body",
+                    "detail": str(e),
+                })
+                return
+            if not isinstance(parsed, dict):
+                self._send_json(400, {
+                    "ok": False,
+                    "error": "JSON body must be an object",
+                    "got": type(parsed).__name__,
+                })
+                return
+            body = parsed
 
         result = {"ok": False, "error": "unknown route"}
         status_code = 404
@@ -1049,12 +1165,48 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 daemon=True,
             ).start()
 
-        self.send_response(status_code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "http://localhost:9378")
+        self._send_json(status_code, result)
+
+    def _respond(
+        self,
+        status: int,
+        content_type: str,
+        body: bytes,
+        *,
+        no_cache: bool = False,
+        cors_origin: str | None = None,
+    ) -> None:
+        """Single response writer for *all* routes (HTML, JSON, health).
+        Centralizing here is the only way headers (CORS, CSP, cache) stay
+        in sync across handlers — every previous drift bug came from
+        copy-pasted send_header blocks falling out of step."""
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        if no_cache:
+            self.send_header("Cache-Control", "no-cache")
+        if cors_origin:
+            self.send_header("Access-Control-Allow-Origin", cors_origin)
         self._send_security_headers()
         self.end_headers()
-        self.wfile.write(json.dumps(result).encode())
+        if body:
+            self.wfile.write(body)
+
+    def _send_json(self, status: int, payload: dict, *, cors: bool = True) -> None:
+        self._respond(
+            status,
+            "application/json",
+            json.dumps(payload, default=str).encode(),
+            no_cache=True,
+            cors_origin="http://localhost:9378" if cors else None,
+        )
+
+    def _send_html(self, body: str) -> None:
+        self._respond(
+            200,
+            "text/html; charset=utf-8",
+            body.encode(),
+            no_cache=True,
+        )
 
     def do_OPTIONS(self):
         """Handle CORS preflight for control API."""
@@ -1099,13 +1251,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
         else:
             data = {"error": f"unknown key: {key}"}
 
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "http://localhost:9378")
-        self.send_header("Cache-Control", "no-cache")
-        self._send_security_headers()
-        self.end_headers()
-        self.wfile.write(json.dumps(data, default=str).encode())
+        # Daemon-down should be 503 so callers can branch on status; key-down
+        # is a server-side bug surfaced as 200+error for the existing UI.
+        status = 503 if daemon is None else 200
+        self._send_json(status, data)
 
 
 def start_dashboard(
@@ -1133,8 +1282,57 @@ def start_dashboard(
     _proxy_base_url = proxy_base_url
     _seed_optimization = seed_optimization
 
+    # Auto-register a lightweight daemon state so the control API
+    # works even when called from `entroly go` / `entroly proxy`
+    # (not just `entroly daemon`).
+    from entroly.daemon import get_daemon, _register_control_api, EntrolyDaemon, _install_log_buffer
+    _install_log_buffer()  # Ensure live logs work from any entry point
+    if get_daemon() is None:
+        _lite = EntrolyDaemon.__new__(EntrolyDaemon)
+        _lite.state = __import__("entroly.daemon", fromlist=["EntrolyDaemonState"]).EntrolyDaemonState()
+        _lite.state.status = "running"
+        _lite.state.started_at = __import__("time").time()
+        _lite.state.dashboard.running = True
+        _lite.state.dashboard.port = port
+        _lite.state.proxy.running = True  # proxy is live via entroly go
+        _lite.state.proxy.port = 9377
+        _lite._engine = engine
+        _lite._proxy_server = None
+        _lite._dashboard_server = None
+        _lite._workers = {}
+        _lite._shutdown = __import__("threading").Event()
+        _lite._lock = __import__("threading").Lock()
+        _lite._host = "127.0.0.1"
+        _lite._enable_proxy = True
+        _lite._enable_mcp = False
+        _lite._repo_paths = [__import__("os").getcwd()]
+        _lite._proxy_config = None  # will be set if proxy is running
+
+        # Populate repo state from engine
+        try:
+            stats = engine._rust.stats() if hasattr(engine, "_rust") else {}
+            sess = stats.get("session", {})
+            _lite.state.repos.append(
+                __import__("entroly.daemon", fromlist=["RepoState"]).RepoState(
+                    path=__import__("os").getcwd(),
+                    watching=True,
+                    indexed_files=sess.get("total_fragments", 0),
+                    total_tokens=sess.get("total_tokens_tracked", 0),
+                    last_sync=__import__("time").time(),
+                )
+            )
+        except Exception:
+            pass
+
+        _register_control_api(_lite)
+
     class _ReuseAddrHTTPServer(HTTPServer):
         allow_reuse_address = True
+
+        def process_request(self, request, client_address):
+            """Handle each request in a new thread to avoid blocking."""
+            t = threading.Thread(target=self.finish_request, args=(request, client_address), daemon=True)
+            t.start()
 
     server = _ReuseAddrHTTPServer(("127.0.0.1", port), DashboardHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=daemon)

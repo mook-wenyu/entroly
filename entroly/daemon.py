@@ -68,7 +68,7 @@ class EntrolyDaemonState:
     The dashboard polls it via /api/control/status.
     """
     status: str = "stopped"  # stopped | starting | running | stopping
-    version: str = "0.14.0"
+    version: str = "0.15.1"
     started_at: float | None = None
 
     # Feature flags
@@ -166,6 +166,7 @@ class EntrolyDaemon:
         self._proxy_server: Any = None
         self._dashboard_server: Any = None
         self._workers: dict[str, threading.Thread] = {}
+        self._proxy_config: Any = None  # live ProxyConfig ref for quality toggle
         self._shutdown = threading.Event()
         self._lock = threading.Lock()
 
@@ -332,6 +333,7 @@ class EntrolyDaemon:
                 quality_val = resolve_quality(self.state.quality_mode)
                 config.quality = quality_val
                 config._apply_quality_dial(quality_val)
+                self._proxy_config = config  # store ref for live quality toggle
 
                 if self.state.bypass_mode:
                     os.environ["ENTROLY_BYPASS"] = "1"
@@ -391,6 +393,15 @@ class EntrolyDaemon:
         if mode not in ("fast", "balanced", "max"):
             raise ValueError(f"Invalid quality mode: {mode}")
         self.state.quality_mode = mode
+        # Apply quality dial to the live proxy config so it takes effect
+        # immediately on the next request (not just cosmetic state).
+        from entroly.proxy_config import resolve_quality
+        quality_val = resolve_quality(mode)
+        os.environ["ENTROLY_QUALITY"] = str(quality_val)
+        # Update the live proxy config in-place
+        if self._proxy_config is not None:
+            self._proxy_config._apply_quality_dial(quality_val)
+            logger.info("Quality dial applied: %s → %.2f", mode, quality_val)
 
     def get_learning_weights(self) -> dict:
         """Get current PRISM RL weights."""

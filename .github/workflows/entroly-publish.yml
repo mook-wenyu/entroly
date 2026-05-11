@@ -87,20 +87,17 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           skip-existing: true
-          # Authenticated via PyPI Trusted Publishers (OIDC) — no token needed.
-          # Configure at:
-          # https://pypi.org/manage/project/entroly/settings/publishing/
+          password: ${{ secrets.TESTING_API_TOKEN }}
 
   publish-npm:
     needs: build-and-push
-    # Temporarily disabled — publishing manually.
-    if: false
+    if: startsWith(github.ref, 'refs/tags/entroly-v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
@@ -121,13 +118,13 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#entroly-v}" >> $GITHUB_OUTPUT
 
-      - name: Update version in package.json
-        working-directory: entroly-wasm
+      - name: Update package.json version
+        working-directory: entroly-wasm/pkg
         run: |
-          npm version ${{ steps.version.outputs.VERSION }} --no-git-tag-version --allow-same-version
+          node -e "const p=require('./package.json'); p.name='entroly-wasm'; p.version='${{ steps.version.outputs.VERSION }}'; require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2)+'\n')"
 
       - name: Publish to npm
-        working-directory: entroly-wasm
+        working-directory: entroly-wasm/pkg
         run: npm publish --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.TEST_NPM }}

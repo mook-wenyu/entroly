@@ -41,7 +41,7 @@ from pathlib import Path
 try:
     from entroly import __version__
 except ImportError:
-    __version__ = "0.14.0"
+    __version__ = "0.16.0"
 
 from .codex_integration import prepare_codex_wrap, resolve_openai_proxy_route
 from .launching import resolve_launch_cmd, resolve_python_cmd
@@ -1477,66 +1477,419 @@ def _check_codebase() -> bool:
     return False
 
 
+# Agent registry. Three integration kinds:
+#
+#   "cli"  — set env var, exec the binary (zero friction; works today).
+#   "mcp"  — write/merge an MCP server entry into the tool's mcp.json
+#            (zero friction; user just restarts the IDE).
+#   "print"— print a copy-paste-ready snippet with the exact file path and
+#            the exact key to set. Used when the schema varies by version
+#            or the config lives somewhere we shouldn't auto-mutate.
+#
+# Path tokens: {cwd} {home} {appdata} {port} are substituted at use time.
 _WRAP_AGENTS = {
+
+    # ══════════════════════════════════════════════════════════════════
+    # CLI agents (kind=cli) — env-based launch
+    # ══════════════════════════════════════════════════════════════════
     "claude": {
+        "kind": "cli", "name": "Claude Code",
         "cmd": ["claude"],
         "env_key": "ANTHROPIC_BASE_URL",
         "env_val": "http://localhost:{port}",
-        "name": "Claude Code",
     },
     "codex": {
+        "kind": "cli", "name": "OpenAI Codex CLI",
         "cmd": ["codex"],
         "env_key": "OPENAI_BASE_URL",
         "env_val": None,
-        "name": "OpenAI Codex CLI",
     },
     "aider": {
+        "kind": "cli", "name": "Aider",
         "cmd": ["aider"],
         "env_key": "OPENAI_API_BASE",
         "env_val": None,
-        "name": "Aider",
     },
     "copilot": {
+        "kind": "cli", "name": "GitHub Copilot CLI",
         "cmd": ["github-copilot-cli"],
         "env_key": "OPENAI_BASE_URL",
         "env_val": None,
-        "name": "GitHub Copilot CLI",
     },
+    "gemini": {
+        "kind": "cli", "name": "Gemini CLI",
+        "cmd": ["gemini"],
+        "env_key": "GEMINI_BASE_URL",
+        "env_val": "http://localhost:{port}/v1beta",
+    },
+    "qwen": {
+        "kind": "cli", "name": "Qwen Code",
+        "cmd": ["qwen"],
+        "env_key": "OPENAI_BASE_URL",
+        "env_val": "http://localhost:{port}/v1",
+    },
+    "opencode": {
+        "kind": "cli", "name": "OpenCode",
+        "cmd": ["opencode"],
+        "env_key": "OPENAI_BASE_URL",
+        "env_val": "http://localhost:{port}/v1",
+    },
+    "crush": {
+        "kind": "cli", "name": "Charm CRUSH",
+        "cmd": ["crush"],
+        "env_key": "OPENAI_BASE_URL",
+        "env_val": "http://localhost:{port}/v1",
+    },
+    "hermes": {
+        "kind": "cli", "name": "Hermes",
+        "cmd": ["hermes"],
+        "env_key": "OPENAI_BASE_URL",
+        "env_val": "http://localhost:{port}/v1",
+    },
+    "pi": {
+        "kind": "cli", "name": "Pi Coding Agent",
+        "cmd": ["pi"],
+        "env_key": "OPENAI_BASE_URL",
+        "env_val": "http://localhost:{port}/v1",
+    },
+    "ollama": {
+        "kind": "cli", "name": "Ollama (via OpenAI-compat client)",
+        "cmd": ["ollama"],
+        "env_key": "OLLAMA_HOST",
+        "env_val": "http://localhost:{port}",
+    },
+
+    # ══════════════════════════════════════════════════════════════════
+    # IDE agents with MCP support (kind=mcp) — auto-merge mcp.json
+    # ══════════════════════════════════════════════════════════════════
     "cursor": {
-        "cmd": None,
-        "env_key": None,
-        "env_val": None,
-        "name": "Cursor",
+        "kind": "mcp", "name": "Cursor",
+        "config_path": "{cwd}/.cursor/mcp.json",
+        "post_hint": "Restart Cursor to pick up the MCP server. Or open Settings → Models → Override OpenAI Base URL → http://localhost:{port}/v1 for proxy mode.",
+    },
+    "windsurf": {
+        "kind": "mcp", "name": "Windsurf",
+        "config_path": "{cwd}/.windsurf/mcp.json",
+        "post_hint": "Restart Windsurf. Cascade will auto-discover the entroly tools.",
+    },
+    "vscode": {
+        "kind": "mcp", "name": "VS Code (MCP / Copilot Chat)",
+        "config_path": "{cwd}/.vscode/mcp.json",
+        "post_hint": "Reload VS Code window. Copilot Chat 1.95+ and the MCP extension will pick this up.",
+    },
+    "claude-desktop": {
+        "kind": "mcp", "name": "Claude Desktop",
+        "config_path_macos": "{home}/Library/Application Support/Claude/claude_desktop_config.json",
+        "config_path_windows": "{appdata}/Claude/claude_desktop_config.json",
+        "config_path_linux": "{home}/.config/claude/claude_desktop_config.json",
+        "post_hint": "Quit and relaunch Claude Desktop.",
+    },
+    "claude-code": {
+        "kind": "mcp", "name": "Claude Code (MCP mode)",
+        "config_path_macos": "{home}/Library/Application Support/Claude/claude_desktop_config.json",
+        "config_path_windows": "{appdata}/Claude/claude_desktop_config.json",
+        "config_path_linux": "{home}/.config/claude/claude_desktop_config.json",
+        "post_hint": "Equivalent to claude-desktop. Use `entroly wrap claude` for proxy-mode wrapping instead.",
+    },
+    "zed": {
+        "kind": "mcp", "name": "Zed",
+        "config_path_macos": "{home}/.config/zed/settings.json",
+        "config_path_windows": "{appdata}/Zed/settings.json",
+        "config_path_linux": "{home}/.config/zed/settings.json",
+        "config_key": "context_servers",
+        "post_hint": "Restart Zed. Configure Assistant to use entroly tools.",
+    },
+
+    # ══════════════════════════════════════════════════════════════════
+    # IDEs / extensions (kind=print) — copy-paste snippets
+    # We don't auto-write because schemas drift across versions or live in
+    # OS-specific paths we shouldn't blindly mutate.
+    # ══════════════════════════════════════════════════════════════════
+    "cline": {
+        "kind": "print", "name": "Cline (VS Code extension)",
+        "config_label": "VS Code Settings → Extensions → Cline",
+        "key_path": "API Provider: OpenAI Compatible · Base URL",
+        "url": "http://localhost:{port}/v1",
+    },
+    "roo": {
+        "kind": "print", "name": "Roo Code (VS Code extension)",
+        "config_label": "Roo → Provider → OpenAI Compatible",
+        "key_path": "Base URL",
+        "url": "http://localhost:{port}/v1",
+    },
+    "continue": {
+        "kind": "print", "name": "Continue (VS Code / JetBrains extension)",
+        "config_label": "~/.continue/config.json",
+        "key_path": ".models[].apiBase",
+        "url": "http://localhost:{port}/v1",
+        "snippet_json": '{\n  "models": [{ "title": "Entroly", "provider": "openai", "model": "gpt-4o", "apiBase": "http://localhost:{port}/v1" }]\n}',
+    },
+    "cody": {
+        "kind": "print", "name": "Sourcegraph Cody",
+        "config_label": "Cody Settings → Custom Endpoint",
+        "key_path": "Endpoint URL",
+        "url": "http://localhost:{port}/v1",
+    },
+    "amp": {
+        "kind": "print", "name": "Sourcegraph Amp",
+        "config_label": "Amp Settings → Custom OpenAI Endpoint",
+        "key_path": "Endpoint URL",
+        "url": "http://localhost:{port}/v1",
+    },
+    "kiro": {
+        "kind": "print", "name": "Kiro",
+        "config_label": "Settings → AI",
+        "key_path": "Base URL",
+        "url": "http://localhost:{port}/v1",
+    },
+    "qoder": {
+        "kind": "print", "name": "Qoder",
+        "config_label": "Settings → Model Provider",
+        "key_path": "Base URL",
+        "url": "http://localhost:{port}/v1",
+    },
+    "trae": {
+        "kind": "print", "name": "Trae",
+        "config_label": "Settings → AI Provider",
+        "key_path": "Base URL",
+        "url": "http://localhost:{port}/v1",
+    },
+    "antigravity": {
+        "kind": "print", "name": "Antigravity",
+        "config_label": "Settings → AI",
+        "key_path": "API Endpoint",
+        "url": "http://localhost:{port}/v1",
+    },
+    "amazonq": {
+        "kind": "print", "name": "Amazon Q Developer",
+        "config_label": "Q Developer Settings",
+        "key_path": "Custom Endpoint",
+        "url": "http://localhost:{port}/v1",
+    },
+    "verdent": {
+        "kind": "print", "name": "Verdent",
+        "config_label": "Settings → Model",
+        "key_path": "Base URL",
+        "url": "http://localhost:{port}/v1",
+    },
+    "jetbrains": {
+        "kind": "print", "name": "JetBrains AI Assistant (PyCharm/IntelliJ/WebStorm/GoLand/Rider/RubyMine/PhpStorm/CLion)",
+        "config_label": "Settings → Tools → AI Assistant → Models → Custom",
+        "key_path": "Server URL",
+        "url": "http://localhost:{port}/v1",
+    },
+    "neovim": {
+        "kind": "print", "name": "Neovim (avante.nvim / codecompanion.nvim / gp.nvim)",
+        "config_label": "plugin spec",
+        "key_path": "openai.endpoint  /  anthropic.endpoint",
+        "url": "http://localhost:{port}/v1",
+        "snippet_lua": 'require("avante").setup({ provider = "openai", openai = { endpoint = "http://localhost:{port}/v1" } })',
+    },
+    "emacs": {
+        "kind": "print", "name": "Emacs (gptel / aider.el / chatgpt-shell)",
+        "config_label": "init.el",
+        "key_path": "(setq gptel-api-host ...)",
+        "url": "http://localhost:{port}/v1",
+        "snippet_elisp": '(setq gptel-api-host "localhost:{port}")\n(setq gptel-stream t)',
+    },
+    "sublime": {
+        "kind": "print", "name": "Sublime Text (Codemp / OpenAI plugin)",
+        "config_label": "Preferences → Package Settings → OpenAI → Settings",
+        "key_path": '"api_base"',
+        "url": "http://localhost:{port}/v1",
+    },
+    "helix": {
+        "kind": "print", "name": "Helix (helix-gpt / helix-ai)",
+        "config_label": "languages.toml",
+        "key_path": "[[language]] → ai-server",
+        "url": "http://localhost:{port}/v1",
+    },
+    "tabby": {
+        "kind": "print", "name": "Tabby",
+        "config_label": "~/.tabby/config.toml",
+        "key_path": "[model.completion.http]",
+        "url": "http://localhost:{port}/v1",
+    },
+    "twinny": {
+        "kind": "print", "name": "Twinny (VS Code)",
+        "config_label": "Twinny Settings → Provider",
+        "key_path": "API Hostname / Path",
+        "url": "http://localhost:{port}/v1",
+    },
+    "fittencode": {
+        "kind": "print", "name": "Fitten Code",
+        "config_label": "Settings → Server",
+        "key_path": "Base URL",
+        "url": "http://localhost:{port}/v1",
+    },
+    "tabnine": {
+        "kind": "print", "name": "Tabnine Enterprise",
+        "config_label": "Tabnine Settings → Server",
+        "key_path": "Self-hosted endpoint",
+        "url": "http://localhost:{port}/v1",
+    },
+    "supermaven": {
+        "kind": "print", "name": "Supermaven",
+        "config_label": "Supermaven Settings",
+        "key_path": "Custom endpoint",
+        "url": "http://localhost:{port}/v1",
     },
 }
 
 
-def cmd_wrap(args):
-    """entroly wrap <agent> — start proxy + launch agent in one command.
+def _resolve_agent_config_path(spec: dict) -> str | None:
+    """Pick the right config_path for the host OS.
 
-    Starts the Entroly proxy as a daemon, sets the agent's base URL
-    env var, and launches it. Zero-config context optimization.
+    Supports either a single `config_path` (cross-platform with token substitution)
+    or per-OS `config_path_macos` / `config_path_windows` / `config_path_linux`.
+    Tokens substituted: {cwd}, {home}, {appdata}.
+    """
+    sys_name = platform.system()
+    if "config_path" in spec:
+        path = spec["config_path"]
+    elif sys_name == "Darwin" and "config_path_macos" in spec:
+        path = spec["config_path_macos"]
+    elif sys_name == "Windows" and "config_path_windows" in spec:
+        path = spec["config_path_windows"]
+    elif "config_path_linux" in spec:
+        path = spec["config_path_linux"]
+    else:
+        return None
+
+    appdata = os.environ.get("APPDATA") or os.path.expanduser("~\\AppData\\Roaming")
+    return path.format(
+        cwd=os.getcwd(),
+        home=os.path.expanduser("~"),
+        appdata=appdata,
+    )
+
+
+def _wrap_via_mcp(spec: dict, port: int) -> bool:
+    """Auto-merge an entroly MCP server entry into the IDE's mcp.json.
+
+    Returns True on success. The proxy is NOT started — MCP integration uses
+    `entroly serve` (stdio), which the IDE spawns itself.
+    """
+    config_path = _resolve_agent_config_path(spec)
+    if not config_path:
+        print(f"  {C.RED}No config path defined for {spec['name']} on {platform.system()}.{C.RESET}")
+        return False
+
+    tool = {
+        "config_path": config_path,
+        "config_key": spec.get("config_key", "mcpServers"),
+    }
+
+    try:
+        written = _write_config(tool)
+    except (OSError, PermissionError) as e:
+        print(f"  {C.RED}Could not write {config_path}: {e}{C.RESET}")
+        return False
+
+    print(f"  {C.GREEN}✓ MCP server registered{C.RESET}")
+    print(f"  {C.GRAY}  Wrote: {written}{C.RESET}")
+    backup = written + ".entroly-backup"
+    if os.path.exists(backup):
+        print(f"  {C.GRAY}  Backup: {backup}{C.RESET}")
+
+    hint = spec.get("post_hint", "Restart your IDE to pick up the new MCP server.")
+    print(f"\n  {C.BOLD}Next:{C.RESET} {hint.format(port=port)}\n")
+    return True
+
+
+def _wrap_via_print(spec: dict, port: int) -> None:
+    """Print a copy-paste-ready config snippet. Proxy is already running."""
+    url = spec.get("url", "http://localhost:{port}/v1").format(port=port)
+    label = spec.get("config_label", "your IDE settings")
+    key_path = spec.get("key_path", "Base URL")
+
+    print(f"\n  {C.BOLD}{spec['name']} — paste this:{C.RESET}\n")
+    print(f"  {C.GRAY}File / location:{C.RESET}  {label}")
+    print(f"  {C.GRAY}Field:{C.RESET}           {key_path}")
+    print(f"  {C.GRAY}Value:{C.RESET}           {C.CYAN}{url}{C.RESET}")
+
+    # Render any language-specific snippet with {port} substituted.
+    for snippet_key in ("snippet_json", "snippet_lua", "snippet_elisp", "snippet_yaml", "snippet_toml"):
+        snippet = spec.get(snippet_key)
+        if snippet:
+            lang = snippet_key.replace("snippet_", "")
+            print(f"\n  {C.GRAY}Or paste this {lang} block:{C.RESET}")
+            print()
+            for line in snippet.format(port=port).splitlines():
+                print(f"      {line}")
+
+    print(f"\n  {C.GRAY}Once configured, every {spec['name']} request flows through Entroly.{C.RESET}\n")
+
+
+def _start_proxy_if_needed(port: int) -> bool:
+    """Start the proxy daemon if it isn't already listening on `port`."""
+    return _start_proxy_daemon(port, os.environ.copy())
+
+
+def _start_proxy_daemon(port: int, env: dict[str, str]) -> bool:
+    """Start the proxy daemon with the provided environment if needed."""
+    import socket as _socket
+    with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as s:
+        s.settimeout(0.3)
+        running = s.connect_ex(("127.0.0.1", port)) == 0
+    if running:
+        print(f"  {C.GREEN}Proxy already running at http://localhost:{port}{C.RESET}")
+        return True
+
+    print(f"  {C.GRAY}Starting proxy on port {port}...{C.RESET}")
+    proxy_cmd = [resolve_python_cmd(), "-m", "entroly.cli", "proxy", "--port", str(port)]
+    subprocess.Popen(proxy_cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    import time as _time
+    for _ in range(30):
+        _time.sleep(0.2)
+        with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as s:
+            s.settimeout(0.3)
+            if s.connect_ex(("127.0.0.1", port)) == 0:
+                print(f"  {C.GREEN}Proxy running at http://localhost:{port}{C.RESET}")
+                return True
+    print(f"  {C.RED}Proxy failed to start on port {port} within 6s.{C.RESET}")
+    print(f"  {C.GRAY}Try: entroly proxy --port {port} in another terminal to see the error.{C.RESET}\n")
+    return False
+
+
+def cmd_wrap(args):
+    """entroly wrap <agent> — integrate Entroly with an AI coding tool.
+
+    Three integration paths, picked automatically per agent:
+      • CLI agents (claude, codex, aider, …)  — start proxy, set env, exec.
+      • IDEs with MCP support (cursor, …)      — auto-merge mcp.json.
+      • Other IDEs (zed, neovim, …)            — print copy-paste snippet.
+
+    Run `entroly wrap` with no agent to see the full list.
     """
     agent = args.agent.lower()
     if agent not in _WRAP_AGENTS:
         print(f"\n  {C.RED}Unknown agent: {agent}{C.RESET}")
-        print(f"  {C.GRAY}Supported: {', '.join(_WRAP_AGENTS.keys())}{C.RESET}\n")
+        # Group supported agents by kind for readability
+        by_kind: dict = {"cli": [], "mcp": [], "print": []}
+        for k, s in _WRAP_AGENTS.items():
+            by_kind.setdefault(s.get("kind", "print"), []).append(k)
+        print(f"\n  {C.BOLD}Supported agents:{C.RESET}")
+        print(f"  {C.GRAY}CLI (env-wrap):{C.RESET}  {', '.join(sorted(by_kind['cli']))}")
+        print(f"  {C.GRAY}MCP (auto):{C.RESET}      {', '.join(sorted(by_kind['mcp']))}")
+        print(f"  {C.GRAY}Other:{C.RESET}           {', '.join(sorted(by_kind['print']))}\n")
         return
+
+    spec = _WRAP_AGENTS[agent]
+    kind = spec.get("kind", "cli")
 
     if agent != "codex" and (args.codex_provider_id or args.codex_base_url):
         print(f"\n  {C.RED}`--codex-provider-id` 和 `--codex-base-url` 只能与 `entroly wrap codex` 一起使用。{C.RESET}\n")
         return
 
-    # Check codebase presence
-    if not _check_codebase():
+    # MCP-mode integrations don't need a project codebase nor the proxy —
+    # they only patch a config file. Skip the codebase check for them.
+    if kind != "mcp" and not _check_codebase():
         if not getattr(args, "force", False):
             return
 
-    spec = _WRAP_AGENTS[agent]
     port = args.port
-
-    # argparse.REMAINDER 会吞掉 agent 后面的 --port；先归一化端口，
-    # 后续 provider 路由、proxy 启动和子进程参数才能使用同一个值。
+    # Recover --port if argparse.REMAINDER swallowed it after the agent name.
     if port is None and "--port" in args.agent_args:
         idx = args.agent_args.index("--port")
         if idx + 1 < len(args.agent_args):
@@ -1546,13 +1899,26 @@ def cmd_wrap(args):
                 args.agent_args.pop(idx)
             except ValueError:
                 pass
-
     port = port or 9377
 
     env = os.environ.copy()
     _ensure_loopback_no_proxy(env)
     extra_args: list[str] = []
     openai_route = None
+
+    print(f"\n{C.CYAN}{C.BOLD}  Entroly Wrap — {spec['name']}{C.RESET}\n")
+
+    # ── kind=mcp ───────────────────────────────────────────────────────
+    if kind == "mcp":
+        _wrap_via_mcp(spec, port)
+        return
+
+    # ── kind=print ─────────────────────────────────────────────────────
+    if kind == "print":
+        if not _start_proxy_daemon(port, env):
+            return
+        _wrap_via_print(spec, port)
+        return
 
     if agent == "codex":
         # `wrap codex` 的 proxy 启动时就需要知道真实上游入口，
@@ -1597,49 +1963,8 @@ def cmd_wrap(args):
         env[spec["env_key"]] = spec["env_val"].format(port=port)
         print(f"  {C.GRAY}Set {spec['env_key']}={spec['env_val'].format(port=port)}{C.RESET}")
 
-    print(f"\n{C.CYAN}{C.BOLD}  Entroly Wrap — {spec['name']}{C.RESET}\n")
-
-    # Check if proxy is already running
-    import socket
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.settimeout(0.3)
-        proxy_running = s.connect_ex(("127.0.0.1", port)) == 0
-
-    if not proxy_running:
-        print(f"  {C.GRAY}Starting proxy on port {port}...{C.RESET}")
-        proxy_cmd = [resolve_python_cmd(), "-m", "entroly.cli", "proxy", "--port", str(port)]
-        subprocess.Popen(
-            proxy_cmd,
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        import time as _time
-        started = False
-        for _ in range(30):
-            _time.sleep(0.2)
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(0.3)
-                if s.connect_ex(("127.0.0.1", port)) == 0:
-                    started = True
-                    break
-        if not started:
-            print(f"  {C.RED}Proxy failed to start on port {port} within 6s.{C.RESET}")
-            print(f"  {C.GRAY}Try: entroly proxy --port {port} in another terminal to see the error.{C.RESET}\n")
-            return
-        print(f"  {C.GREEN}Proxy running at http://localhost:{port}{C.RESET}")
-    else:
-        print(f"  {C.GREEN}Proxy already running at http://localhost:{port}{C.RESET}")
-
-    if agent == "cursor":
-        print(f"\n  {C.BOLD}Cursor Configuration:{C.RESET}")
-        print("  Open Cursor Settings → Models → Override OpenAI Base URL:")
-        print(
-            f"    {C.CYAN}"
-            f"{_display_local_proxy_base_url(openai_route.proxy_base_url)}"
-            f"{C.RESET}"
-        )
-        print(f"\n  {C.GRAY}All Cursor requests will be automatically optimized.{C.RESET}\n")
+    # ── kind=cli (default) ─────────────────────────────────────────────
+    if not _start_proxy_daemon(port, env):
         return
 
     print(f"  {C.GREEN}Launching {spec['name']}...{C.RESET}\n")

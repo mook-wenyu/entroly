@@ -51,11 +51,20 @@ test_output.txt
 
 # ── IDE / editor ─────────────────────────────────────────────────────
 .idea/
-.vscode/
 claudecode/
 *.swp
 *.swo
-.claude/
+
+# Shared integration configs are tracked; personal overrides stay ignored.
+.vscode/*
+!.vscode/mcp.json
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+.claude/*
+!.claude/settings.json
+.claude/settings.local.json
 
 # ── OS ───────────────────────────────────────────────────────────────
 .DS_Store
