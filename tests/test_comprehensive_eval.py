@@ -5,11 +5,17 @@ Categories A-G against live GPT-4o-mini + FORGE repair loop.
 """
 from __future__ import annotations
 import os, sys, re, textwrap, time
+import pytest
+openai = pytest.importorskip("openai", reason="openai required for live eval")
 from openai import OpenAI
 from entroly.verifiers.provenance_tracer import trace_provenance
 from entroly.verifiers.repair_loop import forge_loop, SimpleContextStore
 from entroly.verifiers.symbol_resolution import SymbolManifest
 from entroly.verifiers.semantic_entropy import prove_verify
+
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("OPENAI_API_KEY"), reason="OPENAI_API_KEY not set"
+)
 
 client = OpenAI()
 MODEL = "gpt-4o-mini"

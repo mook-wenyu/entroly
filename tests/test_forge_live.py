@@ -15,6 +15,12 @@ from __future__ import annotations
 import os
 import textwrap
 
+import pytest
+pytest.importorskip("openai", reason="openai required for live FORGE test")
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("OPENAI_API_KEY"), reason="OPENAI_API_KEY not set"
+)
+
 from openai import OpenAI
 
 from entroly.verifiers.repair_loop import (

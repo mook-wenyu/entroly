@@ -22,6 +22,12 @@ import json
 import textwrap
 import time
 
+import pytest
+pytest.importorskip("openai", reason="openai required for live hallucination test")
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("OPENAI_API_KEY"), reason="OPENAI_API_KEY not set"
+)
+
 from openai import OpenAI
 
 from entroly.verifiers.provenance_tracer import trace_provenance
