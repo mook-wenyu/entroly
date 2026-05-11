@@ -35,7 +35,8 @@
   <a href="cookbook/README.md"><b>Cookbook</b></a> ·
   <a href="#benchmarks"><b>Benchmarks</b></a> ·
   <a href="#works-with-your-stack"><b>38 supported agents</b></a> ·
-  <a href="https://juyterman1000.github.io/entroly/docs/dashboard.html"><b>Dashboard</b></a>
+  <a href="https://juyterman1000.github.io/entroly/docs/dashboard.html"><b>Dashboard</b></a> ·
+  <a href="https://huggingface.co/spaces/entroly/entroly-context-compression"><img src="https://img.shields.io/badge/🤗_Live_Demo-Hugging_Face-yellow?style=flat" alt="Live Demo"></a>
 </p>
 
 <a id="install"></a>
