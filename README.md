@@ -68,6 +68,10 @@
   <img src="https://img.shields.io/badge/License-Apache_2.0-green">
 </p>
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/juyterman1000/entroly/main/docs/assets/demo.svg" alt="Entroly Demo — AI context optimization, 70-95% token savings" width="800">
+</p>
+
 ---
 
 ## The Problem — and the Bottom-Line Impact
