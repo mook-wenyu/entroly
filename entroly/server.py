@@ -3604,6 +3604,121 @@ def create_mcp_server():
             "training_pairs": len(lines), "engine": "python",
         }, indent=2)
 
+    # ── Hallucination Verification & Suppression ─────────────────────
+    # BIPT (Layer 7) and FORGE (Layer 8) tools — the hallucination
+    # suppression stack, now accessible to any MCP client.
+
+    @mcp.tool()
+    def verify_provenance(
+        code: str,
+        context: str = "",
+    ) -> str:
+        """Verify that LLM-generated code is grounded in the provided context.
+
+        Uses BIPT (Byte-level Information Provenance Tracer) to measure how
+        much of each identifier in the generated code originates from the
+        context. Returns an Identifier Provenance Deficit (IPD) score:
+
+          IPD = 0.0  → fully grounded (all identifiers come from context)
+          IPD = 1.0  → fully invented (no identifiers match context)
+
+        Use this after an LLM generates code to check for hallucinated APIs,
+        invented function names, or fabricated imports before accepting output.
+
+        Args:
+            code: The LLM-generated code to verify
+            context: The repository context that was provided to the LLM
+        """
+        from .verifiers.provenance_tracer import trace_provenance as _trace
+        result = _trace(code, context)
+
+        # Build per-identifier breakdown
+        traces = []
+        for t in result.traces:
+            traces.append({
+                "identifier": t.identifier.name,
+                "kind": t.identifier.kind,
+                "verdict": t.verdict,
+                "grounding_ratio": round(t.grounding_ratio, 3),
+            })
+
+        invented = [t for t in traces if t["verdict"] in ("invented", "partial")]
+
+        return json.dumps({
+            "ipd": round(result.ipd, 3),
+            "verdict": result.verdict,
+            "total_identifiers": len(traces),
+            "invented_count": len(invented),
+            "invented": invented[:20],  # cap for readability
+            "grounded_count": len(traces) - len(invented),
+        }, indent=2)
+
+    @mcp.tool()
+    def verify_and_repair(
+        prompt: str,
+        code: str,
+        context: str = "",
+    ) -> str:
+        """Verify LLM-generated code and suggest repairs for hallucinations.
+
+        Combines BIPT verification with rejection analysis to identify
+        hallucinated identifiers and suggest which real APIs/symbols from
+        the context should be used instead.
+
+        This is a single-shot verification + feedback tool — it does NOT
+        call an LLM. For the full repair loop (FORGE), use the Python SDK:
+          from entroly.verifiers import forge_loop
+
+        Args:
+            prompt: The original user request that generated the code
+            code: The LLM-generated code to verify
+            context: The repository context provided to the LLM
+        """
+        from .verifiers.provenance_tracer import trace_provenance as _trace
+        from .verifiers.repair_loop import (
+            _extract_rejections,
+            _extract_intent_keywords,
+            _rank_apis_by_intent,
+        )
+
+        result = _trace(code, context)
+        rejections = _extract_rejections(result)
+
+        # Build actionable feedback
+        feedback = []
+        for rej in rejections[:10]:
+            feedback.append({
+                "identifier": rej.identifier,
+                "issue": rej.suggested_fix,
+                "grounding_ratio": round(rej.grounding_ratio, 3),
+                "retrieval_query": rej.retrieval_query,
+            })
+
+        # Rank available APIs by intent fit
+        keywords = _extract_intent_keywords(prompt)
+        ranked_apis = []
+        if keywords and context:
+            ranked = _rank_apis_by_intent(keywords, context)
+            ranked_apis = [
+                {"api": name, "fit": round(score, 2)}
+                for name, score in ranked[:5] if score > 0
+            ]
+
+        return json.dumps({
+            "ipd": round(result.ipd, 3),
+            "verdict": result.verdict,
+            "needs_repair": result.ipd > 0.20,
+            "rejections": feedback,
+            "intent_keywords": keywords,
+            "suggested_apis": ranked_apis,
+            "repair_hint": (
+                "Re-generate using ONLY the suggested APIs. "
+                "Avoid inventing functions not in the codebase."
+                if result.ipd > 0.20 else
+                "Code appears grounded in the provided context."
+            ),
+        }, indent=2)
+
     return mcp, engine
 
 
@@ -3710,7 +3825,7 @@ def main():
         from importlib.metadata import version as _pkg_version
         _version = _pkg_version("entroly")
     except Exception:
-        _version = "0.16.0"
+        _version = "0.17.0"
     logger.info(f"Starting Entroly MCP server v{_version} ({engine_type} engine)")
     mcp, engine = create_mcp_server()
 

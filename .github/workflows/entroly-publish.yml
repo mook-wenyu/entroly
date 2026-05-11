@@ -128,3 +128,31 @@ jobs:
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.TEST_NPM }}
+
+  publish-npm-mcp:
+    needs: build-and-push
+    if: startsWith(github.ref, 'refs/tags/entroly-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#entroly-v}" >> $GITHUB_OUTPUT
+
+      - name: Update package.json version
+        working-directory: entroly/npm
+        run: |
+          node -e "const p=require('./package.json'); p.version='${{ steps.version.outputs.VERSION }}'; require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2)+'\n')"
+
+      - name: Publish entroly-mcp to npm
+        working-directory: entroly/npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.TEST_NPM }}

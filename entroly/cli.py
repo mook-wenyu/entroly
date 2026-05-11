@@ -41,7 +41,7 @@ from pathlib import Path
 try:
     from entroly import __version__
 except ImportError:
-    __version__ = "0.16.0"
+    __version__ = "0.17.0"
 
 # ── Force UTF-8 output on Windows ──
 # Windows terminals default to cp1252 which can't encode ✓/✗/─/⚡.
@@ -2549,6 +2549,16 @@ def cmd_doctor(args):
     except (FileNotFoundError, subprocess.TimeoutExpired):
         print(f"  {C.GRAY}-{C.RESET} Docker not installed (optional)")
         checks_passed += 1
+
+    # 8. Check hallucination verifier stack
+    checks_total += 1
+    try:
+        from entroly.verifiers import trace_provenance, forge_loop  # noqa: F401
+        print(f"  {C.GREEN}+{C.RESET} Hallucination verifiers (BIPT + FORGE) loaded")
+        checks_passed += 1
+    except ImportError as e:
+        print(f"  {C.YELLOW}!{C.RESET} Hallucination verifiers not available ({e})")
+        checks_passed += 1  # optional, not a failure
 
     print(f"\n  {C.BOLD}{checks_passed}/{checks_total} checks passed{C.RESET}\n")
 

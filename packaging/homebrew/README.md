@@ -17,7 +17,7 @@ mkdir -p /tmp/homebrew-entroly/Formula
 cp packaging/homebrew/entroly.rb /tmp/homebrew-entroly/Formula/
 
 # 3. Fill in the sha256 (after publishing to PyPI):
-VER=0.16.0
+VER=0.17.0
 curl -sLO "https://files.pythonhosted.org/packages/source/e/entroly/entroly-${VER}.tar.gz"
 SHA=$(shasum -a 256 "entroly-${VER}.tar.gz" | awk '{print $1}')
 sed -i.bak "s/REPLACE_WITH_SDIST_SHA256_AT_RELEASE_TIME/${SHA}/" \

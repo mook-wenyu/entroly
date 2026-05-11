@@ -24,10 +24,15 @@ Quick Setup (Claude Code)::
 
 """
 
-__version__ = "0.16.0"
+__version__ = "0.17.0"
 
-# SDK: 3-line integration for any AI application
 try:
-    from .sdk import compress, compress_messages  # noqa: F401
+    from .sdk import compress, compress_messages, verify  # noqa: F401
 except ImportError:
     pass  # Graceful degradation if dependencies missing
+
+# Verification SDK: hallucination detection + suppression
+try:
+    from .verifiers import trace_provenance, forge_loop  # noqa: F401
+except ImportError:
+    pass  # Verifiers are available but don't block core functionality
