@@ -3099,6 +3099,14 @@ impl EntrolyEngine {
         let tmp = format!("{}.tmp", path);
         let f = std::fs::File::create(&tmp)
             .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+        // Restrict to owner-only before writing any data — the index can
+        // contain ingested source code and must not be world-readable.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            f.set_permissions(std::fs::Permissions::from_mode(0o600))
+                .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+        }
         let mut gz = GzEncoder::new(f, Compression::default());
         gz.write_all(&json)
             .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
