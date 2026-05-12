@@ -1,6 +1,6 @@
 [package]
 name = "entroly-core"
-version = "0.16.0"
+version = "0.18.0"
 edition = "2021"
 description = "Rust core for Entroly — information-theoretic context optimization"
 
@@ -16,7 +16,7 @@ default = []
 extension-module = ["pyo3/extension-module"]
 
 [dependencies]
-pyo3 = { version = "0.23" }
+pyo3 = { version = "0.24" }
 
 # Serialization (checkpoint)
 serde = { version = "1.0", features = ["derive"] }

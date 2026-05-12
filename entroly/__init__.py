@@ -66,10 +66,15 @@ def _read_installed_version() -> str | None:
         return None
 
 
-__version__ = _read_source_version() or _read_installed_version() or _FALLBACK_VERSION
+__version__ = _read_source_version() or _read_installed_version() or "0.18.0"
 
-# SDK: 3-line integration for any AI application
 try:
-    from .sdk import compress, compress_messages  # noqa: F401
+    from .sdk import compress, compress_messages, verify  # noqa: F401
 except ImportError:
     pass  # Graceful degradation if dependencies missing
+
+# Verification SDK: hallucination detection + suppression
+try:
+    from .verifiers import trace_provenance, forge_loop  # noqa: F401
+except ImportError:
+    pass  # Verifiers are available but don't block core functionality

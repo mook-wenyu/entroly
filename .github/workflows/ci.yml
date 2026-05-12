@@ -9,6 +9,7 @@ on:
 env:
   PIP_RETRIES: 10
   PIP_TIMEOUT: 120
+  PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
 
 jobs:
   lint:
@@ -76,7 +77,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@v4
@@ -88,6 +89,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
 
       - name: Create virtualenv
         run: |
@@ -113,6 +115,7 @@ jobs:
           .venv/bin/python -c "from entroly.server import EntrolyEngine; print('server ok')"
           .venv/bin/python -c "from entroly.cli import _detect_project_type; print('cli ok')"
           .venv/bin/python -c "from entroly.auto_index import _should_index; print('auto_index ok')"
+          .venv/bin/python -c "from entroly.verifiers import trace_provenance, forge_loop; print('verifiers ok')"
 
       - name: Run functional test
         run: .venv/bin/python tests/functional_test.py

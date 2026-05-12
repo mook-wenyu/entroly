@@ -22,6 +22,15 @@ TARGETS = [
     ("entroly/__init__.py", r'__version__\s*=\s*"[^"]+"', '__version__ = "{v}"'),
     ("entroly/cli.py", r'__version__\s*=\s*"[^"]+"', '__version__ = "{v}"'),
     ("entroly/server.py", r'_version\s*=\s*"[^"]+"', '_version = "{v}"'),
+    (".claude-plugin/manifest.json", r'"version"\s*:\s*"[^"]+"', '"version": "{v}"'),
+    ("entroly/daemon.py", r'version:\s*str\s*=\s*"[^"]+"', 'version: str = "{v}"'),
+    # Homebrew: URL pin only. The sha256 changes per-release and must be
+    # updated manually after the PyPI tarball is published.
+    ("packaging/homebrew/entroly.rb",
+        r'entroly-[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz', 'entroly-{v}.tar.gz'),
+    # Homebrew release runbook (example bash). Two `VER=...` lines.
+    ("packaging/homebrew/README.md",
+        r'VER=[0-9]+\.[0-9]+\.[0-9]+', 'VER={v}'),
 ]
 
 SEMVER = re.compile(r"^\d+\.\d+\.\d+([-+].+)?$")
@@ -35,7 +44,7 @@ def main(argv: list[str]) -> int:
     for rel, pattern, template in TARGETS:
         path = ROOT / rel
         text = path.read_text(encoding="utf-8")
-        updated, n = re.subn(pattern, template.format(v=new), text, count=1, flags=re.MULTILINE)
+        updated, n = re.subn(pattern, template.format(v=new), text, flags=re.MULTILINE)
         if n == 0:
             print(f"!! no match in {rel}", file=sys.stderr)
             return 1

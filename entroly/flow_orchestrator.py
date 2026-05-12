@@ -194,6 +194,32 @@ class FlowOrchestrator:
                 vr = self._verifier.check_belief(claim_id)
                 verification_results.append(vr)
 
+        # Step 2b: BIPT provenance check on code-like beliefs
+        # Catches hallucinated identifiers that the belief verifier misses
+        provenance_warnings: list[dict[str, Any]] = []
+        try:
+            from .verifiers.provenance_tracer import trace_provenance
+            for b in beliefs:
+                body = b.get("body", "")
+                if not body or len(body) < 50:
+                    continue
+                if not any(kw in body for kw in ("def ", "class ", "import ", "return ")):
+                    continue
+                context = "\n".join(
+                    ob.get("body", "") for ob in beliefs if ob is not b
+                )
+                if not context:
+                    continue
+                bipt = trace_provenance(body, context)
+                if bipt.ipd > 0.30:
+                    provenance_warnings.append({
+                        "entity": b.get("entity", ""),
+                        "ipd": round(bipt.ipd, 3),
+                        "verdict": bipt.verdict,
+                    })
+        except Exception:
+            pass  # BIPT is best-effort; never blocks the flow
+
         # Step 3: Assemble answer with verification status
         result.steps_completed.append("answer_assembly")
         answer_parts = [f"## Verified Answer (from {len(beliefs)} belief(s))\n"]
@@ -212,6 +238,13 @@ class FlowOrchestrator:
                     answer_parts.append(f"- {iss}")
                 answer_parts.append("")
 
+        if provenance_warnings:
+            answer_parts.append("\n### Provenance Warnings (BIPT)")
+            for pw in provenance_warnings:
+                answer_parts.append(
+                    f"- `{pw['entity']}`: IPD={pw['ipd']} ({pw['verdict']})"
+                )
+
         result.answer = "\n".join(answer_parts)
 
         # Step 4: Write verified action
@@ -224,6 +257,8 @@ class FlowOrchestrator:
         result.artifacts_created.append(action.get("path", ""))
 
         result.metadata["verification_results"] = verification_results
+        if provenance_warnings:
+            result.metadata["provenance_warnings"] = provenance_warnings
         return result
 
     def _compile_on_demand(self, query: str, decision: RoutingDecision, diff: str) -> FlowResult:

@@ -269,3 +269,42 @@ def _compress_code(content: str, target_ratio: float) -> str:
         # correct content_type so it picks the code-specific compactor.
         compressed, _, _ = universal_compress(content, target_ratio, "code")
         return compressed
+
+
+# ── Verification SDK ─────────────────────────────────────────────────
+# Hallucination detection + suppression, same 1-import philosophy.
+
+
+def verify(
+    code: str,
+    context: str = "",
+) -> dict[str, Any]:
+    """Verify that LLM-generated code is grounded in the provided context.
+
+    Returns a dict with:
+      - ipd: Identifier Provenance Deficit [0.0 = grounded, 1.0 = invented]
+      - verdict: "grounded", "partial", or "invented"
+      - invented: list of ungrounded identifiers
+
+    Example::
+
+        from entroly import verify
+        result = verify(llm_output, context=repo_code)
+        if result["ipd"] > 0.2:
+            print("Warning: hallucinated identifiers detected")
+    """
+    from .verifiers.provenance_tracer import trace_provenance
+
+    bipt = trace_provenance(code, context)
+    invented = [
+        {"name": t.identifier.name, "kind": t.identifier.kind,
+         "grounding": round(t.grounding_ratio, 3)}
+        for t in bipt.traces if t.verdict in ("invented", "partial")
+    ]
+    return {
+        "ipd": round(bipt.ipd, 3),
+        "verdict": bipt.verdict,
+        "total_identifiers": len(bipt.traces),
+        "invented_count": len(invented),
+        "invented": invented,
+    }

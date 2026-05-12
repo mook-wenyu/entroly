@@ -237,7 +237,7 @@ async function ctrlPost(url,body={},msg='Done'){
   catch(e){toast('Connection error',false);}}
 
 function toggleOpt(el){ctrlPost(el.checked?'/api/control/optimization/enable':'/api/control/optimization/pause',{},el.checked?'Optimization enabled':'Optimization paused');}
-function toggleBypass(el){ctrlPost('/api/control/bypass',{enabled:el.checked},{},el.checked?'Bypass mode ON — requests forwarded raw':'Bypass mode OFF');}
+function toggleBypass(el){ctrlPost('/api/control/bypass',{enabled:el.checked},el.checked?'Bypass mode ON — requests forwarded raw':'Bypass mode OFF');}
 function toggleLearn(el){ctrlPost('/api/control/learning/enable',{enabled:el.checked},el.checked?'Local learning enabled — weights will adapt from feedback':'Local learning paused — weights frozen');}
 function toggleFed(el){if(el.checked)ctrlPost('/api/control/federation/enable',{},'Federation enabled');else ctrlPost('/api/control/federation/disable',{},'Federation disabled');}
 function setQuality(m){document.querySelectorAll('.quality-opt').forEach(b=>b.classList.toggle('active',b.dataset.q===m));

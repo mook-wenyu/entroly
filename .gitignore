@@ -73,3 +73,7 @@ Thumbs.db
 # ── Test / CI caches ─────────────────────────────────────────────────
 .pytest_cache/
 .ruff_cache/
+.entroly_verification.json
+
+# Test artifacts (should not be committed)
+.test_ravs_log/

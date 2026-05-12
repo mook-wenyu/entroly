@@ -2255,12 +2255,12 @@ impl EntrolyEngine {
                     0.25,  // sdr_threshold
                     0.60,  // structural_threshold
                 );
-                contradictions_evicted = report.pairs_found;
+                contradictions_evicted = report.evicted_count;
                 if report.pairs_found > 0 {
                     #[cfg(debug_assertions)]
                     eprintln!(
                         "[entroly] Contradiction guard: evicted {} fragments ({} pairs)",
-                        report.evicted.len(), report.pairs_found,
+                        report.evicted_count, report.pairs_found,
                     );
                 }
                 filtered
@@ -3110,11 +3110,28 @@ impl EntrolyEngine {
         };
         let json = serde_json::to_vec(&snapshot)
             .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
-        // Write atomically via temp file
+        // Write atomically via temp file. Gzip-compress: the path is
+        // `index.json.gz` and the prior implementation wrote plain JSON to
+        // it (latent bug — load_index handles both formats for backward
+        // compat). Compression typically shrinks the index 5-10× for repos
+        // with repetitive code structure.
+        use flate2::Compression;
+        use flate2::write::GzEncoder;
         let tmp = format!("{}.tmp", path);
-        let mut f = std::fs::File::create(&tmp)
+        let f = std::fs::File::create(&tmp)
             .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
-        f.write_all(&json)
+        // Restrict to owner-only before writing any data — the index can
+        // contain ingested source code and must not be world-readable.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            f.set_permissions(std::fs::Permissions::from_mode(0o600))
+                .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+        }
+        let mut gz = GzEncoder::new(f, Compression::default());
+        gz.write_all(&json)
+            .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+        gz.finish()
             .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
         std::fs::rename(&tmp, path)
             .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
@@ -3142,9 +3159,26 @@ impl EntrolyEngine {
             gradient_norm_ema: f64,
         }
         fn default_gradient_temperature() -> f64 { 2.0 }
-        let data = std::fs::read(path)
+        let raw = std::fs::read(path)
             .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
-        let snapshot: IndexSnapshot = serde_json::from_slice(&data)
+        // Format detection by magic bytes: 0x1f 0x8b is gzip; '{' (0x7b) is
+        // a legacy plain-JSON index from before persist_index was fixed.
+        // Supporting both lets existing users' warm-start caches keep
+        // loading after the v0.18.0 upgrade.
+        let decoded: Vec<u8> = if raw.len() >= 2 && raw[0] == 0x1f && raw[1] == 0x8b {
+            use std::io::Read;
+            use flate2::read::GzDecoder;
+            let mut gz = GzDecoder::new(&raw[..]);
+            let mut out = Vec::with_capacity(raw.len() * 4);
+            gz.read_to_end(&mut out)
+                .map_err(|e| pyo3::exceptions::PyIOError::new_err(
+                    format!("gzip decompression failed: {}", e)
+                ))?;
+            out
+        } else {
+            raw
+        };
+        let snapshot: IndexSnapshot = serde_json::from_slice(&decoded)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
         let n = snapshot.fragments.len();
         self.fragments = snapshot.fragments;

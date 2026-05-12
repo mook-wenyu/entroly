@@ -41,7 +41,7 @@ from pathlib import Path
 try:
     from entroly import __version__
 except ImportError:
-    __version__ = "0.16.0"
+    __version__ = "0.18.0"
 
 from .codex_integration import prepare_codex_wrap, resolve_openai_proxy_route
 from .launching import resolve_launch_cmd, resolve_python_cmd
@@ -2796,6 +2796,16 @@ def cmd_doctor(args):
     except (FileNotFoundError, subprocess.TimeoutExpired):
         print(f"  {C.GRAY}-{C.RESET} Docker not installed (optional)")
         checks_passed += 1
+
+    # 8. Check hallucination verifier stack
+    checks_total += 1
+    try:
+        from entroly.verifiers import trace_provenance, forge_loop  # noqa: F401
+        print(f"  {C.GREEN}+{C.RESET} Hallucination verifiers (BIPT + FORGE) loaded")
+        checks_passed += 1
+    except ImportError as e:
+        print(f"  {C.YELLOW}!{C.RESET} Hallucination verifiers not available ({e})")
+        checks_passed += 1  # optional, not a failure
 
     print(f"\n  {C.BOLD}{checks_passed}/{checks_total} checks passed{C.RESET}\n")
 
