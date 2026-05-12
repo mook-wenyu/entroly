@@ -416,7 +416,7 @@ class TriadResult:
 
     def explain(self) -> str:
         lines = [
-            f"=== TRIAD — Diff-Message Alignment ===",
+            "=== TRIAD — Diff-Message Alignment ===",
             f"verdict: {self.verdict}  TRIAD={self.triad_score:.3f}",
             f"  token_alignment:      {self.token_alignment:.3f}",
             f"  structural_alignment: {self.structural_alignment:.3f}",

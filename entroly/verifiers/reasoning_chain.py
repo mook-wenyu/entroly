@@ -124,7 +124,7 @@ class CaveResult:
 
     def explain(self, max_items: int = 20) -> str:
         lines = [
-            f"=== CAVE — Reasoning Chain Verification ===",
+            "=== CAVE — Reasoning Chain Verification ===",
             f"verdict: {self.verdict}  "
             f"integrity={self.chain_integrity:.3f}  "
             f"necessary={self.n_necessary}  "

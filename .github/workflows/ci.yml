@@ -9,6 +9,7 @@ on:
 env:
   PIP_RETRIES: 10
   PIP_TIMEOUT: 120
+  PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
 
 jobs:
   lint:
@@ -88,6 +89,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
 
       - name: Create virtualenv
         run: |

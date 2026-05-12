@@ -90,7 +90,7 @@ _IMPORT_STAR = re.compile(
 # CommonJS
 _REQUIRE = re.compile(rf"(?:const|let|var)\s+({_ID})\s*=\s*require\s*\(\s*['\"]([^'\"]+)['\"]")
 _REQUIRE_DESTRUCT = re.compile(
-    rf"(?:const|let|var)\s*\{{\s*([^}}]+)\s*\}}\s*=\s*require\s*\(\s*['\"]([^'\"]+)['\"]"
+    r"(?:const|let|var)\s*\{\s*([^}]+)\s*\}\s*=\s*require\s*\(\s*['\"]([^'\"]+)['\"]"
 )
 
 # Declarations

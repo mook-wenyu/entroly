@@ -182,7 +182,7 @@ class ProveResult:
 
     def explain(self, max_items: int = 15) -> str:
         lines = [
-            f"=== PROVE — Prose Verification ===",
+            "=== PROVE — Prose Verification ===",
             f"verdict: {self.verdict}  "
             f"alignment={self.alignment_score:.3f}  "
             f"P(halu)={self.hallucination_risk:.3f}  "

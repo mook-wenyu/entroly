@@ -458,7 +458,7 @@ class BIPTResult:
 
     def explain(self, max_items: int = 20) -> str:
         lines = [
-            f"=== BIPT - Byte-Level Information Provenance Tracer ===",
+            "=== BIPT - Byte-Level Information Provenance Tracer ===",
             f"verdict: {self.verdict}  IPD={self.ipd:.4f}  "
             f"grounding={self.grounding_ratio:.1%}",
             f"context: {self.context_size:,} bytes  "
