@@ -53,26 +53,23 @@
   <a href="#install"><b>Install</b></a> ·
   <a href="cookbook/README.md"><b>Cookbook</b></a> ·
   <a href="#benchmarks"><b>Benchmarks</b></a> ·
-  <a href="#works-with-your-stack"><b>65+ supported agents</b></a> ·
-  <a href="https://juyterman1000.github.io/entroly/docs/dashboard.html"><b>Dashboard</b></a> ·
-  <a href="https://huggingface.co/spaces/entroly/entroly-context-compression"><img src="https://img.shields.io/badge/🤗_Live_Demo-Hugging_Face-yellow?style=flat" alt="Live Demo"></a>
+  <a href="#works-with-your-stack"><b>65+ supported agents</b></a>
 </p>
 
 <a id="install"></a>
 
 <p align="center">
-  <code>brew tap juyterman1000/entroly && brew install entroly</code>&nbsp;&nbsp;|&nbsp;&nbsp;
-  <code>pip install entroly</code>&nbsp;&nbsp;|&nbsp;&nbsp;
-  <code>npm i -g entroly-wasm</code>
+  <code><b>pip install entroly</b></code>
 </p>
 
 <p align="center">
   <sub>
-    Then: <code>cd /your/repo && entroly go</code> — auto-opens the dashboard at
-    <code>http://localhost:9378</code>.
+    Then <code>cd /your/repo && entroly go</code> — auto-opens the dashboard in your browser.
+    <br/>
+    Or: <code>brew tap juyterman1000/entroly && brew install entroly</code> · <code>npm i -g entroly-wasm</code>
     <br/>
     See the <a href="cookbook/README.md"><b>Cookbook</b></a> for 10 concrete recipes,
-    or pick your stack from the <a href="#works-with-your-stack">65+ supported agents</a> below.
+    or pick your stack from the <a href="#works-with-your-stack">65+ supported agents</a>.
   </sub>
 </p>
 
