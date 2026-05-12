@@ -635,6 +635,22 @@ class PromptCompilerProxy:
         self.config = config or ProxyConfig()
         self._client: httpx.AsyncClient | None = None
 
+        # ── System 1 ↔ System 2 coupling (opt-in via ENTROLY_VAULT_COUPLING=1) ──
+        # When enabled, the proxy reads verified beliefs from the vault on each
+        # request, injects them as engine fragments, and feeds outcomes back as
+        # Bayesian updates. See entroly/coupling.py.
+        self._vault: Any = None
+        self._last_injected_claim_ids: list[str] = []
+        try:
+            from . import coupling
+            if coupling.is_enabled():
+                from .vault import VaultManager, VaultConfig
+                self._vault = VaultManager(VaultConfig())
+                logger.info("Vault coupling enabled (ENTROLY_VAULT_COUPLING=1)")
+        except Exception as e:
+            logger.debug("Vault coupling unavailable: %s", e)
+            self._vault = None
+
         # Thread-safe stats
         self._stats_lock = threading.Lock()
         self._requests_total: int = 0
@@ -1303,6 +1319,23 @@ class PromptCompilerProxy:
         #   5. Ebbinghaus decay bookkeeping
         self.engine._turn_counter += 1
         self.engine.advance_turn()
+
+        # ── System 2 → System 1 coupling (opt-in: ENTROLY_VAULT_COUPLING=1) ──
+        # Project verified vault beliefs into the engine as fragment candidates
+        # so the knapsack weighs them against IDE-supplied fragments under a
+        # single objective. See entroly/coupling.py for the math.
+        injected_claim_ids: list[str] = []
+        if self._vault is not None:
+            try:
+                from . import coupling
+                injected_claim_ids = coupling.inject_vault_beliefs(
+                    self.engine, self._vault, user_message,
+                )
+            except Exception as e:
+                logger.debug("Vault coupling injection skipped: %s", e)
+        # Stash for outcome attribution at /outcome time
+        self._last_injected_claim_ids = injected_claim_ids
+
         result = self.engine.optimize_context(token_budget, user_message)
 
         selected = result.get("selected_fragments", [])
@@ -2019,6 +2052,24 @@ async def _record_outcome(request: Request) -> JSONResponse:
         except Exception as e:
             logger.debug("PRISM RL update skipped: %s", e)
 
+    # ── System 1 → System 2 outcome attribution ──
+    # Bayesian-update vault beliefs that were injected into this context.
+    # On failure, also enqueue them for reverification by FlowOrchestrator.
+    belief_updates: list[dict] = []
+    reverify_count = 0
+    if proxy._vault is not None and proxy._last_injected_claim_ids:
+        try:
+            from . import coupling
+            belief_updates = coupling.attribute_outcome(
+                proxy._last_injected_claim_ids, success, proxy._vault,
+            )
+            if not success:
+                reverify_count = coupling.enqueue_reverification(
+                    proxy._last_injected_claim_ids, proxy._vault,
+                )
+        except Exception as e:
+            logger.debug("Belief attribution skipped: %s", e)
+
     with proxy._stats_lock:
         if success:
             proxy._outcome_success += 1
@@ -2033,6 +2084,8 @@ async def _record_outcome(request: Request) -> JSONResponse:
         "prism_updated": bool(fragment_ids),
         "error_rate": round(error_rate, 4),
         "total_outcomes": total,
+        "belief_updates": belief_updates,
+        "beliefs_reverify_queued": reverify_count,
     })
 
 
