@@ -203,7 +203,8 @@ _BUILTINS: set[str] | None = None
 def _builtins() -> set[str]:
     global _BUILTINS
     if _BUILTINS is None:
-        import builtins, keyword
+        import builtins
+        import keyword
         _BUILTINS = {n for n in dir(builtins) if not n.startswith("_")}
         _BUILTINS.update(keyword.kwlist)
         _BUILTINS.update({"self", "cls", "args", "kwargs", "_",
