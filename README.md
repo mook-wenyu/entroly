@@ -117,6 +117,180 @@
 
 ---
 
+## Benchmarks
+
+### Live Evolution Trace
+
+This is from this repo's vault, not a roadmap:
+
+```
+[detect]     gap observed → entity="auth", miss_count=3
+[synthesize] StructuralSynthesizer ($0, deterministic, no LLM)
+[benchmark]  skill=ddb2e2969bb0 → fitness 1.0 (1 pass / 0 fail, 338 ms)
+[promote]    status: draft → promoted
+[spend]      $0.0000 — invariant C_spent ≤ τ·S(t) holds
+```
+
+### Accuracy Retention
+
+Compression doesn't hurt accuracy — we measured it live (gpt-4o-mini, Wilson 95% CIs):
+
+| Benchmark | n | Budget | Baseline (95% CI) | With Entroly (95% CI) | Retention | Token Savings |
+|---|---|---|---|---|---|---|
+| NeedleInAHaystack | 20 | 2K | 100% [83.9–100%] | 100% [83.9–100%] | **100.0%** | **99.5%** |
+| LongBench (HotpotQA) | 50 | 2K | 64.0% [50.1–75.9%] | 68.0% [54.2–79.2%] | **106.2%** | **85.3%** |
+| Berkeley Function Calling | 50 | 500 | 100% [92.9–100%] | 100% [92.9–100%] | **100.0%** | **79.3%** |
+| SQuAD 2.0 | 50 | 100 | 78.0% [64.8–87.2%] | 76.0% [62.6–85.7%] | **97.4%** | **39.3%** |
+| GSM8K | 100 | 50K | 85.0% [76.7–90.7%] | 86.0% [77.9–91.5%] | **101.2%** | pass-through¹ |
+| MMLU | 100 | 50K | 82.0% [73.3–88.3%] | 85.9% [77.8–91.4%] | **104.7%** | pass-through¹ |
+| TruthfulQA (MC1) | 100 | 50K | 72.0% [62.5–79.9%] | 73.7% [64.3–81.4%] | **102.4%** | pass-through¹ |
+
+> ¹ **pass-through**: Context already fits within budget — Entroly correctly does nothing. CIs overlap on all benchmarks — accuracy is statistically indistinguishable from baseline.
+
+### Independently Verified — Self-Tested Results
+
+Every claim is verified against this repository itself (394 files, 901K tokens, Python/Rust/JS). Reproduce on any repo:
+
+```bash
+pip install entroly && cd /path/to/your/project
+python -m tests.verify_claims
+```
+
+| Claim | README | Verified | Status |
+|---|---|---|---|
+| **Indexing speed** | < 2 seconds | **0.66s** (394 files) | ✅ Verified |
+| **Token savings (32K budget)** | 70–95% | **96.7%** | ✅ Exceeds claim |
+| **Token savings (8K budget)** | up to 99.5% | **99.1%** | ✅ Verified |
+| **Token savings (average)** | 70–95% | **87.0%** | ✅ Verified |
+| **Optimization latency** | < 10ms | **18ms** (Python FFI) | ✅ Rust core < 10ms |
+| **Multi-language coverage** | 10+ project types | **9 file types** (py/rs/js/md/yml/json/toml/sh) | ✅ Verified |
+| **Entropy scoring** | Non-trivial | **0.07–0.90 range** | ✅ Verified |
+| **Source-type prioritization** | Code > config | **Code 133 vs Config 12** | ✅ Verified |
+| **SimHash deduplication** | No duplicates | **154/154 unique** | ✅ Verified |
+| **Rust engine** | Rust + WASM | **entroly_core loaded** | ✅ Verified |
+| **Local-only** | No API keys | **All ops offline** | ✅ Verified |
+| **SDK** | 2-line import | **compress importable** | ✅ Verified |
+
+> **16/16 claims verified.** The verification script generates a machine-readable `.entroly_verification.json` report. Run it on your own codebase — we expect the same results.
+
+### Trust Benchmark — Zero API Keys, Zero Network
+
+Five independent proofs that run in <2 seconds on any machine, no API keys required:
+
+```bash
+python bench/trust_bench.py
+```
+
+| Test | What It Proves | Result |
+|---|---|---|
+| **A. Compression** | Real token reduction on source files | **50% savings** ✅ |
+| **B. Classifier** | RAVS archetype accuracy (40 labeled prompts) | **100% accuracy** ✅ |
+| **C. Hook Coverage** | Tool pattern coverage (50 commands) | **100% coverage** ✅ |
+| **D. Router Logic** | Bayesian gate correctness (5 cases) | **5/5 correct** ✅ |
+| **E. Determinism** | Same input → identical output (SHA-256) | **Bit-identical** ✅ |
+
+### Code Retrieval — [CodeSearchNet](https://huggingface.co/datasets/code_search_net) (Established IR Benchmark)
+
+"Given a docstring, find the correct function from 200 candidates." Public dataset, reproducible, no API key.
+
+```bash
+python bench/repobench_retrieval.py --samples 50 --pool-size 200
+```
+
+| Method | R@1 | R@5 | MRR | Latency |
+|---|---|---|---|---|
+| Top-K (FIFO) | 0.000 | 0.000 | 0.017 | 0.0 ms |
+| BM25 (standard baseline) | **1.000** | **1.000** | **1.000** | 43.2 ms |
+| **Entroly** | **1.000** | **1.000** | **1.000** | **18.6 ms** |
+
+> Entroly matches BM25 perfectly at **2.3× lower latency** (18.6ms vs 43.2ms). n=50 queries, pool=200, dataset=CodeSearchNet/python. [![Reproduce](https://img.shields.io/badge/Reproduce-locally-blue)](bench/repobench_retrieval.py)
+
+### LooGLE Head-to-Head — RAG Compression Quality ([ACL 2024](https://github.com/bigai-nlco/LooGLE))
+
+Apples-to-apples comparison at **identical 1,500 token budget**. Same LLM (gpt-4o-mini), same questions, same gold answers. n=30.
+
+| Method | F1 Score | Compress Latency | API Calls | Cost / 1k Queries |
+|---|---|---|---|---|
+| Baseline (Truncation) | 0.187 | 0 ms | 1 | $0.225 |
+| Agentic Pruning (2026 SOTA) | **0.570** | 10,632 ms | 2 | $3.609 |
+| **Entroly** | 0.223 | **107 ms** | **1** | **$0.225** |
+
+> **The PM's Dilemma:** Agentic Pruning (using an LLM to filter context) gives incredible accuracy, but it adds **10.6 seconds of latency** and increases API costs by **1,500%**. 
+>
+> **Entroly is the sweet spot:** It gives a massive **+19.2% F1 accuracy boost** over baseline truncation, executing locally in just 107ms with **$0 extra API cost**.
+>
+> [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/juyterman1000/entroly/blob/main/bench/colab_run.ipynb) ← One-click reproduction (Agentic Pruning vs Entroly, runs on H100 GPU)
+
+Reproduce locally: `python bench/looGLE_compare.py --samples 30 --budget 1500`
+
+### Code Retrieval — Entroly vs BM25 ([CodeSearchNet](https://huggingface.co/datasets/code_search_net))
+
+Pure retrieval quality — no LLM calls, no API key, $0 cost. "Given a docstring, find the correct function from 500 candidates."
+
+| Method | R@1 | R@5 | MRR | Latency |
+|---|---|---|---|---|
+| Top-K (FIFO) | 0.000 | 0.015 | 0.013 | 0.0 ms |
+| BM25 (standard baseline) | 0.980 | 0.995 | 0.987 | 56.7 ms |
+| **Entroly** | **0.990** | **0.995** | **0.993** | **28.1 ms** |
+
+> **Entroly beats BM25** — the standard retrieval baseline — on R@1 (+1.0%), MRR (+0.6%), at **half the latency** (28ms vs 57ms). n=200 queries, pool=500 distractors.
+
+Reproduce: `python bench/repobench_retrieval.py --samples 200 --pool-size 500`
+
+### How Entroly Compares (Long Context)
+
+Named methods, real citations. Long-context workloads where compression actually matters:
+
+| Method | Retention | Token Reduction | Architecture / Trade-offs |
+|---|---|---|---|
+| **Entroly** | **100–106%** | **85–99%** | **Fast (~80ms).** Fragment-level knapsack preserves perfect verbatim structural fidelity. Works with any API. |
+| Agentic Context Pruning | ~100% | 70–90% | **Extremely slow.** Requires multiple LLM calls to filter context before the main query. High latency overhead. |
+| KV Cache Compression | ~98–99% | N/A (Cost reduction) | **Hardware bound.** Reduces memory footprint, but requires running local models. Doesn't work for OpenAI/Anthropic APIs. |
+| Token-level neural pruning | ~98–99% | 80–95% | **High overhead.** Runs BERT-base for token classification. Token-level dropping degrades code syntax. |
+| RAG-specific reranking | ~98% | 60–80% | **RAG-specific pruner.** Good retention but lower token reduction than Entroly. |
+
+*Note: SQuAD (~40% reduction, ~97% retention) is a short-context benchmark (150 token paragraphs). Entroly's true power (85%+ savings) unlocks on large contexts.*
+
+Reproduce: `python -m bench.accuracy --benchmark all --model gpt-4o-mini --samples 100`
+
+**Custom OpenAI-compatible providers** (Groq, Together, OpenRouter, Ollama, vLLM, ...):
+
+```bash
+python -m bench.accuracy --benchmark gsm8k --model llama-3.1-70b-versatile \
+    --base-url https://api.groq.com/openai/v1 --api-key-env GROQ_API_KEY
+```
+
+### SWE-bench Lite Hit Rate: Unlocking "Haiku as Opus"
+
+Stop paying for hallucinated context. The single metric that separates toys from enterprise AI is **Retrieval Precision**: does your engine select the *exact* files that need to be modified? If retrieval is flawless, even a cheap, ultra-fast model (like Haiku or Flash) can resolve complex bugs just like the most expensive models on the market. If retrieval fails, you're just burning expensive tokens on dead ends. 
+
+**Entroly industry ceiling.**
+
+| Metric | Result | Why It Matters |
+|---|---|---|
+| **Hit Rate** | **100.0%** (50/50 tasks) | **Zero Hallucination.** Every single required gold file was captured. |
+| Recall@5 | 42.0% | The perfect context is prioritized instantly. |
+| Recall@10 | 70.0% | Deep structural dependencies are never missed. |
+| Recall@20 | 90.0% | Sweeping architectural coverage without the token bloat. |
+| MRR | 0.420 | Top-ranked relevance that guides AI straight to the root cause. |
+| Latency | ~80ms / task | Blistering fast Rust execution. Zero bottleneck. |
+
+> ** Perfection Achieved:** Every single SWE-bench Lite task had its critical gold files successfully injected into the context window. Our revolutionary **Dual-IDF + Stratified Knapsack Selection (SKS)** algorithm systematically annihilates the "density trap." It mathematically guarantees that precision-matched architectural files are forcefully pinned—regardless of how many generic distractors try to pollute the context. 
+> 
+> *Reproduce the breakthrough:* `python -m bench.swebench_retrieval --samples 50 --engine rust`
+
+### CI/CD Integration
+
+Run token cost checks in every PR — catch regressions before they ship:
+
+```yaml
+- uses: juyterman1000/entroly-cost-check-@v1
+```
+
+→ **[entroly-cost-check GitHub Action](https://github.com/juyterman1000/entroly-cost-check-)**
+
+---
+
 ## The Problem — Your AI Is Lying To You, And You're Paying For It
 
 Two things go wrong with AI coding tools today, and they cost you real money:
@@ -520,180 +694,6 @@ Also: OpenAI API · Anthropic API · Google Vertex · AWS Bedrock · Groq · Tog
 ---
 
 <a id="benchmarks"></a>
-
-## Benchmarks
-
-### Live Evolution Trace
-
-This is from this repo's vault, not a roadmap:
-
-```
-[detect]     gap observed → entity="auth", miss_count=3
-[synthesize] StructuralSynthesizer ($0, deterministic, no LLM)
-[benchmark]  skill=ddb2e2969bb0 → fitness 1.0 (1 pass / 0 fail, 338 ms)
-[promote]    status: draft → promoted
-[spend]      $0.0000 — invariant C_spent ≤ τ·S(t) holds
-```
-
-### Accuracy Retention
-
-Compression doesn't hurt accuracy — we measured it live (gpt-4o-mini, Wilson 95% CIs):
-
-| Benchmark | n | Budget | Baseline (95% CI) | With Entroly (95% CI) | Retention | Token Savings |
-|---|---|---|---|---|---|---|
-| NeedleInAHaystack | 20 | 2K | 100% [83.9–100%] | 100% [83.9–100%] | **100.0%** | **99.5%** |
-| LongBench (HotpotQA) | 50 | 2K | 64.0% [50.1–75.9%] | 68.0% [54.2–79.2%] | **106.2%** | **85.3%** |
-| Berkeley Function Calling | 50 | 500 | 100% [92.9–100%] | 100% [92.9–100%] | **100.0%** | **79.3%** |
-| SQuAD 2.0 | 50 | 100 | 78.0% [64.8–87.2%] | 76.0% [62.6–85.7%] | **97.4%** | **39.3%** |
-| GSM8K | 100 | 50K | 85.0% [76.7–90.7%] | 86.0% [77.9–91.5%] | **101.2%** | pass-through¹ |
-| MMLU | 100 | 50K | 82.0% [73.3–88.3%] | 85.9% [77.8–91.4%] | **104.7%** | pass-through¹ |
-| TruthfulQA (MC1) | 100 | 50K | 72.0% [62.5–79.9%] | 73.7% [64.3–81.4%] | **102.4%** | pass-through¹ |
-
-> ¹ **pass-through**: Context already fits within budget — Entroly correctly does nothing. CIs overlap on all benchmarks — accuracy is statistically indistinguishable from baseline.
-
-### Independently Verified — Self-Tested Results
-
-Every claim is verified against this repository itself (394 files, 901K tokens, Python/Rust/JS). Reproduce on any repo:
-
-```bash
-pip install entroly && cd /path/to/your/project
-python -m tests.verify_claims
-```
-
-| Claim | README | Verified | Status |
-|---|---|---|---|
-| **Indexing speed** | < 2 seconds | **0.66s** (394 files) | ✅ Verified |
-| **Token savings (32K budget)** | 70–95% | **96.7%** | ✅ Exceeds claim |
-| **Token savings (8K budget)** | up to 99.5% | **99.1%** | ✅ Verified |
-| **Token savings (average)** | 70–95% | **87.0%** | ✅ Verified |
-| **Optimization latency** | < 10ms | **18ms** (Python FFI) | ✅ Rust core < 10ms |
-| **Multi-language coverage** | 10+ project types | **9 file types** (py/rs/js/md/yml/json/toml/sh) | ✅ Verified |
-| **Entropy scoring** | Non-trivial | **0.07–0.90 range** | ✅ Verified |
-| **Source-type prioritization** | Code > config | **Code 133 vs Config 12** | ✅ Verified |
-| **SimHash deduplication** | No duplicates | **154/154 unique** | ✅ Verified |
-| **Rust engine** | Rust + WASM | **entroly_core loaded** | ✅ Verified |
-| **Local-only** | No API keys | **All ops offline** | ✅ Verified |
-| **SDK** | 2-line import | **compress importable** | ✅ Verified |
-
-> **16/16 claims verified.** The verification script generates a machine-readable `.entroly_verification.json` report. Run it on your own codebase — we expect the same results.
-
-### Trust Benchmark — Zero API Keys, Zero Network
-
-Five independent proofs that run in <2 seconds on any machine, no API keys required:
-
-```bash
-python bench/trust_bench.py
-```
-
-| Test | What It Proves | Result |
-|---|---|---|
-| **A. Compression** | Real token reduction on source files | **50% savings** ✅ |
-| **B. Classifier** | RAVS archetype accuracy (40 labeled prompts) | **100% accuracy** ✅ |
-| **C. Hook Coverage** | Tool pattern coverage (50 commands) | **100% coverage** ✅ |
-| **D. Router Logic** | Bayesian gate correctness (5 cases) | **5/5 correct** ✅ |
-| **E. Determinism** | Same input → identical output (SHA-256) | **Bit-identical** ✅ |
-
-### Code Retrieval — [CodeSearchNet](https://huggingface.co/datasets/code_search_net) (Established IR Benchmark)
-
-"Given a docstring, find the correct function from 200 candidates." Public dataset, reproducible, no API key.
-
-```bash
-python bench/repobench_retrieval.py --samples 50 --pool-size 200
-```
-
-| Method | R@1 | R@5 | MRR | Latency |
-|---|---|---|---|---|
-| Top-K (FIFO) | 0.000 | 0.000 | 0.017 | 0.0 ms |
-| BM25 (standard baseline) | **1.000** | **1.000** | **1.000** | 43.2 ms |
-| **Entroly** | **1.000** | **1.000** | **1.000** | **18.6 ms** |
-
-> Entroly matches BM25 perfectly at **2.3× lower latency** (18.6ms vs 43.2ms). n=50 queries, pool=200, dataset=CodeSearchNet/python. [![Reproduce](https://img.shields.io/badge/Reproduce-locally-blue)](bench/repobench_retrieval.py)
-
-### LooGLE Head-to-Head — RAG Compression Quality ([ACL 2024](https://github.com/bigai-nlco/LooGLE))
-
-Apples-to-apples comparison at **identical 1,500 token budget**. Same LLM (gpt-4o-mini), same questions, same gold answers. n=30.
-
-| Method | F1 Score | Compress Latency | API Calls | Cost / 1k Queries |
-|---|---|---|---|---|
-| Baseline (Truncation) | 0.187 | 0 ms | 1 | $0.225 |
-| Agentic Pruning (2026 SOTA) | **0.570** | 10,632 ms | 2 | $3.609 |
-| **Entroly** | 0.223 | **107 ms** | **1** | **$0.225** |
-
-> **The PM's Dilemma:** Agentic Pruning (using an LLM to filter context) gives incredible accuracy, but it adds **10.6 seconds of latency** and increases API costs by **1,500%**. 
->
-> **Entroly is the sweet spot:** It gives a massive **+19.2% F1 accuracy boost** over baseline truncation, executing locally in just 107ms with **$0 extra API cost**.
->
-> [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/juyterman1000/entroly/blob/main/bench/colab_run.ipynb) ← One-click reproduction (Agentic Pruning vs Entroly, runs on H100 GPU)
-
-Reproduce locally: `python bench/looGLE_compare.py --samples 30 --budget 1500`
-
-### Code Retrieval — Entroly vs BM25 ([CodeSearchNet](https://huggingface.co/datasets/code_search_net))
-
-Pure retrieval quality — no LLM calls, no API key, $0 cost. "Given a docstring, find the correct function from 500 candidates."
-
-| Method | R@1 | R@5 | MRR | Latency |
-|---|---|---|---|---|
-| Top-K (FIFO) | 0.000 | 0.015 | 0.013 | 0.0 ms |
-| BM25 (standard baseline) | 0.980 | 0.995 | 0.987 | 56.7 ms |
-| **Entroly** | **0.990** | **0.995** | **0.993** | **28.1 ms** |
-
-> **Entroly beats BM25** — the standard retrieval baseline — on R@1 (+1.0%), MRR (+0.6%), at **half the latency** (28ms vs 57ms). n=200 queries, pool=500 distractors.
-
-Reproduce: `python bench/repobench_retrieval.py --samples 200 --pool-size 500`
-
-### How Entroly Compares (Long Context)
-
-Named methods, real citations. Long-context workloads where compression actually matters:
-
-| Method | Retention | Token Reduction | Architecture / Trade-offs |
-|---|---|---|---|
-| **Entroly** | **100–106%** | **85–99%** | **Fast (~80ms).** Fragment-level knapsack preserves perfect verbatim structural fidelity. Works with any API. |
-| Agentic Context Pruning | ~100% | 70–90% | **Extremely slow.** Requires multiple LLM calls to filter context before the main query. High latency overhead. |
-| KV Cache Compression | ~98–99% | N/A (Cost reduction) | **Hardware bound.** Reduces memory footprint, but requires running local models. Doesn't work for OpenAI/Anthropic APIs. |
-| Token-level neural pruning | ~98–99% | 80–95% | **High overhead.** Runs BERT-base for token classification. Token-level dropping degrades code syntax. |
-| RAG-specific reranking | ~98% | 60–80% | **RAG-specific pruner.** Good retention but lower token reduction than Entroly. |
-
-*Note: SQuAD (~40% reduction, ~97% retention) is a short-context benchmark (150 token paragraphs). Entroly's true power (85%+ savings) unlocks on large contexts.*
-
-Reproduce: `python -m bench.accuracy --benchmark all --model gpt-4o-mini --samples 100`
-
-**Custom OpenAI-compatible providers** (Groq, Together, OpenRouter, Ollama, vLLM, ...):
-
-```bash
-python -m bench.accuracy --benchmark gsm8k --model llama-3.1-70b-versatile \
-    --base-url https://api.groq.com/openai/v1 --api-key-env GROQ_API_KEY
-```
-
-### SWE-bench Lite Hit Rate: Unlocking "Haiku as Opus"
-
-Stop paying for hallucinated context. The single metric that separates toys from enterprise AI is **Retrieval Precision**: does your engine select the *exact* files that need to be modified? If retrieval is flawless, even a cheap, ultra-fast model (like Haiku or Flash) can resolve complex bugs just like the most expensive models on the market. If retrieval fails, you're just burning expensive tokens on dead ends. 
-
-**Entroly industry ceiling.**
-
-| Metric | Result | Why It Matters |
-|---|---|---|
-| **Hit Rate** | **100.0%** (50/50 tasks) | **Zero Hallucination.** Every single required gold file was captured. |
-| Recall@5 | 42.0% | The perfect context is prioritized instantly. |
-| Recall@10 | 70.0% | Deep structural dependencies are never missed. |
-| Recall@20 | 90.0% | Sweeping architectural coverage without the token bloat. |
-| MRR | 0.420 | Top-ranked relevance that guides AI straight to the root cause. |
-| Latency | ~80ms / task | Blistering fast Rust execution. Zero bottleneck. |
-
-> ** Perfection Achieved:** Every single SWE-bench Lite task had its critical gold files successfully injected into the context window. Our revolutionary **Dual-IDF + Stratified Knapsack Selection (SKS)** algorithm systematically annihilates the "density trap." It mathematically guarantees that precision-matched architectural files are forcefully pinned—regardless of how many generic distractors try to pollute the context. 
-> 
-> *Reproduce the breakthrough:* `python -m bench.swebench_retrieval --samples 50 --engine rust`
-
-### CI/CD Integration
-
-Run token cost checks in every PR — catch regressions before they ship:
-
-```yaml
-- uses: juyterman1000/entroly-cost-check-@v1
-```
-
-→ **[entroly-cost-check GitHub Action](https://github.com/juyterman1000/entroly-cost-check-)**
-
----
 
 ## Compared to
 
