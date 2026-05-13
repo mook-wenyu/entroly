@@ -1,11 +1,11 @@
 {
-  "version": "0.18.0",
+  "version": "0.19.0",
   "repository": "C:\\Users\\abhis\\entroly",
-  "files_indexed": 433,
-  "total_tokens": 1011872,
-  "index_time_s": 0.661,
-  "avg_savings_pct": 88.3,
-  "avg_latency_ms": 22.3,
+  "files_indexed": 329,
+  "total_tokens": 1017156,
+  "index_time_s": 0.444,
+  "avg_savings_pct": 88.0,
+  "avg_latency_ms": 18.7,
   "passed": 16,
   "failed": 0,
   "total": 16,
@@ -14,19 +14,19 @@
       "id": "IDX-1",
       "name": "Indexing < 2 seconds",
       "status": "PASS",
-      "detail": "0.661s"
+      "detail": "0.444s"
     },
     {
       "id": "IDX-2",
       "name": "Files indexed > 0",
       "status": "PASS",
-      "detail": "433 files"
+      "detail": "329 files"
     },
     {
       "id": "SAV-1",
       "name": "Savings >= 90% at 32K budget",
       "status": "PASS",
-      "detail": "97.0%"
+      "detail": "96.9%"
     },
     {
       "id": "SAV-2",
@@ -38,13 +38,13 @@
       "id": "SAV-3",
       "name": "Average savings >= 70% (128K budget)",
       "status": "PASS",
-      "detail": "88.3%"
+      "detail": "88.0%"
     },
     {
       "id": "LAT-1",
       "name": "Average latency < 100ms",
       "status": "PASS",
-      "detail": "22.3ms"
+      "detail": "18.7ms"
     },
     {
       "id": "COV-1",
@@ -56,19 +56,19 @@
       "id": "ENT-1",
       "name": "All fragments have entropy scores",
       "status": "PASS",
-      "detail": "423/423"
+      "detail": "318/318"
     },
     {
       "id": "ENT-2",
       "name": "Entropy variance > 0.1 (non-trivial scoring)",
       "status": "PASS",
-      "detail": "Range: 0.8001"
+      "detail": "Range: 0.8080"
     },
     {
       "id": "SRC-1",
       "name": "Source code >= config in selection",
       "status": "PASS",
-      "detail": "Code=155 vs Config=14"
+      "detail": "Code=178 vs Config=14"
     },
     {
       "id": "DUP-1",
@@ -90,7 +90,7 @@
     },
     {
       "id": "ENG-3",
-      "name": "Version 0.18.0",
+      "name": "Version 0.19.0",
       "status": "PASS",
       "detail": ""
     },
