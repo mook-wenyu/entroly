@@ -26,7 +26,7 @@
 
 <h1 align="center">Entroly — Stop Your AI From Making Things Up</h1>
 
-<h3 align="center">Catch hallucinations. Cut your AI bill by 70–95%.<br/>Set up in 30 seconds.</h3>
+<h3 align="center">Catch hallucinations. Cut large-codebase context by 70-95% when retrieval has room to work.<br/>Set up in about 30 seconds.</h3>
 
 <p align="center"><strong>🛡️ The only AI helper that shows its work.</strong><br/><sub>Your AI invents functions that don't exist, makes up API names, and bills you for "thinking" about thousands of code lines it never reads. Entroly catches every made-up answer by tracing it back to your real code — and shrinks what you send the AI by 95%, so you pay less for honest answers.</sub></p>
 
@@ -45,7 +45,7 @@
 <p align="center">
   <sub>
     <strong>Don't trust the claims? Paste your own code into the live demo</strong> →
-    watch entroly shrink it 70–95% and show you exactly which lines the AI will see. 60 seconds. No install.
+    watch entroly shrink a large codebase context and show you exactly which lines the AI will see. 60 seconds. No install.
   </sub>
 </p>
 
@@ -53,7 +53,7 @@
   <a href="#install"><b>Install</b></a> ·
   <a href="cookbook/README.md"><b>Cookbook</b></a> ·
   <a href="#benchmarks"><b>Benchmarks</b></a> ·
-  <a href="#works-with-your-stack"><b>65+ supported agents</b></a>
+  <a href="#works-with-your-stack"><b>38 supported agent wrappers</b></a>
 </p>
 
 <a id="install"></a>
@@ -69,18 +69,17 @@
     Or: <code>brew tap juyterman1000/entroly && brew install entroly</code> · <code>npm i -g entroly-wasm</code>
     <br/>
     See the <a href="cookbook/README.md"><b>Cookbook</b></a> for 10 concrete recipes,
-    or pick your stack from the <a href="#works-with-your-stack">65+ supported agents</a>.
+    or pick your stack from the <a href="#works-with-your-stack">38 supported agent wrappers</a>.
   </sub>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/pypi/v/entroly?color=blue&label=PyPI">
-  <img src="https://img.shields.io/npm/v/entroly?color=red&label=npm">
-  <img src="https://img.shields.io/badge/Tests-815_passing-success">
+  <img src="https://img.shields.io/npm/v/entroly-wasm?color=red&label=npm">
+  <img src="https://img.shields.io/badge/CI-passing-success">
   <img src="https://img.shields.io/badge/Accuracy_Retention-100%25_(verified,_n%3D100)-brightgreen?style=flat">
-  <img src="https://img.shields.io/badge/Token_Savings-up_to_99.5%25_(live_API)-blue?style=flat">
-  <img src="https://img.shields.io/badge/Performance-Haiku_%3D_Opus-red?style=flat">
-  <img src="https://img.shields.io/badge/Latency-<10ms-purple">
+  <img src="https://img.shields.io/badge/Token_Savings-workload_dependent-blue?style=flat">
+  <img src="https://img.shields.io/badge/Latency-local_core_paths-purple">
   <img src="https://img.shields.io/badge/License-Apache_2.0-green">
 </p>
 
@@ -146,20 +145,20 @@ Compression doesn't hurt accuracy — we measured it live (gpt-4o-mini, Wilson 9
 
 ### Independently Verified — Self-Tested Results
 
-Every claim is verified against this repository itself (394 files, 901K tokens, Python/Rust/JS). Reproduce on any repo:
+The core install and selection claims are checked against this repository itself (394 files, 901K tokens, Python/Rust/JS). Reproduce the packaged smoke check on any repo:
 
 ```bash
 pip install entroly && cd /path/to/your/project
-python -m tests.verify_claims
+entroly verify-claims
 ```
 
 | Claim | README | Verified | Status |
 |---|---|---|---|
-| **Indexing speed** | < 2 seconds | **0.66s** (394 files) | ✅ Verified |
-| **Token savings (32K budget)** | 70–95% | **96.7%** | ✅ Exceeds claim |
-| **Token savings (8K budget)** | up to 99.5% | **99.1%** | ✅ Verified |
-| **Token savings (average)** | 70–95% | **87.0%** | ✅ Verified |
-| **Optimization latency** | < 10ms | **18ms** (Python FFI) | ✅ Rust core < 10ms |
+| **Indexing speed** | local, no API call | **0.66s** (394 files, release run) | ✅ Verified |
+| **Token savings (32K budget)** | large-codebase selection should reduce context heavily | **96.7%** on this repo | ✅ Verified for this workload |
+| **Token savings (8K budget)** | tighter budgets should reduce more | **99.1%** on this repo | ✅ Verified for this workload |
+| **Token savings (average)** | workload-dependent | **87.0%** on this repo | ✅ Verified for this workload |
+| **Optimization latency** | local execution, usually tens of ms end-to-end | **18-46ms** observed in release checks | ✅ Verified |
 | **Multi-language coverage** | 10+ project types | **9 file types** (py/rs/js/md/yml/json/toml/sh) | ✅ Verified |
 | **Entropy scoring** | Non-trivial | **0.07–0.90 range** | ✅ Verified |
 | **Source-type prioritization** | Code > config | **Code 133 vs Config 12** | ✅ Verified |
@@ -168,7 +167,7 @@ python -m tests.verify_claims
 | **Local-only** | No API keys | **All ops offline** | ✅ Verified |
 | **SDK** | 2-line import | **compress importable** | ✅ Verified |
 
-> **16/16 claims verified.** The verification script generates a machine-readable `.entroly_verification.json` report. Run it on your own codebase — we expect the same results.
+> The packaged verifier generates a machine-readable `.entroly_verification.json` report. Results depend on repo size, language mix, and token budget; tiny repos and short-context workloads have less room to compress.
 
 ### Trust Benchmark — Zero API Keys, Zero Network
 
@@ -296,7 +295,7 @@ Two things go wrong with AI coding tools today, and they cost you real money:
 
 **2. You're paying for AI to "read" code it never actually sees.** Every request sends ~186,000 tokens to the AI, but the AI can only really focus on a tiny slice. The rest is wasted — duplicated boilerplate, unread comments, expensive noise. Bigger AI models don't fix this — they make it *worse* by charging more per token.
 
-> **Entroly fixes both in 30 seconds.** It shrinks what you send the AI by 70–95% (you save money), and traces every answer your AI gives back to lines of code in your repo (so you catch the lies). You see exactly which files the AI looked at and which words came from where. **No more guessing. No more wasted spend. No more invented APIs.**
+> **Entroly fixes both in about 30 seconds.** On large codebases, it can shrink what you send the AI by 70-95% depending on budget and workload, and traces answers back to lines of code in your repo. You see exactly which files the AI looked at and which words came from where.
 
 — *A small team spending $15K/month on AI typically saves $10K–$14K in the first month. Open source. Free.*
 
@@ -375,7 +374,7 @@ messages = compress_messages(messages, budget=30000)
 5. **Flags anything the AI made up** — if a function name doesn't exist in your repo, you see it in red before it ships.
 6. **Gets smarter every day** — learns which files matter for your team's workflow and uses that to make better picks next time.
 
-> **The result for you:** Your AI sees your whole project (not just 5%), gives you honest answers (not made-up ones), and the bill drops 70–95% (you only pay for what the AI actually reads).
+> **The result for you:** Your AI can draw from your whole project instead of a few open files, with a smaller selected context. On large repos, that often means 70-95% fewer input tokens; on small repos or short prompts, savings are naturally lower.
 
 <sub>*Want the math? <a href="#works-with-your-stack">Skip to the technical details</a> or read <a href="docs/DETAILS.md">docs/DETAILS.md</a> for the full algorithmic spec (BIPT, NKBE, Causal Context Graph, Resonance Matrix, and more).*</sub>
 
@@ -383,7 +382,7 @@ messages = compress_messages(messages, budget=30000)
 
 ## Live Dashboard & Control Panel
 
-Every command auto-opens a browser dashboard at `http://localhost:9378` — no extra install, no React build, nothing to configure.
+The interactive commands `entroly go`, `entroly proxy`, `entroly daemon`, and `entroly dashboard` open or serve a browser dashboard at `http://localhost:9378` — no extra install, no React build, nothing to configure.
 
 **Dashboard** — real-time metrics (token savings, PRISM weights, health grade, cost savings, pipeline latency):
 
@@ -464,21 +463,21 @@ Entroly auto-detects Python, JS/TS, Rust, Go, Java, Ruby, C/C++, and 10+ other p
 
 ## The Competitive Edge — What Sets Entroly Apart
 
-### Context Scaffolding Engine (CSE): Haiku = Opus
+### Context Scaffolding Engine (CSE): structural maps for smaller models
 
 Small, fast models (like Claude Haiku or Gemini Flash) are incredibly smart, but they struggle on large codebases because they cannot easily infer cross-file relationships from raw code chunks alone. 
 
 Entroly's new **Context Scaffolding Engine (CSE)** fixes this architectural blind spot. Backed by 6 state-of-the-art 2025/2026 research papers (including *Graph Retrieval Augmented Code Generation* and *Small-to-Large Prompt Prediction*), CSE dynamically extracts your codebase's dependency graph across 6 languages. It then injects a minimal, ~200-token structural preamble *before* the code context, explicitly mapping out imports, definitions, test coverage, and entry points.
 
-The result? **Haiku achieves Opus-level reasoning.** By providing the cognitive scaffold that small models lack, you get flagship "Principal Engineer" performance at 1/50th the latency and 1/100th the cost. Plus, because CSE helps the selection algorithm drop redundant "safety" files, it's actually **token-negative** — saving an average of 2,400 tokens per request while vastly improving output quality.
+The result is not magic model equivalence; it is cheaper structure. CSE gives smaller models explicit dependency cues that are easy to miss in raw snippets. On scaffold-friendly code tasks, that can reduce the amount of "just in case" context while improving grounding. On judgment-heavy tasks, use a stronger model.
 
 ### RAVS — Your AI Learns Which Tasks It Can Do Cheaper. Automatically.
 
 Entroly compresses your context. **RAVS cuts your model bill on top of that — and gets better every day you use it.**
 
-You use Opus or Sonnet for everything because switching models mid-session is friction. But 30–50% of your turns are simple: reading a file, checking a log, running tests, formatting code. Using Opus for these is like paying a Principal Engineer to run `pytest`.
+You use Opus or Sonnet for everything because switching models mid-session is friction. But many turns are simple: reading a file, checking a log, running tests, formatting code. Using a flagship model for these can be unnecessary spend.
 
-RAVS watches every outcome silently. Once the math proves a task type is safe to route cheaper, it does — automatically:
+RAVS watches honest outcomes and can be enabled as a guarded proxy router. Once the math proves a task type is safe to route cheaper, it can route that task class down:
 
 ```
 You type: "run the tests"
@@ -490,9 +489,9 @@ You type: "run the tests"
     → 95% CI = [0.98, 1.00]  ← actual live data from this repo
     → lower bound 0.98 > threshold 0.80 ✓
              ↓
-  Model swapped: Opus ($75/M) → Haiku ($4/M)
+  Eligible proxy request: Opus ($75/M) → Haiku ($4/M)
              ↓
-  Identical output. 95% cheaper. Zero friction.
+  Same task class, cheaper model, fail-closed escalation if confidence drops.
 ```
 
 > Those numbers aren't made up. They're from 30 real `pytest` runs captured while building Entroly — zero failures, confidence interval lower bound 0.98. RAVS built that table automatically, just by watching the work happen.
@@ -511,7 +510,7 @@ You type: "run the tests"
 | Typical heavy session | $5–20 | $0.25–1.00 | **$4.75–19.00** |
 | Monthly (daily use) | $150–600 | $7.50–30 | **$140–570/dev** |
 
-100% fail-closed. If data is sparse, the task is high-risk (`security`, `auth`), or confidence is low — the flagship model handles it. RAVS never guesses.
+100% fail-closed. If data is sparse, the task is high-risk (`security`, `auth`), confidence is low, or the proxy cannot safely rewrite the provider request, the original model handles it. RAVS never guesses.
 
 ```bash
 # See what RAVS has learned about your workflow
@@ -576,13 +575,13 @@ Three intensity levels: `lite` → `full` → `ultra`. Enable with one env var.
 
 ###  Runs Locally. Your Code Never Leaves Your Machine.
 
-Zero cloud dependencies. Zero data exfiltration risk. Everything runs on your CPU in <10ms. Works in air-gapped and regulated environments — nothing ever phones home.
+Zero cloud dependencies for local indexing, selection, verification, and dashboards. Core scoring paths are local and fast; full end-to-end optimization commonly runs in tens of milliseconds depending on repo size and engine mode. Works in air-gapped and regulated environments when you do not enable optional network integrations.
 
 ---
 
 <a id="works-with-your-stack"></a>
 
-## Works With Your Stack — 65+ Agents, One Command
+## Works With Your Stack — 38 Agent Wrappers, One Command
 
 `entroly wrap <agent>` does the right thing for every tool. Three integration kinds, picked automatically:
 
@@ -605,9 +604,6 @@ Zero cloud dependencies. Zero data exfiltration risk. Everything runs on your CP
 | Hermes | `entroly wrap hermes` |
 | Pi Coding Agent | `entroly wrap pi` |
 | Ollama | `entroly wrap ollama` |
-| Goose (Block) | `entroly wrap goose` |
-| Mentat | `entroly wrap mentat` |
-| SWE-agent | `entroly wrap sweagent` |
 
 ### MCP-aware IDEs (auto-merge `mcp.json`)
 
@@ -618,30 +614,34 @@ Zero cloud dependencies. Zero data exfiltration risk. Everything runs on your CP
 | VS Code (Copilot Chat / MCP) | `entroly wrap vscode` | `.vscode/mcp.json` |
 | Claude Desktop | `entroly wrap claude-desktop` | OS-specific Claude config dir |
 | Zed | `entroly wrap zed` | `~/.config/zed/settings.json` |
-| Kiro (AWS) | `entroly wrap kiro` | `.kiro/mcp.json` |
-| PearAI | `entroly wrap pearai` | `.pearai/mcp.json` |
 
 ### Other IDEs (copy-paste snippet)
 
 `entroly wrap <agent>` prints the exact file path and field name. Paste once, restart, done.
 
-| Agent | Slug |  | Agent | Slug |
-|---|---|---|---|---|
-| Cline (VS Code) | `cline` | | Helix | `helix` |
-| Roo Code (VS Code) | `roo` | | Tabby | `tabby` |
-| Continue | `continue` | | Twinny | `twinny` |
-| Sourcegraph Cody | `cody` | | Fitten Code | `fittencode` |
-| Sourcegraph Amp | `amp` | | Tabnine Enterprise | `tabnine` |
-| Qoder | `qoder` | | Supermaven | `supermaven` |
-| Trae | `trae` | | Sublime Text | `sublime` |
-| Antigravity | `antigravity` | | Emacs (gptel / aider.el) | `emacs` |
-| Amazon Q Developer | `amazonq` | | Neovim (avante / codecompanion) | `neovim` |
-| Verdent | `verdent` | | JetBrains AI / Junie | `jetbrains` |
-| Augment Code | `augment` | | CodeGeeX | `codegeex` |
-| Blackbox AI | `blackbox` | | Pieces | `pieces` |
-| Genie AI | `genie` | | CodeCompanion.nvim | `codecompanion` |
-| avante.nvim | `avante` | | nvim.ai | `nvimai` |
-| Morph Rift | `rift` | | Traycer | `traycer` |
+| Agent | Slug |
+|---|---|
+| Cline (VS Code) | `cline` |
+| Roo Code (VS Code) | `roo` |
+| Continue | `continue` |
+| Sourcegraph Cody | `cody` |
+| Sourcegraph Amp | `amp` |
+| Qoder | `qoder` |
+| Trae | `trae` |
+| Antigravity | `antigravity` |
+| Amazon Q Developer | `amazonq` |
+| Verdent | `verdent` |
+| Kiro (AWS) | `kiro` |
+| Helix | `helix` |
+| Tabby | `tabby` |
+| Twinny | `twinny` |
+| Fitten Code | `fittencode` |
+| Tabnine Enterprise | `tabnine` |
+| Supermaven | `supermaven` |
+| Sublime Text | `sublime` |
+| Emacs (gptel / aider.el) | `emacs` |
+| Neovim (avante / codecompanion) | `neovim` |
+| JetBrains AI / Junie | `jetbrains` |
 
 ### Autonomous cloud agents (HTTP proxy)
 
@@ -699,11 +699,11 @@ Entroly **selects** the right context. Other tools **compress** or **truncate** 
 | | **Entroly** | Compression tools | Top-K / RAG | Raw truncation |
 |---|---|---|---|---|
 | **Approach** | Information-theoretic selection | Text compression | Embedding retrieval | Cut-off |
-| **Token savings** | **94%** | 50–70% | 30–50% | 0% |
+| **Token savings** | **Workload-dependent; 70-95% on large repos in release checks** | 50–70% | 30–50% | 0% |
 | **Quality loss** | **0%** (benchmark-verified) | 2–5% | Variable | High |
 | **Multi-resolution** | **Full / Skeleton / Reference** | One-size | One-size | One-size |
 | **Learns over time** | **Yes (PRISM RL)** | No | No | No |
-| **Latency** | **12ms** (Rust) | 50–200ms | 100–500ms | 0ms |
+| **Latency** | **Local; commonly tens of ms end-to-end** | 50–200ms | 100–500ms | 0ms |
 | **Reversible** | **Yes** — full content always retrievable | Varies | Yes | No |
 | **Runs locally** | **Yes** | Varies | Varies | Yes |
 

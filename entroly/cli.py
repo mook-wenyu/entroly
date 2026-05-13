@@ -41,7 +41,7 @@ from pathlib import Path
 try:
     from entroly import __version__
 except ImportError:
-    __version__ = "0.19.1"
+    __version__ = "0.19.2"
 
 # ── Force UTF-8 output on Windows ──
 # Windows terminals default to cp1252 which can't encode ✓/✗/─/⚡.
@@ -3229,6 +3229,18 @@ def cmd_verify(args):
     print(f"\n  {C.GREEN}Verification artifacts written to vault/verification/{C.RESET}\n")
 
 
+def cmd_verify_claims(args):
+    """entroly verify-claims -- packaged new-user smoke verifier."""
+    from entroly.verify_claims import run as _run_verify_claims
+
+    raise SystemExit(
+        _run_verify_claims(
+            output=getattr(args, "output", None),
+            max_files=getattr(args, "max_files", 120),
+        )
+    )
+
+
 def cmd_sync(args):
     """entroly sync -- detect workspace changes and update beliefs.
 
@@ -3959,6 +3971,19 @@ def main():
         help="Run verification pass on all beliefs (staleness, contradictions)",
     )
 
+    verify_claims_parser = subparsers.add_parser(
+        "verify-claims",
+        help="Run packaged install and README smoke verification",
+    )
+    verify_claims_parser.add_argument(
+        "--output", "-o", default=None,
+        help="Machine-readable report path (default: .entroly_verification.json)",
+    )
+    verify_claims_parser.add_argument(
+        "--max-files", type=int, default=120,
+        help="Maximum files to sample for the bounded smoke check (default: 120)",
+    )
+
     # entroly verify-code — statically verify LLM-generated code
     # Pass-through: all remaining args are forwarded to verifiers/cli.py,
     # which has its own arg parser (handles `path`, --repo, --lambda,
@@ -4163,6 +4188,7 @@ def main():
         "completions": cmd_completions,
         "compile": cmd_compile,
         "verify": cmd_verify,
+        "verify-claims": cmd_verify_claims,
         "verify-code": cmd_verify_code,
         "sync": cmd_sync,
         "search": cmd_search,
