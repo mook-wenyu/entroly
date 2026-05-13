@@ -1,17 +1,18 @@
 {
   "name": "entroly-wasm",
-  "version": "0.18.0",
-  "description": "Information-theoretic context optimization for AI coding agents. Zero-friction, pure WebAssembly — no Python dependency.",
+  "version": "0.19.2",
+  "description": "Information-theoretic context optimization for AI coding agents. Zero-friction, pure WebAssembly - no Python dependency.",
   "main": "index.js",
   "types": "pkg/entroly_wasm.d.ts",
   "bin": {
-    "entroly-wasm": "./js/cli.js"
+    "entroly-wasm": "./bin/entroly-wasm.js"
   },
   "files": [
     "index.js",
     "pkg/entroly_wasm_bg.wasm",
     "pkg/entroly_wasm.js",
     "pkg/entroly_wasm.d.ts",
+    "bin/entroly-wasm.js",
     "js/cli.js",
     "js/server.js",
     "js/config.js",
@@ -33,6 +34,9 @@
     "js/evolution_daemon.js"
   ],
   "scripts": {
+    "build": "wasm-pack build --target nodejs --out-dir pkg",
+    "prepack": "npm run build",
+    "pretest": "npm run build",
     "serve": "node js/server.js",
     "optimize": "node js/cli.js optimize",
     "health": "node js/cli.js health",

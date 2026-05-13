@@ -32,7 +32,7 @@ except ImportError:  # pragma: no cover - Python <3.8 compatibility
     PackageNotFoundError = Exception  # type: ignore[assignment]
     version = None  # type: ignore[assignment]
 
-_FALLBACK_VERSION = "0.16.0"
+_FALLBACK_VERSION = "0.19.2"
 
 
 def _read_source_version() -> str | None:
@@ -66,7 +66,7 @@ def _read_installed_version() -> str | None:
         return None
 
 
-__version__ = _read_source_version() or _read_installed_version() or "0.18.0"
+__version__ = _read_source_version() or _read_installed_version() or _FALLBACK_VERSION
 
 try:
     from .sdk import compress, compress_messages, verify  # noqa: F401

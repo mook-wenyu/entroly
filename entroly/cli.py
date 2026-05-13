@@ -41,7 +41,7 @@ from pathlib import Path
 try:
     from entroly import __version__
 except ImportError:
-    __version__ = "0.18.0"
+    __version__ = "0.19.2"
 
 from .codex_integration import prepare_codex_wrap, resolve_openai_proxy_route
 from .launching import resolve_launch_cmd, resolve_python_cmd
@@ -986,7 +986,10 @@ def cmd_benchmark(args):
     # (7M+ tokens) is marketing, not measurement.
     baseline = min(total, 32_000)
     budget = getattr(args, "budget", 4096)
+    compare_baseline = getattr(args, "compare_baseline", False)
     print(f"  Codebase: {total:,} total tokens  |  Naive baseline: {baseline:,} tokens (32K dump or repo total)\n")
+    if compare_baseline:
+        print(f"  {C.GRAY}Comparing current selector output against the deterministic 32K baseline.{C.RESET}\n")
     print(f"  {'Query':<45} {'Baseline':>9} {'Entroly':>8} {'Saved':>6}")
     print(f"  {'-'*45} {'-'*9} {'-'*8} {'-'*6}")
 
@@ -1433,6 +1436,23 @@ def cmd_batch(args):
     else:
         print(f"\n  {C.GREEN}{C.BOLD}Processed {len(queries)} queries.{C.RESET}\n")
 
+    # CI gate: non-zero exit if any query exceeded the budget
+    if getattr(args, "fail_over_budget", False):
+        over_budget = [r for r in results if r["tokens_used"] > r["budget"]]
+        if over_budget:
+            if not args.json_output:
+                print(
+                    f"  {C.RED}{C.BOLD}✗ {len(over_budget)} of {len(results)} queries "
+                    f"exceeded the {args.budget}-token budget.{C.RESET}",
+                )
+                for r in over_budget[:5]:
+                    pct = (r["tokens_used"] / max(r["budget"], 1) - 1) * 100
+                    print(
+                        f"    {C.RED}- {r['query'][:60]}: "
+                        f"{r['tokens_used']:,} tokens (+{pct:.0f}%){C.RESET}",
+                    )
+            sys.exit(1)
+
 
 # ── Wrap: One-command agent launcher ─────────────────────────────────
 
@@ -1862,6 +1882,16 @@ def cmd_wrap(args):
 
     Run `entroly wrap` with no agent to see the full list.
     """
+    if not getattr(args, "agent", None):
+        by_kind: dict = {"cli": [], "mcp": [], "print": []}
+        for k, s in _WRAP_AGENTS.items():
+            by_kind.setdefault(s.get("kind", "print"), []).append(k)
+        print(f"\n{C.CYAN}{C.BOLD}  Entroly Wrap — supported tools{C.RESET}\n")
+        print(f"  {C.GRAY}CLI (env-wrap):{C.RESET}  {', '.join(sorted(by_kind['cli']))}")
+        print(f"  {C.GRAY}MCP (auto):{C.RESET}      {', '.join(sorted(by_kind['mcp']))}")
+        print(f"  {C.GRAY}Other:{C.RESET}           {', '.join(sorted(by_kind['print']))}\n")
+        return
+
     agent = args.agent.lower()
     if agent not in _WRAP_AGENTS:
         print(f"\n  {C.RED}Unknown agent: {agent}{C.RESET}")
@@ -3135,32 +3165,44 @@ def cmd_optimize(args):
     # head-to-head in quality_eval on code-retrieval tasks); fall back to
     # knapsack when there's no query to condition on.
     if selector == "auto":
-        selector = "qccr" if task else "knapsack"
+        # QCCR and DOPT need the Rust fragment export API. The default CLI
+        # install intentionally works without entroly-core, so the Python
+        # fallback must choose the selector that has a native Python path.
+        selector = "qccr" if task and getattr(engine, "_use_rust", False) else "knapsack"
     if selector in ("dopt", "qccr"):
-        # Query-aware re-selection over the full fragment store, bypassing
-        # recall() (which caps at ~25 items and biases toward stale stubs).
-        #   dopt — file-level BM25 with log-det diversity (experimental)
-        #   qccr — sentence-level query-conditioned extractive summarization
-        #          with MMR diversity; emits synthetic per-file excerpts.
-        candidates = [dict(f) for f in engine._rust.export_fragments()]
-        exclude_patterns = getattr(args, "exclude", []) or []
-        if exclude_patterns:
-            candidates = [
-                c for c in candidates
-                if not any(p in (c.get("source") or "") for p in exclude_patterns)
-            ]
-        if selector == "qccr":
-            from entroly.qccr import select as qccr_select
-            selected = qccr_select(candidates, token_budget=budget, query=task)
+        if not getattr(engine, "_use_rust", False):
+            print(
+                f"  {C.YELLOW}Selector {selector!r} requires the native entroly-core engine; "
+                f"falling back to knapsack.{C.RESET}",
+                file=sys.stderr,
+            )
+            opt = engine.optimize_context(token_budget=budget, query=task)
+            selected = opt.get("selected_fragments", []) or opt.get("selected", [])
         else:
-            from entroly.dopt_selector import select as dopt_select
-            selected = dopt_select(candidates, token_budget=budget, query=task)
-        opt = {
-            "selected_fragments": selected,
-            "total_tokens": sum(f.get("token_count") or (len(f.get("content", "")) // 4) for f in selected),
-            "recommended_budget": budget,
-            "task_type": "",
-        }
+            # Query-aware re-selection over the full fragment store, bypassing
+            # recall() (which caps at ~25 items and biases toward stale stubs).
+            #   dopt — file-level BM25 with log-det diversity (experimental)
+            #   qccr — sentence-level query-conditioned extractive summarization
+            #          with MMR diversity; emits synthetic per-file excerpts.
+            candidates = [dict(f) for f in engine._rust.export_fragments()]
+            exclude_patterns = getattr(args, "exclude", []) or []
+            if exclude_patterns:
+                candidates = [
+                    c for c in candidates
+                    if not any(p in (c.get("source") or "") for p in exclude_patterns)
+                ]
+            if selector == "qccr":
+                from entroly.qccr import select as qccr_select
+                selected = qccr_select(candidates, token_budget=budget, query=task)
+            else:
+                from entroly.dopt_selector import select as dopt_select
+                selected = dopt_select(candidates, token_budget=budget, query=task)
+            opt = {
+                "selected_fragments": selected,
+                "total_tokens": sum(f.get("token_count") or (len(f.get("content", "")) // 4) for f in selected),
+                "recommended_budget": budget,
+                "task_type": "",
+            }
     else:
         opt = engine.optimize_context(token_budget=budget, query=task)
         selected = opt.get("selected_fragments", []) or opt.get("selected", [])
@@ -3374,6 +3416,25 @@ def cmd_compile(args):
     print(f"\n  {C.GREEN}Beliefs persisted.{C.RESET} Next session starts warm.\n")
 
 
+def cmd_verify_code(args):
+    """entroly verify-code -- statically verify LLM-generated code against
+    your codebase's symbol manifest.
+
+    Wraps the verifier CLI in entroly/verifiers/cli.py — it loads (or
+    builds and caches) a SymbolVerifier from the local repo, then runs
+    Bayesian-symbol + n-gram surprisal scoring on the provided source.
+
+    Exit codes (returned to the shell):
+        0 — passes verification (H-score below threshold)
+        1 — fails (H-score >= threshold) — useful for CI gating
+        2 — usage error
+    """
+    from entroly.verifiers.cli import main as _verifier_main
+
+    forwarded = list(getattr(args, "verify_code_args", None) or [])
+    sys.exit(_verifier_main(forwarded))
+
+
 def cmd_verify(args):
     """entroly verify -- run verification pass on all beliefs.
 
@@ -3413,6 +3474,18 @@ def cmd_verify(args):
             print(f"    - {ent}")
 
     print(f"\n  {C.GREEN}Verification artifacts written to vault/verification/{C.RESET}\n")
+
+
+def cmd_verify_claims(args):
+    """entroly verify-claims -- packaged new-user smoke verifier."""
+    from entroly.verify_claims import run as _run_verify_claims
+
+    raise SystemExit(
+        _run_verify_claims(
+            output=getattr(args, "output", None),
+            max_files=getattr(args, "max_files", 120),
+        )
+    )
 
 
 def cmd_sync(args):
@@ -3659,8 +3732,33 @@ def cmd_ravs(args):
                 print("  \u00b7 Skipped: not a verifiable command")
         return
 
+    if ravs_action == "hook":
+        hook_action = getattr(args, "hook_action", None)
+        if hook_action != "install":
+            print(f"  {C.YELLOW}Usage: entroly ravs hook install --claude-code [--dry-run]{C.RESET}")
+            return
+        if not getattr(args, "claude_code", False):
+            print(f"  {C.YELLOW}Specify a target: --claude-code{C.RESET}")
+            return
+        from entroly.ravs.hooks import install_claude_code
+        result = install_claude_code(dry_run=getattr(args, "dry_run", False))
+        action = result.get("action")
+        path = result.get("path", "")
+        if action == "installed":
+            print(f"  {C.GREEN}\u2713 Installed RAVS PostToolUse hook \u2192 {path}{C.RESET}")
+            print(f"  {C.GRAY}Restart Claude Code to activate. Every Bash tool use now feeds RAVS.{C.RESET}")
+        elif action == "already_present":
+            print(f"  {C.GRAY}\u00b7 Hook already present in {path}{C.RESET}")
+        elif action == "dry_run":
+            import json as _json
+            print(f"  {C.CYAN}Dry-run \u2014 would write to {path}:{C.RESET}")
+            print(_json.dumps(result.get("settings", {}), indent=2))
+        else:
+            print(f"  {C.RED}\u2717 Unknown action: {action}{C.RESET}")
+        return
+
     if ravs_action != "report":
-        print(f"  {C.YELLOW}Usage: entroly ravs [report|capture]{C.RESET}")
+        print(f"  {C.YELLOW}Usage: entroly ravs [report|capture|hook]{C.RESET}")
         return
 
     # Resolve log path
@@ -3901,6 +3999,10 @@ def main():
         "--budget", type=int, default=4096,
         help="Token budget per query (default: 4096)",
     )
+    benchmark_parser.add_argument(
+        "--compare-baseline", dest="compare_baseline", action="store_true",
+        help="Print the explicit baseline comparison used for the benchmark table",
+    )
 
     # entroly status
     status_parser = subparsers.add_parser(
@@ -3999,6 +4101,10 @@ def main():
         "--json", dest="json_output", action="store_true",
         help="Output results as JSON (for CI pipelines)",
     )
+    batch_parser.add_argument(
+        "--fail-over-budget", dest="fail_over_budget", action="store_true",
+        help="Exit with non-zero status if any query's optimized tokens exceed --budget (for CI gating)",
+    )
 
     # entroly demo (Gap #41)
     subparsers.add_parser(
@@ -4012,7 +4118,7 @@ def main():
         help="Start proxy + launch coding agent in one command (claude, codex, aider, cursor)",
     )
     wrap_parser.add_argument(
-        "agent", type=str,
+        "agent", type=str, nargs="?",
         help="Agent to wrap: claude, codex, aider, cursor",
     )
     wrap_parser.add_argument(
@@ -4118,6 +4224,34 @@ def main():
     subparsers.add_parser(
         "verify",
         help="Run verification pass on all beliefs (staleness, contradictions)",
+    )
+
+    verify_claims_parser = subparsers.add_parser(
+        "verify-claims",
+        help="Run packaged install and README smoke verification",
+    )
+    verify_claims_parser.add_argument(
+        "--output", "-o", default=None,
+        help="Machine-readable report path (default: .entroly_verification.json)",
+    )
+    verify_claims_parser.add_argument(
+        "--max-files", type=int, default=120,
+        help="Maximum files to sample for the bounded smoke check (default: 120)",
+    )
+
+    # entroly verify-code — statically verify LLM-generated code
+    # Pass-through: all remaining args are forwarded to verifiers/cli.py,
+    # which has its own arg parser (handles `path`, --repo, --lambda,
+    # --threshold, --json, --rebuild, --max-items).
+    import argparse as _argparse
+    verify_code_parser = subparsers.add_parser(
+        "verify-code",
+        help="Statically verify LLM-generated code against the codebase symbol manifest",
+    )
+    verify_code_parser.add_argument(
+        "verify_code_args",
+        nargs=_argparse.REMAINDER,
+        help="Path to source file (use '-' for stdin) plus optional flags",
     )
 
     # entroly sync
@@ -4243,6 +4377,25 @@ def main():
         help="Override RAVS event log path",
     )
 
+    # entroly ravs hook — install/manage PostToolUse hooks
+    ravs_hook_parser = ravs_subparsers.add_parser(
+        "hook",
+        help="Install RAVS PostToolUse hooks into your IDE",
+    )
+    ravs_hook_subparsers = ravs_hook_parser.add_subparsers(dest="hook_action")
+    ravs_hook_install = ravs_hook_subparsers.add_parser(
+        "install",
+        help="Install the PostToolUse hook into a supported IDE",
+    )
+    ravs_hook_install.add_argument(
+        "--claude-code", action="store_true",
+        help="Install into Claude Code (~/.claude/settings.json)",
+    )
+    ravs_hook_install.add_argument(
+        "--dry-run", action="store_true",
+        help="Print the merged settings without writing",
+    )
+
     # ── daemon command ─────────────────────────────────────────────
     daemon_parser = subparsers.add_parser(
         "daemon",
@@ -4290,6 +4443,8 @@ def main():
         "completions": cmd_completions,
         "compile": cmd_compile,
         "verify": cmd_verify,
+        "verify-claims": cmd_verify_claims,
+        "verify-code": cmd_verify_code,
         "sync": cmd_sync,
         "search": cmd_search,
         "docs": cmd_docs,

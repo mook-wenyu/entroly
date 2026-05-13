@@ -1,7 +1,7 @@
 """
 Regression tests for engine isolation and auto_index API contract.
 
-These tests lock in two architectural fixes that landed in v0.18.0:
+These tests lock in two architectural fixes that landed in v0.19.1:
 
   1. `EntrolyEngine(EntrolyConfig(use_persistent_index=False))` must be
      fully ephemeral — no load from, no write to, the shared warm-start
@@ -201,6 +201,30 @@ def test_persistent_engine_loads_index_file(tmp_path: Path):
     )
 
 
+def test_persistent_engine_skips_incompatible_legacy_index(tmp_path: Path):
+    """Legacy index files with an outdated schema must not crash startup.
+
+    Users can carry `index.json.gz` forward across upgrades. If the on-disk
+    JSON no longer matches the current Rust `import_state()` contract, startup
+    must degrade to a clean engine instead of raising during `EntrolyEngine()`.
+    """
+    ckpt = tmp_path / "ckpt"
+    ckpt.mkdir(parents=True, exist_ok=True)
+    index_file = ckpt / "index.json.gz"
+    with gzip.open(index_file, "wt", encoding="utf-8") as f:
+        f.write('{"fragments":[]}')
+
+    engine = EntrolyEngine(EntrolyConfig(
+        use_persistent_index=True,
+        checkpoint_dir=ckpt,
+    ))
+
+    assert engine._rust.fragment_count() == 0, (
+        "Incompatible legacy indices should be ignored so startup can proceed "
+        "with a clean engine."
+    )
+
+
 # ── 2. auto_index unified return shape ───────────────────────────────
 
 
@@ -234,7 +258,7 @@ def test_auto_index_fresh_path_returns_required_keys(tmp_path: Path):
 def test_auto_index_skip_path_returns_required_keys(tmp_path: Path):
     """Skip path (engine already populated) must return the SAME key set.
 
-    This is the regression that broke `verify_claims.py` for v0.18.0 —
+    This is the regression that broke `verify_claims.py` for v0.19.1 —
     callers were reading `files_indexed` directly and got KeyError on the
     skip path. The fix unified the schema.
     """

@@ -116,18 +116,22 @@ def _snapshot_cogops() -> dict[str, Any]:
 
     paths = resolve_runtime_paths(_engine)
     vault = snapshot_belief_vault(paths.vault_path)
-    engine = "rust"
+    engine = "metadata-only"
     engine_error = ""
     try:
-        from entroly_core import CogOpsEngine
-
-        CogOpsEngine(str(paths.vault_path))
+        import entroly_core as entroly_core_module
     except ImportError as exc:
         engine = "unavailable"
         engine_error = f"entroly_core import failed: {exc}"
-    except Exception as exc:
-        engine = "unavailable"
-        engine_error = f"CogOpsEngine initialization failed: {exc}"
+    else:
+        cogops_cls = getattr(entroly_core_module, "CogOpsEngine", None)
+        if cogops_cls is not None:
+            try:
+                cogops_cls(str(paths.vault_path))
+                engine = "rust"
+            except Exception as exc:
+                engine = "unavailable"
+                engine_error = f"CogOpsEngine initialization failed: {exc}"
 
     vault.update(
         {

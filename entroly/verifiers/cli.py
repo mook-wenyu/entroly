@@ -1,23 +1,29 @@
 """
-`entroly verify` — CLI surface for the hallucination verifiers
-==============================================================
+`entroly verify-code` — CLI surface for the hallucination verifiers
+====================================================================
+
+Distinct from `entroly verify`, which runs a verification pass on the
+vault's belief artifacts. This module verifies *generated source code*
+against a SymbolVerifier built from the local repository — the symbol
+manifest + n-gram surprisal model that powers BIPT-style hallucination
+detection at the identifier level.
 
 Usage::
 
     # Verify code from a file
-    entroly verify path/to/generated.py
+    entroly verify-code path/to/generated.py
 
     # Verify from stdin (e.g. piped from an LLM)
-    cat generated.py | entroly verify -
+    cat generated.py | entroly verify-code -
 
     # JSON output for programmatic use
-    entroly verify generated.py --json
+    entroly verify-code generated.py --json
 
     # Lower the strictness (more permissive)
-    entroly verify generated.py --lambda 8.0
+    entroly verify-code generated.py --lambda 8.0
 
     # Force rebuild the manifest cache
-    entroly verify generated.py --rebuild
+    entroly verify-code generated.py --rebuild
 """
 
 from __future__ import annotations
@@ -43,6 +49,8 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
     if args is None:
         return 2
+    if args.get("help"):
+        return 0
 
     # Read source
     source = _read_source(args["path"])
@@ -108,13 +116,15 @@ def _parse_args(argv: list[str]) -> dict[str, Any] | None:
         "json": False,
         "rebuild": False,
         "max_items": 30,
+        "help": False,
     }
     i = 0
     while i < len(argv):
         a = argv[i]
         if a in ("-h", "--help"):
             _print_help()
-            return None
+            args["help"] = True
+            return args
         elif a == "--repo":
             i += 1
             args["repo"] = argv[i]
