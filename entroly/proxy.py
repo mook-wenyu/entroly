@@ -2898,7 +2898,74 @@ async def _witness_feedback_route(request: Request) -> JSONResponse:
         if isinstance(feedback, list):
             feedback.append({"verdict": verdict, "note": note, "ts": time.time()})
         proxy._witness_feedback[verdict] += 1
+    if body.get("train") and body.get("context") and body.get("output"):
+        try:
+            from .witness_training import WitnessTrainingStore
+
+            store = getattr(proxy, "_witness_training_store", None)
+            if store is None:
+                store = WitnessTrainingStore()
+                setattr(proxy, "_witness_training_store", store)
+            train_label = {
+                "false_positive": "false_positive",
+                "false_negative": "false_negative",
+                "correct": "witness_correct",
+                "ignored": "",
+            }.get(verdict, "")
+            if train_label:
+                store.record(
+                    context=str(body.get("context")),
+                    output=str(body.get("output")),
+                    label=train_label,
+                    profile=str(body.get("profile") or proxy._witness_profile),
+                    source="witness_feedback",
+                )
+        except Exception as e:
+            logger.debug("witness feedback training skipped: %s", e)
     return JSONResponse({"ok": True, "id": witness_id, "verdict": verdict})
+
+
+async def _witness_train_route(request: Request) -> JSONResponse:
+    proxy = request.app.state.proxy
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    try:
+        from .witness_training import WitnessTrainingStore
+
+        store = getattr(proxy, "_witness_training_store", None)
+        if store is None:
+            store = WitnessTrainingStore()
+            setattr(proxy, "_witness_training_store", store)
+
+        ravs_event = body.get("ravs_event")
+        if isinstance(ravs_event, dict):
+            record = store.record_ravs_outcome(ravs_event)
+            if record is None:
+                return JSONResponse({"ok": False, "reason": "no_trainable_ravs_signal"}, status_code=422)
+        else:
+            context = str(body.get("context") or "")
+            output = str(body.get("output") or "")
+            label = str(body.get("label") or "")
+            if not context or not output or not label:
+                return JSONResponse(
+                    {"error": "context_output_label_required"},
+                    status_code=400,
+                )
+            record = store.record(
+                context=context,
+                output=output,
+                label=label,
+                profile=str(body.get("profile") or proxy._witness_profile),
+                source=str(body.get("source") or "proxy_api"),
+            )
+        return JSONResponse({"ok": True, "training": record.as_dict()})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        logger.debug("witness training route failed: %s", e, exc_info=True)
+        return JSONResponse({"error": "witness_training_failed"}, status_code=500)
 
 
 # Need os for ENTROLY_RATE_LIMIT env var
@@ -2959,6 +3026,7 @@ def create_proxy_app(
             Route("/trends", _value_trends),                           # Dashboard trends
             Route("/retrieve", _context_retrieve),                     # CCR: lossless retrieval
             Route("/witness", _witness_list),                           # WITNESS certificate index
+            Route("/witness/train", _witness_train_route, methods=["POST"]),
             Route("/witness/{witness_id}/feedback", _witness_feedback_route, methods=["POST"]),
             Route("/witness/{witness_id}", _witness_certificate),       # WITNESS sidecar certificates
             # Catch-all: forward any unmatched path to upstream API

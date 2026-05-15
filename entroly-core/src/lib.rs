@@ -5547,6 +5547,57 @@ fn py_witness_claims(output: &str) -> PyResult<String> {
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("JSON error: {}", e)))
 }
 
+/// WITNESS continuous feature extraction hot path.
+#[pyfunction]
+#[pyo3(signature = (claim, context, adequacy = 0.5, question = ""))]
+fn py_witness_features(
+    claim: &str,
+    context: &str,
+    adequacy: f64,
+    question: &str,
+) -> PyResult<String> {
+    let features = witness::continuous_features(
+        claim,
+        context,
+        adequacy,
+        if question.trim().is_empty() { None } else { Some(question) },
+    );
+    serde_json::to_string(&features)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("JSON error: {}", e)))
+}
+
+/// WITNESS continuous risk prediction from a serialized feature vector.
+#[pyfunction]
+fn py_witness_risk_predict(features_json: &str) -> PyResult<f64> {
+    let features: witness::ContinuousFeatures = serde_json::from_str(features_json)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("JSON error: {}", e)))?;
+    Ok(witness::continuous_risk(&features))
+}
+
+/// Convenience binding: extract continuous features and predict risk in Rust.
+#[pyfunction]
+#[pyo3(signature = (claim, context, adequacy = 0.5, question = ""))]
+fn py_witness_risk(
+    claim: &str,
+    context: &str,
+    adequacy: f64,
+    question: &str,
+) -> PyResult<String> {
+    let features = witness::continuous_features(
+        claim,
+        context,
+        adequacy,
+        if question.trim().is_empty() { None } else { Some(question) },
+    );
+    let risk = witness::continuous_risk(&features);
+    let payload = serde_json::json!({
+        "features": features,
+        "risk": risk,
+    });
+    serde_json::to_string(&payload)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("JSON error: {}", e)))
+}
+
 // ── Non-PyO3 helper methods (can't be in #[pymethods] due to serde types) ──
 impl EntrolyEngine {
     /// Reconstruct the `selected` PyList from cached fragment IDs + live fragment data.
@@ -5711,6 +5762,9 @@ fn entroly_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_apply_ebbinghaus_decay, m)?)?;
     m.add_function(wrap_pyfunction!(py_witness_analyze, m)?)?;
     m.add_function(wrap_pyfunction!(py_witness_claims, m)?)?;
+    m.add_function(wrap_pyfunction!(py_witness_features, m)?)?;
+    m.add_function(wrap_pyfunction!(py_witness_risk_predict, m)?)?;
+    m.add_function(wrap_pyfunction!(py_witness_risk, m)?)?;
     // ── SAST / Health / Query
     m.add_function(wrap_pyfunction!(py_scan_content, m)?)?;
     m.add_function(wrap_pyfunction!(py_analyze_health_info, m)?)?;

@@ -13,6 +13,7 @@ from entroly.proxy import (
     _extract_text_from_sse,
     _witness_feedback_route,
     _witness_list,
+    _witness_train_route,
 )
 from entroly.proxy_config import ProxyConfig
 from entroly.witness import (
@@ -246,3 +247,26 @@ def test_witness_certificate_feedback_endpoint() -> None:
     assert response.status_code == 200
     assert response.json()["verdict"] == "false_positive"
     assert client.get("/witness").json()["feedback"]["false_positive"] == 1
+
+
+def test_witness_training_endpoint_records_honest_label(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("ENTROLY_WITNESS_MODEL_PATH", str(tmp_path / "risk_model.json"))
+    proxy = PromptCompilerProxy(object(), ProxyConfig(witness_mode="audit"))
+    app = Starlette(routes=[
+        Route("/witness/train", _witness_train_route, methods=["POST"]),
+    ])
+    app.state.proxy = proxy
+    client = TestClient(app)
+
+    response = client.post("/witness/train", json={
+        "context": "Einstein developed relativity in 1915.",
+        "output": "Einstein developed relativity in 1915.",
+        "label": "ci_passed",
+        "profile": "benchmark_qa",
+    })
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["training"]["y"] == 0
+    assert (tmp_path / "risk_model.json").exists()

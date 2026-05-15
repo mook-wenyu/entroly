@@ -17,7 +17,16 @@ import time
 from collections import Counter
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from .witness_calibration import (
+    Action,
+    ThresholdSet,
+    default_thresholds,
+)
+
+if TYPE_CHECKING:
+    from .witness_risk_model import RiskModel
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +62,20 @@ _NUMBER_WORDS = {
 }
 
 _NLI_CACHE: dict[tuple[str, str], "NLIVerdict"] = {}
+
+# Lazy module-level risk model used by the continuous-risk path in
+# WitnessAnalyzer._certify_claim. Constructed on first access via
+# `_get_default_risk_model()` so importing this module remains cheap.
+_DEFAULT_RISK_MODEL: "RiskModel | None" = None  # noqa: F821
+
+
+def _get_default_risk_model() -> "RiskModel":  # noqa: F821
+    """Return the process-wide default RiskModel, constructing on demand."""
+    global _DEFAULT_RISK_MODEL
+    if _DEFAULT_RISK_MODEL is None:
+        from .witness_risk_model import RiskModel
+        _DEFAULT_RISK_MODEL = RiskModel()
+    return _DEFAULT_RISK_MODEL
 
 try:
     from entroly_core import py_witness_analyze as _rust_witness_analyze  # type: ignore
@@ -181,12 +204,26 @@ class WitnessRewrite:
         }
 
 
-def extract_claims(output: str) -> list[Claim]:
-    """Extract independently checkable factual claims from model output."""
-    if _rust_witness_claims is not None:
+def extract_claims(output: str, *, force_python: bool = False) -> list[Claim]:
+    """Extract independently checkable factual claims from model output.
+
+    Dialogue-fallback rule: if no sentence-level claims survive filtering
+    AND the output has any factual content at all (entities, numbers, or
+    conversational content longer than a stub), treat the whole response
+    as a single proposition-class claim. This is what fixes the
+    "Dialogue F1 = 0.06" failure mode — without it, conversational
+    responses produce zero certificates and bypass the policy entirely.
+
+    Args:
+        output: Model output to extract from.
+        force_python: When True, skip the Rust fast-path and run the
+            Python extractor. Used by the benchmark to validate Python
+            improvements end-to-end.
+    """
+    if _rust_witness_claims is not None and not force_python:
         try:
             raw_claims = json.loads(_rust_witness_claims(output))
-            return [
+            claims = [
                 Claim(
                     id=int(item.get("id", idx)),
                     text=str(item.get("text", "")),
@@ -197,6 +234,13 @@ def extract_claims(output: str) -> list[Claim]:
                 for idx, item in enumerate(raw_claims)
                 if isinstance(item, dict) and str(item.get("text", "")).strip()
             ]
+            # If Rust returned zero, still apply the dialogue fallback so
+            # the policy has *something* to act on.
+            if not claims:
+                fb = _dialogue_fallback_claim(output)
+                if fb is not None:
+                    claims = [fb]
+            return claims
         except Exception as e:
             logger.debug("Rust WITNESS claim extraction failed; falling back to Python: %s", e)
 
@@ -207,7 +251,45 @@ def extract_claims(output: str) -> list[Claim]:
             continue
         kind = _classify_claim(text)
         claims.append(Claim(id=len(claims), text=text, start=start, end=start + len(text), kind=kind))
+
+    if not claims:
+        fb = _dialogue_fallback_claim(output)
+        if fb is not None:
+            claims = [fb]
     return claims
+
+
+def _dialogue_fallback_claim(output: str) -> Claim | None:
+    """When sentence-level extraction yields nothing, treat the whole
+    response as a single claim — if it has any substantive content.
+
+    Empty / pure-acknowledgment responses ("ok", "thanks", "yes") still
+    return None because there is no factual content to verify.
+
+    This fixes a critical gap: HaluEval-Dialogue responses are short and
+    often lack the strict declarative-sentence markers that
+    `_is_claim_like` requires (it demands a claim verb, entity, number,
+    or code marker). For dialogue we want a more permissive policy:
+    if there's substance, verify it.
+    """
+    cleaned = (output or "").strip()
+    if not cleaned:
+        return None
+    # Pure backchannels — no fact content possible
+    pure_ack = {"ok", "okay", "sure", "yes", "no", "thanks", "thank you",
+                "got it", "alright", "sounds good", "right", "yeah"}
+    if cleaned.lower().strip(".!? ") in pure_ack:
+        return None
+    # Minimum substantive length (avoids "hi" being verified)
+    if len(cleaned) < 15:
+        return None
+    return Claim(
+        id=0,
+        text=cleaned[:1000],
+        start=0,
+        end=min(len(cleaned), 1000),
+        kind="dialogue_response",
+    )
 
 
 def apply_witness_policy(
@@ -217,17 +299,32 @@ def apply_witness_policy(
     mode: str = "audit",
     profile: str = "auto",
     max_items: int = 6,
+    thresholds: ThresholdSet | None = None,
 ) -> WitnessRewrite:
-    """Apply a product suppression policy to an already-analyzed output.
+    """Apply a product policy to an already-analyzed output.
 
     Modes:
       - audit: no visible output change; callers use certificates/headers.
       - annotate: keep the output and append compact verification warnings.
-      - strict: remove claims according to the workload profile.
+      - strict: 4-action graduated policy (pass / hedge / warn / suppress)
+                with thresholds from `thresholds` or per-profile defaults.
 
-    This intentionally does not turn "unknown" into "false". In strict mode
-    RAG/QA/code profiles fail closed, while summary/chat/dialogue profiles
-    warn on unknowns to avoid over-suppressing useful prose.
+    The graduated policy replaces the old binary {pass, suppress} by
+    branching on the continuous risk score ρ per certificate via a
+    ThresholdSet. Mathematical specification and the conformal
+    calibration procedure for computing the thresholds is documented in
+    entroly/witness_calibration.py.
+
+    Per-action behavior in strict mode:
+        PASS     — no rewrite
+        HEDGE    — keep claim, append "[unverified]" note for the run
+        WARN     — keep claim, surface as a visible warning line
+        SUPPRESS — remove claim from the output
+
+    `unknown`-labeled certificates are now driven by ρ instead of by
+    profile — eliminating the old "summary profile leaks everything"
+    and "qa profile suppresses everything" failure modes observed on
+    HaluEval.
     """
     normalized_mode = (mode or "audit").strip().lower()
     normalized_profile = _normalize_profile(profile, output)
@@ -271,9 +368,32 @@ def apply_witness_policy(
         )
 
     if normalized_mode == "strict":
+        # Resolve thresholds: explicit override, then calibrated defaults,
+        # then risk-graduated per-profile defaults.
+        ts = thresholds if thresholds is not None else default_thresholds(normalized_profile)
+
+        # Action assignment per certificate via continuous ρ.
+        # Contradicted claims always SUPPRESS (cert.risk = 0.92 ≥ τ_warn for all profiles).
+        # Grounded claims always PASS (cert.risk ≤ 0.35 < τ_pass for all profiles).
+        # The interesting cases are unsupported (risk=0.80) and unknown
+        # (risk=0.55), which previously hard-mapped per profile but now
+        # route through the calibrated ThresholdSet.
+        actions: list[tuple[Certificate, str]] = []
+        for cert in flagged:
+            action = ts.action(cert.risk)
+            if (
+                normalized_profile in {"summary", "summarization"}
+                and cert.contradiction_strength < 0.70
+                and action == Action.SUPPRESS
+            ):
+                action = Action.WARN
+            actions.append((cert, action))
+
+        suppressed = [c for c, a in actions if a == Action.SUPPRESS]
+        warned = [c for c, a in actions if a == Action.WARN]
+        hedged = [c for c, a in actions if a == Action.HEDGE]
+
         rewritten = output
-        suppressed = [cert for cert in flagged if _should_suppress(cert, normalized_profile)]
-        warned = [cert for cert in flagged if not _should_suppress(cert, normalized_profile)]
         for cert in sorted(suppressed, key=lambda c: len(c.claim_text), reverse=True):
             rewritten = _remove_claim_text(rewritten, cert.claim_text)
         rewritten = _cleanup_rewritten_output(rewritten)
@@ -292,6 +412,19 @@ def apply_witness_policy(
                 lines.append(f"- ... {len(warned) - max_items} more")
             lines.append("]")
             rewritten = rewritten.rstrip() + "\n".join(lines)
+        if hedged:
+            lines = ["", "", "[Entroly WITNESS notes (unverified — present but not fully grounded):"]
+            for cert in hedged[:max_items]:
+                lines.append(f"- {cert.claim_text}")
+            if len(hedged) > max_items:
+                lines.append(f"- ... {len(hedged) - max_items} more")
+            lines.append("]")
+            rewritten = rewritten.rstrip() + "\n".join(lines)
+
+        # `warned_count` semantics preserved for backward compat with
+        # callers that read it (proxy stats, dashboards). Treat HEDGE as
+        # a non-blocking warning at the count level so existing CI
+        # gates don't break.
         return WitnessRewrite(
             output=rewritten,
             changed=rewritten != output,
@@ -299,7 +432,7 @@ def apply_witness_policy(
             profile=normalized_profile,
             flagged_count=len(flagged),
             suppressed_count=len(suppressed),
-            warned_count=len(warned),
+            warned_count=len(warned) + len(hedged),
         )
 
     raise ValueError(f"unknown WITNESS mode {mode!r}; expected off, audit, annotate, or strict")
@@ -397,6 +530,8 @@ class WitnessAnalyzer:
         adequacy_threshold: float = 0.72,
         nli_timeout_s: float = 6.0,
         nli_max_claims: int = 8,
+        force_python: bool = False,
+        thresholds: "ThresholdSet | None" = None,  # noqa: F821
     ) -> None:
         self.use_nli = use_nli
         self.model = model
@@ -406,6 +541,10 @@ class WitnessAnalyzer:
         self.adequacy_threshold = adequacy_threshold
         self.nli_timeout_s = nli_timeout_s
         self.nli_max_claims = nli_max_claims
+        self.force_python = force_python
+        # ThresholdSet for the 4-action graduated policy. When None we
+        # resolve defaults from the profile at policy time.
+        self.thresholds = thresholds
         self.nli_calls = 0
         self.nli_timeouts = 0
         self.nli_fallbacks = 0
@@ -418,7 +557,7 @@ class WitnessAnalyzer:
         if retrieved:
             evidence_context = context + "\n\n" + "\n\n".join(retrieved)
 
-        if not self.use_nli and _rust_witness_analyze is not None:
+        if not self.use_nli and not self.force_python and _rust_witness_analyze is not None:
             try:
                 payload = json.loads(_rust_witness_analyze(
                     evidence_context,
@@ -433,7 +572,7 @@ class WitnessAnalyzer:
             except Exception as e:
                 logger.debug("Rust WITNESS analyze failed; falling back to Python: %s", e)
 
-        claims = extract_claims(output)
+        claims = extract_claims(output, force_python=self.force_python)
         if self.use_nli and os.getenv("OPENAI_API_KEY"):
             certificates = self._certify_claims_with_batch_nli(claims, evidence_context)
         else:
@@ -474,7 +613,7 @@ class WitnessAnalyzer:
         if retrieved:
             evidence_context = context + "\n\n" + "\n\n".join(retrieved)
 
-        if not self.use_nli and _rust_witness_analyze is not None:
+        if not self.use_nli and not self.force_python and _rust_witness_analyze is not None:
             try:
                 payload = json.loads(_rust_witness_analyze(
                     evidence_context,
@@ -493,7 +632,12 @@ class WitnessAnalyzer:
                 logger.debug("Rust WITNESS policy failed; falling back to Python: %s", e)
 
         result = self.analyze(evidence_context, output)
-        return result, apply_witness_policy(output, result, mode=mode, profile=self.profile)
+        return result, apply_witness_policy(
+            output, result,
+            mode=mode,
+            profile=self.profile,
+            thresholds=self.thresholds,
+        )
 
     def _certify_claims_with_batch_nli(self, claims: list[Claim], context: str) -> list[Certificate]:
         prepared: list[tuple[Claim, list[EvidenceWindow], float]] = []
@@ -652,6 +796,69 @@ class WitnessAnalyzer:
         support = max((step.strength for step in support_steps), default=0.0)
         contradiction = max((step.strength for step in contradiction_steps), default=0.0)
 
+        # ── Continuous risk path (default for Python-only mode) ──
+        # When NLI didn't provide a confident verdict, route through the
+        # featurized risk model. This replaces the 4-bucket labels with
+        # a continuous ρ ∈ [0,1] from a logistic on φ(c, C). The downstream
+        # ThresholdSet (witness_calibration.py) maps ρ → action.
+        use_continuous = nli is None or nli.label == "neutral"
+        if use_continuous:
+            from .witness_features import extract_features
+            from .witness_risk_model import label_from_features_and_risk
+
+            risk_model = _get_default_risk_model()
+            # Build the evidence text for feature extraction. Critical
+            # detail for QA: the context is often KNOWLEDGE + "\n\nQuestion:
+            # ...", and verifying an answer-claim against the *question*
+            # inflates lex overlap (the answer often shares keywords with
+            # the question), letting hallucinated QA answers slip past.
+            # Strip the trailing "Question: ..." block so feature
+            # extraction only sees the knowledge — and pass the extracted
+            # question into the QA-alignment feature (φ₉).
+            evidence_text = (
+                "\n".join(w.text for w in windows)
+                if windows else context
+            )
+            question_text: str | None = None
+            if "\n\nQuestion:" in context:
+                parts = context.split("\n\nQuestion:", 1)
+                knowledge_only = parts[0].strip()
+                question_text = parts[1].strip() if len(parts) == 2 else None
+                if knowledge_only:
+                    evidence_text = knowledge_only
+            features = extract_features(
+                claim.text,
+                evidence_text,
+                adequacy=adequacy,
+                question=question_text,
+            )
+            risk = risk_model.predict(features)
+            if contradiction >= self.contradiction_threshold:
+                label = "contradicted"
+                risk = max(float(risk), 0.92)
+            else:
+                label = label_from_features_and_risk(features, risk)
+            proof = (contradiction_steps + support_steps)[:6]
+            if not proof:
+                proof = [ProofStep(
+                    "continuous_risk",
+                    f"phi={features.as_dict()}",
+                    float(risk),
+                )]
+            return Certificate(
+                claim_id=claim.id,
+                claim_text=claim.text,
+                label=label,
+                support_strength=support,
+                contradiction_strength=contradiction,
+                evidence_adequacy=adequacy,
+                risk=float(risk),
+                proof_path=proof,
+            )
+
+        # ── Discrete-bucket path (kept for NLI verdicts that are
+        #     definitive: entailment or contradiction). Continuous risk
+        #     wouldn't add information when NLI gave a confident answer. ──
         if contradiction >= self.contradiction_threshold:
             label = "contradicted"
             risk = 0.92

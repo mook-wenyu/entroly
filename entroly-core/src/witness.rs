@@ -49,7 +49,8 @@ fn stopwords() -> &'static HashSet<&'static str> {
             "many", "more", "most", "much", "only", "other", "over", "should", "some", "such",
             "than", "that", "their", "them", "then", "there", "these", "they", "this", "those",
             "very", "were", "what", "when", "where", "which", "while", "with", "would", "yes",
-            "sure", "okay", "actually", "believe",
+            "sure", "okay", "actually", "believe", "call", "use", "run", "read", "write",
+            "return", "update", "create", "delete",
         ]
         .into_iter()
         .collect()
@@ -152,6 +153,19 @@ pub struct WitnessPayload {
     pub witness: WitnessResult,
     pub policy: WitnessRewrite,
     pub output: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ContinuousFeatures {
+    pub entity_precision: f64,
+    pub number_consistency: f64,
+    pub idf_lex_overlap: f64,
+    pub quote_support: f64,
+    pub forward_entail: f64,
+    pub reverse_entail: f64,
+    pub negation_polarity: f64,
+    pub adequacy: f64,
+    pub qa_alignment: f64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1058,6 +1072,245 @@ fn coverage_fraction(items: &[String], haystack_lower: &str) -> f64 {
     hits as f64 / items.len() as f64
 }
 
+pub fn continuous_features(
+    claim: &str,
+    context: &str,
+    adequacy: f64,
+    question: Option<&str>,
+) -> ContinuousFeatures {
+    let entity_precision = continuous_entity_precision(claim, context);
+    let number_consistency = continuous_number_consistency(claim, context);
+    let idf_lex_overlap = continuous_lex_overlap(claim, context);
+    let quote = longest_substring_ratio(claim, context);
+    let forward = 0.5 * quote + 0.5 * continuous_reverse_entail(claim, context);
+    let reverse = continuous_reverse_entail(claim, context);
+    let negation = continuous_negation_polarity(claim, context);
+    let qa_alignment = continuous_qa_alignment(claim, context, question.unwrap_or(""));
+    ContinuousFeatures {
+        entity_precision,
+        number_consistency,
+        idf_lex_overlap,
+        quote_support: quote,
+        forward_entail: forward.clamp(0.0, 1.0),
+        reverse_entail: reverse,
+        negation_polarity: negation,
+        adequacy: adequacy.clamp(0.0, 1.0),
+        qa_alignment,
+    }
+}
+
+pub fn continuous_risk(features: &ContinuousFeatures) -> f64 {
+    let mut z_soft = 6.0;
+    let mut survival_gates = Vec::new();
+    for (name, value, weight) in [
+        ("entity_precision", features.entity_precision, -1.4),
+        ("number_consistency", features.number_consistency, -3.2),
+        ("idf_lex_overlap", features.idf_lex_overlap, -1.2),
+        ("quote_support", features.quote_support, -2.4),
+        ("forward_entail", features.forward_entail, -1.8),
+        ("reverse_entail", features.reverse_entail, -2.6),
+        ("negation_polarity", features.negation_polarity, -3.0),
+        ("adequacy", features.adequacy, -0.8),
+        ("qa_alignment", features.qa_alignment, -2.8),
+    ] {
+        if matches!(
+            name,
+            "entity_precision" | "number_consistency" | "negation_polarity" | "qa_alignment"
+        ) && value < 0.0
+        {
+            survival_gates.push((-value).clamp(0.0, 1.0));
+        } else {
+            z_soft += weight * value.max(0.0);
+        }
+    }
+    let rho_soft = sigmoid(z_soft);
+    let mut survival = 1.0 - rho_soft;
+    for gate in survival_gates {
+        survival *= 1.0 - gate;
+    }
+    (1.0 - survival).clamp(0.0, 1.0)
+}
+
+fn continuous_entity_precision(claim: &str, context: &str) -> f64 {
+    let entities = extract_entities(claim);
+    if entities.is_empty() {
+        return 0.0;
+    }
+    let lower = context.to_lowercase();
+    let matched = entities
+        .iter()
+        .filter(|e| lower.contains(&e.to_lowercase()))
+        .count();
+    if matched == entities.len() {
+        1.0
+    } else {
+        -((entities.len() - matched) as f64) / entities.len() as f64
+    }
+}
+
+fn continuous_number_consistency(claim: &str, context: &str) -> f64 {
+    let claim_nums = extract_numbers(claim);
+    if claim_nums.is_empty() {
+        return 0.0;
+    }
+    let context_nums = extract_numbers(context);
+    let missing = claim_nums
+        .iter()
+        .filter(|n| !context_nums.contains(n))
+        .count();
+    if missing == 0 {
+        1.0
+    } else {
+        -(missing as f64) / claim_nums.len() as f64
+    }
+}
+
+fn continuous_lex_overlap(claim: &str, context: &str) -> f64 {
+    let claim_words = content_words(claim);
+    if claim_words.is_empty() {
+        return 1.0;
+    }
+    let context_words = content_words(context);
+    intersection_ratio(&claim_words, &context_words).clamp(0.0, 1.0)
+}
+
+fn continuous_reverse_entail(claim: &str, context: &str) -> f64 {
+    continuous_lex_overlap(claim, context)
+}
+
+fn continuous_negation_polarity(claim: &str, context: &str) -> f64 {
+    let shared: HashSet<String> = content_words(claim)
+        .intersection(&content_words(context))
+        .cloned()
+        .collect();
+    if shared.is_empty() {
+        return 0.0;
+    }
+    let claim_lower = claim.to_lowercase();
+    let context_lower = context.to_lowercase();
+    for word in shared {
+        let claim_neg = has_negation_before(&claim_lower, &word);
+        let context_neg = has_negation_before(&context_lower, &word);
+        if claim_neg != context_neg {
+            return -1.0;
+        }
+    }
+    1.0
+}
+
+fn has_negation_before(text: &str, word: &str) -> bool {
+    let Some(idx) = text.find(word) else {
+        return false;
+    };
+    let start = idx.saturating_sub(30);
+    let preceding = &text[start..idx];
+    [
+        "is not", "are not", "was not", "were not", "does not", "do not", "did not",
+        "has not", "have not", "had not", "cannot", "can not", "isn't", "aren't",
+        "wasn't", "weren't", "doesn't", "don't", "didn't", "hasn't", "haven't",
+        "not ", "never ", " no ",
+    ]
+    .iter()
+    .any(|cue| preceding.contains(cue))
+}
+
+fn continuous_qa_alignment(answer: &str, knowledge: &str, question: &str) -> f64 {
+    if question.trim().is_empty() || knowledge.trim().is_empty() {
+        return 0.0;
+    }
+    let q_words = content_words(question);
+    let a_words = content_words(answer);
+    let a_nums = extract_numbers(answer);
+    if q_words.is_empty() || (a_words.is_empty() && a_nums.is_empty()) {
+        return 0.0;
+    }
+    let sentences = sentence_windows(&knowledge.to_lowercase(), 800);
+    let mut best_score = -1.0;
+    let mut best_sentence = String::new();
+    for sentence in sentences {
+        let sent_words = content_words(&sentence);
+        let q_score = q_words.intersection(&sent_words).count() as f64;
+        let a_score = a_words.intersection(&sent_words).count() as f64 * 0.1;
+        let total = q_score + a_score;
+        if total > best_score {
+            best_score = total;
+            best_sentence = sentence;
+        }
+    }
+    if best_score <= 0.0 {
+        return 0.0;
+    }
+    let best_words = content_words(&best_sentence);
+    let mut raw = if a_words.is_empty() {
+        1.0
+    } else {
+        intersection_ratio(&a_words, &best_words)
+    };
+    if !a_nums.is_empty() {
+        let sentence_nums = extract_numbers(&best_sentence);
+        let present = a_nums.iter().filter(|n| sentence_nums.contains(n)).count() as f64
+            / a_nums.len() as f64;
+        raw = if a_words.is_empty() {
+            present
+        } else {
+            0.5 * raw + 0.5 * present
+        };
+    }
+    let answer_norm = normalize_text(answer);
+    if answer_norm.len() >= 2 && normalize_text(&best_sentence).contains(&answer_norm) {
+        raw = (raw + 0.3).min(1.0);
+    }
+    let confident_locus = q_words.intersection(&best_words).count() >= 2;
+    if confident_locus && raw < 0.2 {
+        if !a_nums.is_empty() {
+            let sentence_nums = extract_numbers(&best_sentence);
+            let all_nums = extract_numbers(knowledge);
+            let num_in_best = a_nums.iter().filter(|n| sentence_nums.contains(n)).count();
+            let num_in_knowledge = a_nums.iter().filter(|n| all_nums.contains(n)).count();
+            if num_in_best == 0 && num_in_knowledge > 0 {
+                return -1.0;
+            }
+        }
+        if !a_words.is_empty() {
+            return -((0.2 - raw) / 0.2).clamp(0.0, 1.0);
+        }
+    }
+    raw.clamp(0.0, 1.0)
+}
+
+fn longest_substring_ratio(claim: &str, context: &str) -> f64 {
+    let a = claim.to_lowercase();
+    let b = context.to_lowercase();
+    if a.is_empty() || b.is_empty() {
+        return 0.0;
+    }
+    let a_bytes = a.as_bytes();
+    let b_bytes = b.as_bytes();
+    let mut prev = vec![0usize; b_bytes.len() + 1];
+    let mut best = 0usize;
+    for i in 1..=a_bytes.len() {
+        let mut cur = vec![0usize; b_bytes.len() + 1];
+        for j in 1..=b_bytes.len() {
+            if a_bytes[i - 1] == b_bytes[j - 1] {
+                cur[j] = prev[j - 1] + 1;
+                best = best.max(cur[j]);
+            }
+        }
+        prev = cur;
+    }
+    best as f64 / a_bytes.len().max(1) as f64
+}
+
+fn sigmoid(x: f64) -> f64 {
+    if x >= 0.0 {
+        let z = (-x).exp();
+        1.0 / (1.0 + z)
+    } else {
+        let z = x.exp();
+        z / (1.0 + z)
+    }
+}
+
 fn intersection_ratio(a: &HashSet<String>, b: &HashSet<String>) -> f64 {
     if a.is_empty() {
         return 0.0;
@@ -1277,5 +1530,49 @@ mod tests {
             .iter()
             .any(|c| c.text.contains("Beta") && c.text.contains("42")));
         assert!(claims.iter().any(|c| c.kind == "code_ref"));
+    }
+
+    #[test]
+    fn continuous_risk_full_support_is_low() {
+        let features = ContinuousFeatures {
+            entity_precision: 1.0,
+            number_consistency: 1.0,
+            idf_lex_overlap: 1.0,
+            quote_support: 1.0,
+            forward_entail: 1.0,
+            reverse_entail: 1.0,
+            negation_polarity: 1.0,
+            adequacy: 1.0,
+            qa_alignment: 1.0,
+        };
+        assert!(continuous_risk(&features) < 0.05);
+    }
+
+    #[test]
+    fn continuous_risk_wrong_number_dominates() {
+        let features = continuous_features(
+            "Einstein developed relativity in 1962.",
+            "Einstein developed relativity in 1915.",
+            1.0,
+            None,
+        );
+        assert!(features.number_consistency < 0.0);
+        assert!(continuous_risk(&features) > 0.99);
+    }
+
+    #[test]
+    fn continuous_qa_alignment_catches_misplaced_year() {
+        let knowledge = concat!(
+            "Albert Einstein developed general relativity in 1915. ",
+            "He won the Nobel Prize in 1921 for the photoelectric effect."
+        );
+        let features = continuous_features(
+            "1921",
+            knowledge,
+            1.0,
+            Some("What year did Einstein develop general relativity?"),
+        );
+        assert!(features.qa_alignment < 0.0);
+        assert!(continuous_risk(&features) > 0.99);
     }
 }
