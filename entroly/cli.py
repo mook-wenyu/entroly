@@ -24,6 +24,7 @@ Commands:
     entroly role        Role-based weight presets (frontend/backend/sre/data)
     entroly completions Generate shell completion scripts
     entroly ravs        RAVS offline evaluation (report)
+    entroly witness     Verify or suppress hallucinated factual claims
 """
 
 from __future__ import annotations
@@ -679,6 +680,14 @@ def cmd_proxy(args):
         quality_val = resolve_quality(args.quality)
         config.quality = quality_val
         config._apply_quality_dial(quality_val)
+    if getattr(args, "witness", None) is not None:
+        config.witness_mode = args.witness
+    if getattr(args, "witness_nli", False):
+        config.witness_use_nli = True
+    if getattr(args, "witness_embed", False):
+        config.witness_embed = True
+    if getattr(args, "witness_profile", None):
+        config.witness_profile = args.witness_profile
 
     # Initialize engine + auto-index codebase (non-blocking for large repos)
     engine = EntrolyEngine()
@@ -2824,7 +2833,7 @@ def cmd_completions(args):
         "batch", "wrap", "learn", "share", "demo",
         "doctor", "digest", "migrate", "role", "completions",
         "optimize", "feedback", "compile", "verify", "sync",
-        "search", "docs", "finetune",
+        "search", "docs", "finetune", "witness",
     ]
     cmd_list = " ".join(commands)
 
@@ -3441,6 +3450,48 @@ def cmd_finetune(args):
     print(f"  {C.GRAY}Use with: openai api fine_tuning.jobs.create -t {output}{C.RESET}\n")
 
 
+def _read_witness_text(value: str | None, file_path: str | None, *, stdin_fallback: bool = False) -> str:
+    if file_path:
+        return Path(file_path).read_text(encoding="utf-8")
+    if value:
+        return value
+    if stdin_fallback and not sys.stdin.isatty():
+        return sys.stdin.read()
+    return ""
+
+
+def cmd_witness(args):
+    """entroly witness — verify and optionally suppress factual claims."""
+    from entroly.witness import WitnessAnalyzer, format_witness_report
+
+    context = _read_witness_text(args.context, args.context_file)
+    output = _read_witness_text(args.output, args.output_file, stdin_fallback=True)
+    if not output.strip():
+        print(
+            f"{C.RED}Error:{C.RESET} provide model output via --output, --output-file, or stdin",
+            file=sys.stderr,
+        )
+        return
+
+    analyzer = WitnessAnalyzer(use_nli=args.nli, profile=args.profile)
+    result, rewrite = analyzer.analyze_and_rewrite(context, output, mode=args.mode)
+
+    if args.json_output:
+        print(json.dumps({
+            "witness": result.as_dict(),
+            "policy": rewrite.as_dict(),
+            "output": rewrite.output,
+        }, indent=2))
+        return
+
+    if args.mode in {"annotate", "strict"} and rewrite.changed:
+        print(rewrite.output)
+        print()
+        print(f"{C.GRAY}{format_witness_report(result)}{C.RESET}", file=sys.stderr)
+    else:
+        print(format_witness_report(result))
+
+
 def cmd_ravs(args):
     """entroly ravs — RAVS offline evaluation + passive capture tools.
 
@@ -3692,6 +3743,24 @@ def main():
     proxy_parser.add_argument(
         "--bypass", action="store_true",
         help="Start in bypass mode (forward requests unmodified, no optimization)",
+    )
+    proxy_parser.add_argument(
+        "--witness", choices=["off", "audit", "annotate", "strict"], default=None,
+        help="Verify model outputs before returning them: off, audit, annotate, or strict",
+    )
+    proxy_parser.add_argument(
+        "--witness-nli", action="store_true",
+        help="Use OpenAI NLI inside WITNESS when OPENAI_API_KEY is available",
+    )
+    proxy_parser.add_argument(
+        "--witness-embed", action="store_true",
+        help="Embed WITNESS certificates in provider JSON instead of sidecar headers only",
+    )
+    proxy_parser.add_argument(
+        "--witness-profile",
+        choices=["auto", "code", "rag", "qa", "benchmark_qa", "summary", "chat", "dialogue"],
+        default=None,
+        help="WITNESS suppression profile (default: auto)",
     )
 
     # entroly optimize
@@ -4065,6 +4134,46 @@ def main():
         help="Output file path (default: training_data.jsonl)",
     )
 
+    # entroly witness
+    witness_parser = subparsers.add_parser(
+        "witness",
+        help="Verify and suppress unsupported factual claims",
+    )
+    witness_parser.add_argument(
+        "--context", default=None,
+        help="Evidence/context text used to verify the model output",
+    )
+    witness_parser.add_argument(
+        "--context-file", default=None,
+        help="Path to evidence/context text",
+    )
+    witness_parser.add_argument(
+        "--output", default=None,
+        help="Model output text to verify (default: stdin)",
+    )
+    witness_parser.add_argument(
+        "--output-file", default=None,
+        help="Path to model output text",
+    )
+    witness_parser.add_argument(
+        "--mode", choices=["audit", "annotate", "strict"], default="audit",
+        help="Policy to apply after verification (default: audit)",
+    )
+    witness_parser.add_argument(
+        "--profile",
+        choices=["auto", "code", "rag", "qa", "benchmark_qa", "summary", "chat", "dialogue"],
+        default="auto",
+        help="Workload-specific suppression profile (default: auto)",
+    )
+    witness_parser.add_argument(
+        "--nli", action="store_true",
+        help="Use OpenAI NLI when OPENAI_API_KEY is available",
+    )
+    witness_parser.add_argument(
+        "--json", dest="json_output", action="store_true",
+        help="Emit machine-readable JSON",
+    )
+
     # entroly ravs
     ravs_parser = subparsers.add_parser(
         "ravs",
@@ -4194,6 +4303,7 @@ def main():
         "search": cmd_search,
         "docs": cmd_docs,
         "finetune": cmd_finetune,
+        "witness": cmd_witness,
         "wrap": cmd_wrap,
         "learn": cmd_learn,
         "share": cmd_share,

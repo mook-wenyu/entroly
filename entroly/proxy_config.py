@@ -214,6 +214,14 @@ class ProxyConfig:
     enable_context_sanitizer: bool = True
     enable_ecp_anti_thrash: bool = True
 
+    # WITNESS: proof-carrying factuality gateway on model outputs.
+    # off/audit/annotate/strict. Audit adds certificates/headers only;
+    # annotate appends warnings; strict suppresses unsupported factual claims.
+    witness_mode: str = "off"
+    witness_use_nli: bool = False
+    witness_embed: bool = False
+    witness_profile: str = "auto"
+
     # Context window size (auto-detected per model, this is the fallback)
     context_window: int = 128_000
 
@@ -295,6 +303,14 @@ class ProxyConfig:
             enable_conversation_compression=(
                 os.environ.get("ENTROLY_CONVERSATION_COMPRESSION", "1") != "0"
             ),
+            witness_mode=os.environ.get("ENTROLY_WITNESS_MODE", "off"),
+            witness_use_nli=(
+                os.environ.get("ENTROLY_WITNESS_NLI", "0") == "1"
+            ),
+            witness_embed=(
+                os.environ.get("ENTROLY_WITNESS_EMBED", "0") == "1"
+            ),
+            witness_profile=os.environ.get("ENTROLY_WITNESS_PROFILE", "auto"),
             fisher_scale=float(
                 os.environ.get("ENTROLY_FISHER_SCALE", "0.55")
             ),

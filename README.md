@@ -28,7 +28,7 @@
 
 <h3 align="center">Catch hallucinations. Cut large-codebase context by 70-95% when retrieval has room to work.<br/>Set up in about 30 seconds.</h3>
 
-<p align="center"><strong>🛡️ The only AI helper that shows its work.</strong><br/><sub>Your AI invents functions that don't exist, makes up API names, and bills you for "thinking" about thousands of code lines it never reads. Entroly catches every made-up answer by tracing it back to your real code — and shrinks what you send the AI by 95%, so you pay less for honest answers.</sub></p>
+<p align="center"><strong>🛡️ The AI helper that shows its work.</strong><br/><sub>Your AI invents functions that don't exist, makes up API names, and bills you for "thinking" about thousands of code lines it never reads. Entroly checks factual claims against supplied evidence, flags unsupported claims, and shrinks what you send the AI by up to 95%, so you pay less for more grounded answers.</sub></p>
 
 <p align="center">
   <strong>💰 Lower bill</strong>&nbsp;&nbsp;·&nbsp;&nbsp;
@@ -112,6 +112,39 @@
 > Run `entroly benchmark --compare-baseline` to see how context quality improves as PRISM learns which files matter for your workflow.
 
 ---
+
+### WITNESS — Proof-Carrying Output Gateway
+
+Use WITNESS when you want model answers checked against supplied evidence before you trust them:
+
+```bash
+entroly witness --context-file evidence.txt --output-file answer.txt --mode strict
+```
+
+Proxy mode attaches proof certificate headers to every non-streaming JSON response. The full certificate is available from the sidecar URL in `X-Entroly-Witness-Id`; use `--witness-embed` only if you want certificates embedded into the provider JSON body:
+
+```bash
+entroly proxy --witness audit      # headers + sidecar certificate
+entroly proxy --witness strict --witness-profile rag      # suppress unsupported factual claims
+entroly proxy --witness strict --witness-profile summary  # warn on unknowns to reduce over-suppression
+entroly proxy --witness audit --witness-nli  # use OpenAI NLI when OPENAI_API_KEY is set
+```
+
+Profiles tune false-positive behavior by workload: `rag`, `qa`, `benchmark_qa`, and `code` fail closed in strict mode; `summary`, `chat`, and `dialogue` suppress contradictions but warn on unknown claims. JSON/structured outputs are audited with sidecar certificates and left byte-valid instead of being rewritten.
+
+Certificate UX:
+
+```bash
+curl http://localhost:9377/witness/{id}                  # full proof path + evidence
+curl http://localhost:9377/witness?limit=10               # recent certificates
+curl -X POST http://localhost:9377/witness/{id}/feedback \
+  -H "Content-Type: application/json" \
+  -d '{"verdict":"false_positive"}'
+```
+
+The live dashboard also shows recent WITNESS certificates, flagged claims, proof/evidence snippets, suppression counts, and false-positive feedback totals when the proxy is running.
+
+Current scope: non-streaming responses can be rewritten before return. In `strict` or `annotate` streaming mode, Entroly buffers the upstream stream, verifies it, then emits a verified SSE response; `audit` streaming mode remains pass-through and records certificates after completion. Optional NLI verification is batched with a latency budget and falls back to deterministic local PAV if the provider call fails.
 
 ## Benchmarks
 

@@ -243,6 +243,9 @@ def _get_full_snapshot() -> dict:
     with _lock:
         snap["recent_requests"] = list(_request_log)
 
+    # 9b. WITNESS sidecar certificates from the live proxy, when available.
+    snap["witness"] = _fetch_witness_snapshot()
+
     # 10. CogOps Epistemic Engine stats
     try:
         import os
@@ -313,6 +316,33 @@ def _get_full_snapshot() -> dict:
         _record_section_error(snap, "cogops", e)
 
     return snap
+
+
+def _fetch_witness_snapshot() -> dict[str, Any]:
+    """Read WITNESS certificate UX state from the local proxy.
+
+    The dashboard runs on its own port, so it queries the proxy over localhost
+    with a short timeout and degrades to an idle state when the proxy is off.
+    """
+    import os
+    import urllib.error
+    import urllib.request
+
+    ports = [os.environ.get("ENTROLY_PROXY_PORT", "9377"), "9399"]
+    seen: set[str] = set()
+    for port in ports:
+        if port in seen:
+            continue
+        seen.add(port)
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/witness?limit=8", timeout=0.25) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+                payload["proxy_port"] = int(port)
+                payload["available"] = True
+                return payload
+        except (OSError, urllib.error.URLError, json.JSONDecodeError, ValueError):
+            continue
+    return {"available": False, "count": 0, "items": [], "feedback": {}}
 
 
 # ── HTML Dashboard ────────────────────────────────────────────────────────────
@@ -555,6 +585,10 @@ tr:hover td{background:rgba(255,255,255,0.015);}
   <div class="panel" style="margin-bottom:20px;">
     <div class="ph"><h2>🧠 Epistemic Engine</h2><span id="cogb" class="badge b-violet">CogOps</span></div>
     <div class="pb" id="cogops"></div>
+  </div>
+  <div class="panel" style="margin-bottom:20px;">
+    <div class="ph"><h2>WITNESS Certificates</h2><span id="wb" class="badge b-blue">--</span></div>
+    <div class="pb" id="witness"></div>
   </div>
   <div id="grid3wrap"></div>
   <div class="panel" style="margin-bottom:28px;">
@@ -813,6 +847,42 @@ function renderSecAndKnapsack(d){
 }
 
 let sparkData=[];
+function escHtml(s){
+  return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function renderWitness(d){
+  const w=d.witness||{},el=document.getElementById('witness'),b=document.getElementById('wb');
+  if(!el||!b)return;
+  if(!w.available){
+    b.textContent='Proxy idle';b.className='badge b-blue';
+    el.innerHTML='<div class="empty">Start the proxy with <code>entroly proxy --witness audit</code> or <code>--witness strict</code> to see proof certificates.</div>';
+    return;
+  }
+  const items=w.items||[],feedback=w.feedback||{};
+  const suppressed=items.reduce((a,x)=>a+(((x.policy||{}).suppressed_count)||0),0);
+  const flagged=items.reduce((a,x)=>a+((x.n_contradicted||0)+(x.n_unsupported||0)+(x.n_unknown||0)),0);
+  b.textContent=items.length+' recent · '+flagged+' flagged';
+  b.className='badge '+(flagged>0?'b-rose':'b-green');
+  const kpis=`<div class="cache-kpis">
+    <div class="cache-kpi"><div class="cache-kpi-label">Flagged Claims</div><div class="cache-kpi-val hv-rose">${flagged}</div><div class="cache-kpi-sub">recent sidecar certificates</div></div>
+    <div class="cache-kpi"><div class="cache-kpi-label">Suppressed</div><div class="cache-kpi-val hv-amber">${suppressed}</div><div class="cache-kpi-sub">strict-mode removals</div></div>
+    <div class="cache-kpi"><div class="cache-kpi-label">Feedback</div><div class="cache-kpi-val hv-blue">${feedback.false_positive||0}</div><div class="cache-kpi-sub">false-positive reports</div></div>
+    <div class="cache-kpi"><div class="cache-kpi-label">Proxy</div><div class="cache-kpi-val hv-cyan">${w.proxy_port||'--'}</div><div class="cache-kpi-sub">/witness sidecar API</div></div>
+  </div>`;
+  if(items.length===0){el.innerHTML=kpis+'<div class="empty">No WITNESS certificates yet.</div>';return;}
+  const rows=items.slice(0,6).map(item=>{
+    const claims=item.flagged_claims||[];
+    const first=claims[0]||{};
+    const proof=(first.proof_path||[]).map(p=>escHtml((p.operator||'proof')+': '+(p.evidence||''))).join('<br>');
+    return `<tr>
+      <td class="mono">${escHtml(item.id||'--')}</td>
+      <td><span class="tag ${claims.length?'t-rose':'t-green'}">${claims.length?'flagged':'pass'}</span></td>
+      <td>${escHtml(first.claim_text||'--')}</td>
+      <td style="font-size:11px;color:var(--dim);max-width:360px;">${proof||'--'}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML=kpis+`<div style="overflow-x:auto;"><table><thead><tr><th>ID</th><th>Status</th><th>Flagged claim</th><th>Proof / evidence</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
 function renderRequests(d){
   const reqs=d.recent_requests||[],tbody=document.getElementById('reqs'),b=document.getElementById('rb');
   b.textContent=reqs.length+' recent';
@@ -897,7 +967,7 @@ async function refresh(){
     if(!r.ok){renderErrors([{section:'http',type:'HTTPError',message:'/api/metrics returned '+r.status}]);return;}
     const d=await r.json();
     renderErrors(d.errors||[]);
-    renderHero(d);renderValueTrends(d);renderBA(d);renderPrism(d);renderHealth(d);renderCache(d);renderCogops(d);renderSecAndKnapsack(d);renderRequests(d);
+    renderHero(d);renderValueTrends(d);renderBA(d);renderPrism(d);renderHealth(d);renderCache(d);renderCogops(d);renderWitness(d);renderSecAndKnapsack(d);renderRequests(d);
   }catch(e){
     console.error('Refresh:',e);
     renderErrors([{section:'fetch',type:e.name||'Error',message:e.message||String(e)}]);

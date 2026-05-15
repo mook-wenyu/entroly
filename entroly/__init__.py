@@ -36,3 +36,8 @@ try:
     from .verifiers import trace_provenance, forge_loop  # noqa: F401
 except ImportError:
     pass  # Verifiers are available but don't block core functionality
+
+try:
+    from .witness import WitnessAnalyzer  # noqa: F401
+except ImportError:
+    pass

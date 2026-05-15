@@ -38,6 +38,7 @@ mod sast;
 mod semantic_dedup;
 mod skeleton;
 mod utilization;
+mod witness;
 
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -5507,6 +5508,45 @@ fn py_knapsack_optimize(
     (selected, stats)
 }
 
+/// WITNESS proof-carrying factuality: deterministic local verifier.
+///
+/// Returns JSON with `witness`, `policy`, and rewritten `output` fields.
+#[pyfunction]
+#[pyo3(signature = (
+    context,
+    output,
+    mode = "audit",
+    profile = "auto",
+    support_threshold = 0.62,
+    contradiction_threshold = 0.70,
+    adequacy_threshold = 0.72
+))]
+fn py_witness_analyze(
+    context: &str,
+    output: &str,
+    mode: &str,
+    profile: &str,
+    support_threshold: f64,
+    contradiction_threshold: f64,
+    adequacy_threshold: f64,
+) -> PyResult<String> {
+    let config = witness::WitnessConfig {
+        support_threshold,
+        contradiction_threshold,
+        adequacy_threshold,
+    };
+    let payload = witness::analyze_with_policy(context, output, mode, profile, config);
+    serde_json::to_string(&payload)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("JSON error: {}", e)))
+}
+
+/// WITNESS claim extraction only. Returns JSON list of extracted claims.
+#[pyfunction]
+fn py_witness_claims(output: &str) -> PyResult<String> {
+    serde_json::to_string(&witness::extract_claims(output))
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("JSON error: {}", e)))
+}
+
 // ── Non-PyO3 helper methods (can't be in #[pymethods] due to serde types) ──
 impl EntrolyEngine {
     /// Reconstruct the `selected` PyList from cached fragment IDs + live fragment data.
@@ -5669,6 +5709,8 @@ fn entroly_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // ── Knapsack / Ebbinghaus
     m.add_function(wrap_pyfunction!(py_knapsack_optimize, m)?)?;
     m.add_function(wrap_pyfunction!(py_apply_ebbinghaus_decay, m)?)?;
+    m.add_function(wrap_pyfunction!(py_witness_analyze, m)?)?;
+    m.add_function(wrap_pyfunction!(py_witness_claims, m)?)?;
     // ── SAST / Health / Query
     m.add_function(wrap_pyfunction!(py_scan_content, m)?)?;
     m.add_function(wrap_pyfunction!(py_analyze_health_info, m)?)?;
