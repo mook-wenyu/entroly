@@ -381,6 +381,17 @@ def apply_witness_policy(
         actions: list[tuple[Certificate, str]] = []
         for cert in flagged:
             action = ts.action(cert.risk)
+            # Escalation: zero support AND zero adequacy means the claim
+            # has NO evidence at all — strictly stronger than "weak evidence".
+            # The bucket-risk path from Rust may assign risk=0.55 (unknown),
+            # which falls in the WARN band, but a claim with literally no
+            # supporting evidence should be suppressed in strict mode.
+            if (
+                cert.support_strength <= 0.0
+                and cert.evidence_adequacy <= 0.01
+                and action in (Action.HEDGE, Action.WARN)
+            ):
+                action = Action.SUPPRESS
             if (
                 normalized_profile in {"summary", "summarization"}
                 and cert.contradiction_strength < 0.70
