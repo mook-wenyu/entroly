@@ -394,7 +394,7 @@ pub fn apply_policy(
         let suppressed_count = suppressed.len();
         let warned_count = warned.len();
         let mut sorted = suppressed;
-        sorted.sort_by(|a, b| b.claim_text.len().cmp(&a.claim_text.len()));
+        sorted.sort_by_key(|b| std::cmp::Reverse(b.claim_text.len()));
         for cert in sorted {
             rewritten = remove_claim_text(&rewritten, &cert.claim_text);
         }
@@ -754,7 +754,7 @@ fn is_list_or_table_row(segment: &str) -> bool {
         || s.starts_with("* ")
         || s.starts_with("+ ")
         || s.starts_with("|")
-        || s.as_bytes().get(0).is_some_and(|b| b.is_ascii_digit())
+        || s.as_bytes().first().is_some_and(|b| b.is_ascii_digit())
             && s.as_bytes().get(1) == Some(&b'.')
 }
 
@@ -1180,7 +1180,7 @@ fn remove_claim_text(output: &str, claim: &str) -> String {
         return output.to_string();
     }
     let mut spans = split_sentences(output);
-    spans.sort_by(|a, b| b.0.cmp(&a.0));
+    spans.sort_by_key(|b| std::cmp::Reverse(b.0));
     let mut rewritten = output.to_string();
     for (start, sentence) in spans {
         let words = content_words(&sentence);
