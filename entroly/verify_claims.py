@@ -86,7 +86,17 @@ def run(output: str | None = None, max_files: int = 120) -> int:
     print(f"  selected={len(selected)} tokens={used:,} savings={savings:.1f}% latency={optimize_ms:.1f}ms")
     check("OPT-1", "Selected context within budget", used <= 8000, f"{used:,}/8,000 tokens")
     check("OPT-2", "Optimization returned fragments", len(selected) > 0 or files == 0, f"{len(selected)} fragments")
-    check("OPT-3", "Optimization completed under 1s", optimize_ms < 1000, f"{optimize_ms:.1f}ms")
+    # This command is a new-user smoke test, not the release latency benchmark.
+    # Full timing comparisons live in bench/. Keep the bound loose enough for
+    # cold Windows filesystems and Python fallback paths while still catching
+    # pathological hangs.
+    smoke_budget_ms = max(5000.0, min(30000.0, files * 75.0))
+    check(
+        "OPT-3",
+        "Optimization completed within smoke-test budget",
+        optimize_ms < smoke_budget_ms,
+        f"{optimize_ms:.1f}ms / {smoke_budget_ms:.0f}ms",
+    )
 
     print("\n[4] Engine mode")
     print("-" * 40)

@@ -49,6 +49,12 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
 
+from ..proxy_transform import (
+    ANTHROPIC_LEGACY_REJECTED_PARAMS,
+    is_legacy_claude_3_model,
+    strip_anthropic_unsupported_params,
+)
+
 logger = logging.getLogger("entroly.ravs.router")
 
 
@@ -558,12 +564,50 @@ def _load_cells_from_log(log_path: str) -> dict[str, dict[str, Any]]:
     return cells
 
 
+# Parameters that only the Claude 4.5+ / Opus 4.5+ generation accepts.
+# Sending these to a Claude 3.x model (Sonnet 3.5, Haiku 3, Haiku 3.5)
+# makes Anthropic respond with `400 ... Extra inputs are not permitted`.
+#
+# This list is intentionally minimal; it grows as Anthropic adds new
+# gated parameters. See gh#44 for the original symptom report from a
+# user whose Claude Code session sent `context_management` and got
+# routed to Haiku-3 by RAVS, leaving the field stranded.
+_EXTENDED_ONLY_PARAMS = ANTHROPIC_LEGACY_REJECTED_PARAMS
+
+
+def _is_legacy_claude_3(model: str) -> bool:
+    """True iff `model` is a Claude 3.x model that rejects extended-only params.
+
+    Defensive: returns True only for confidently-identified legacy IDs so
+    we never accidentally strip valid params from a newer model whose
+    identifier we don't yet recognise.
+    """
+    return is_legacy_claude_3_model(model)
+
+
 def swap_model_in_body(body: dict[str, Any], new_model: str) -> dict[str, Any]:
-    """Swap the model field in a request body."""
+    """Swap the model field and strip target-incompatible parameters.
+
+    Critical invariant for the proxy: if the original request body
+    contains parameters that are gated to newer Claude generations
+    (e.g. ``context_management``, ``thinking``), they MUST be removed
+    when the model is downgraded to a Claude 3.x SKU. Otherwise
+    Anthropic returns ``400 ... Extra inputs are not permitted`` and
+    the user sees the proxy as broken (gh#44).
+
+    Args:
+        body: Original request body. Not mutated; a shallow copy is
+              returned.
+        new_model: The target model id chosen by the router.
+
+    Returns:
+        A copy of ``body`` with ``model`` set to ``new_model`` and any
+        extended-only parameters removed if ``new_model`` is a legacy SKU.
+    """
     body = dict(body)
     if "model" in body:
         body["model"] = new_model
-    return body
+    return strip_anthropic_unsupported_params(body, target_model=new_model)
 
 
 # ── Bayesian Router (cell-based, hook-fed) ─────────────────────────────

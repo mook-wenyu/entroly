@@ -307,7 +307,7 @@ def _detect_ai_tool() -> dict:
             "config_key": "mcpServers",
         })
 
-    # VS Code (Copilot, Cline, etc.)
+    # VS Code MCP-compatible assistants (Cline, Roo, Continue, etc.)
     if os.path.exists(os.path.join(cwd, ".vscode")):
         tools.append({
             "name": "VS Code",
@@ -1375,16 +1375,10 @@ _WRAP_AGENTS = {
         "env_key": "OPENAI_API_BASE",
         "env_val": "http://localhost:{port}/v1",
     },
-    "copilot": {
-        "kind": "cli", "name": "GitHub Copilot CLI",
-        "cmd": ["github-copilot-cli"],
-        "env_key": "OPENAI_BASE_URL",
-        "env_val": "http://localhost:{port}/v1",
-    },
     "gemini": {
         "kind": "cli", "name": "Gemini CLI",
         "cmd": ["gemini"],
-        "env_key": "GEMINI_BASE_URL",
+        "env_key": "GOOGLE_GEMINI_BASE_URL",
         "env_val": "http://localhost:{port}/v1beta",
     },
     "qwen": {
@@ -1438,9 +1432,9 @@ _WRAP_AGENTS = {
         "post_hint": "Restart Windsurf. Cascade will auto-discover the entroly tools.",
     },
     "vscode": {
-        "kind": "mcp", "name": "VS Code (MCP / Copilot Chat)",
+        "kind": "mcp", "name": "VS Code MCP clients",
         "config_path": "{cwd}/.vscode/mcp.json",
-        "post_hint": "Reload VS Code window. Copilot Chat 1.95+ and the MCP extension will pick this up.",
+        "post_hint": "Reload VS Code. MCP-compatible clients will pick this up.",
     },
     "claude-desktop": {
         "kind": "mcp", "name": "Claude Desktop",
@@ -1712,6 +1706,177 @@ def _start_proxy_if_needed(port: int) -> bool:
     return False
 
 
+# ── Preflight + watchdog for CLI wraps (gh#44) ───────────────────────
+#
+# Some CLIs silently ignore the OPENAI_BASE_URL override we set, so the
+# proxy never sees their traffic and the dashboard stays empty — the
+# user just sees "nothing is tracked" with no explanation.
+#
+# Defense in depth, fail-open:
+#   • Preflight  — predictive. Inspects the tool's own auth/config and
+#                  prints likely causes + exact fixes BEFORE launch.
+#                  Never blocks: a wrong heuristic must not break a
+#                  working `wrap`. Read-only; never raises.
+#   • Watchdog   — empirical ground truth. Snapshots the proxy's request
+#                  counter around the session; if the agent exits having
+#                  sent the proxy zero requests, prints the remediation.
+#                  Catches every cause, including ones not enumerated.
+#
+# Codex schema verified against openai/codex source (auth.rs AuthDotJson,
+# config-reference): auth.json keys are `auth_mode` (canonical),
+# `OPENAI_API_KEY`, `tokens`; the config key is `forced_login_method`
+# (values chatgpt|api), and `model_provider` defaults to "openai".
+
+
+def _read_codex_config(codex_home: Path) -> dict:
+    """Best-effort parse of ~/.codex/config.toml. Never raises."""
+    cfg_path = codex_home / "config.toml"
+    if not cfg_path.exists():
+        return {}
+    try:
+        raw = cfg_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {}
+    # Prefer a real TOML parser (py3.11+ stdlib `tomllib`, or `tomli`).
+    for mod_name in ("tomllib", "tomli"):
+        try:
+            import importlib
+            return importlib.import_module(mod_name).loads(raw)
+        except ModuleNotFoundError:
+            continue
+        except Exception:
+            return {}  # malformed TOML — treat as unknown, don't crash
+    # py3.10 without tomli: scrape only the two top-level scalars we need.
+    import re
+    out: dict = {}
+    for key in ("model_provider", "forced_login_method"):
+        m = re.search(rf'^\s*{key}\s*=\s*"([^"]+)"', raw, re.MULTILINE)
+        if m:
+            out[key] = m.group(1)
+    return out
+
+
+def _codex_preflight(port: int) -> list[str]:
+    """Predict why `entroly wrap codex` might not reach the proxy.
+
+    Returns a list of human-readable warning blocks (may be empty).
+    Advisory only — the watchdog is the authority on whether traffic
+    actually flowed.
+
+    Dominant cause (gh#44): Codex signed in with a ChatGPT account talks
+    to chatgpt.com directly and *ignores OPENAI_BASE_URL entirely*, so
+    the proxy never sees a request. Secondary cause: a custom
+    `model_provider` in config.toml shadowing the built-in `openai`
+    provider that the env var targets.
+    """
+    out: list[str] = []
+    codex_home = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
+
+    api_key_set = bool(os.environ.get("OPENAI_API_KEY"))
+    chatgpt_mode = False
+    auth_path = codex_home / "auth.json"
+    if auth_path.exists():
+        try:
+            auth = json.loads(auth_path.read_text(encoding="utf-8", errors="replace"))
+            if auth.get("OPENAI_API_KEY"):
+                api_key_set = True
+            # `auth_mode` is the canonical signal codex itself routes on;
+            # fall back to token presence for older codex builds that
+            # predate the field.
+            mode = str(auth.get("auth_mode") or "").lower()
+            if "chatgpt" in mode:
+                chatgpt_mode = True
+            elif not mode and auth.get("tokens") and not auth.get("OPENAI_API_KEY"):
+                chatgpt_mode = True
+        except (OSError, ValueError):
+            pass
+
+    cfg = _read_codex_config(codex_home)
+    if cfg.get("forced_login_method") == "chatgpt":
+        chatgpt_mode = True
+
+    if chatgpt_mode and not api_key_set:
+        out.append(
+            "Codex appears to be signed in with a ChatGPT account. In that\n"
+            "    mode Codex talks to chatgpt.com directly and IGNORES\n"
+            "    OPENAI_BASE_URL, so the proxy / dashboard will see nothing.\n"
+            "    Fix — switch Codex to API-key auth:\n"
+            "      1) codex logout\n"
+            "      2) set OPENAI_API_KEY=sk-...   (your OpenAI API key)\n"
+            "      3) re-run: entroly wrap codex"
+        )
+
+    provider = cfg.get("model_provider")
+    if provider and provider != "openai":
+        out.append(
+            f'Codex config.toml sets model_provider = "{provider}".\n'
+            '    OPENAI_BASE_URL only redirects the built-in "openai"\n'
+            "    provider, so this one bypasses the proxy. Fix one of:\n"
+            f"      • point [model_providers.{provider}].base_url at\n"
+            f"        http://localhost:{port}/v1 in ~/.codex/config.toml, or\n"
+            '      • run: codex --config model_provider="openai"'
+        )
+
+    return out
+
+
+_PREFLIGHT = {"codex": _codex_preflight}
+
+
+def _proxy_request_count(port: int) -> int | None:
+    """Total requests the proxy has handled, or None if unreachable.
+
+    Used as empirical ground truth by the post-launch watchdog: a zero
+    delta across a wrapped session means the agent never routed through
+    us, regardless of *why*.
+    """
+    import urllib.request
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/stats", timeout=2
+        ) as r:
+            return int(json.loads(r.read()).get("requests_total", 0))
+    except Exception:
+        return None
+
+
+def _wrap_watchdog_report(agent: str, spec: dict, port: int,
+                          before: int | None) -> None:
+    """After a wrapped agent exits, tell the user if we saw zero traffic.
+
+    `before` is the request count captured just before launch. If we
+    can't measure (proxy stats unreachable), stay silent rather than
+    cry wolf.
+    """
+    after = _proxy_request_count(port)
+    if before is None or after is None or after > before:
+        return  # traffic flowed (or we can't tell) — nothing to warn about
+
+    print(
+        f"\n  {C.RED}⚠ {spec['name']} sent the proxy 0 requests this "
+        f"session.{C.RESET}\n"
+        f"  {C.GRAY}That means nothing was tracked and the dashboard "
+        f"will be empty.{C.RESET}"
+    )
+    # Re-show the targeted preflight guidance even if it didn't fire
+    # pre-launch (state may have differed, or the cause is unenumerated).
+    # The agent already ran — a diagnostic must never crash the exit path.
+    try:
+        hints = _PREFLIGHT.get(agent, lambda _p: [])(port)
+    except Exception:
+        hints = []
+    if hints:
+        for h in hints:
+            print(f"  {C.YELLOW}→ {h}{C.RESET}")
+    else:
+        print(
+            f"  {C.GRAY}Likely the tool ignored {spec['env_key']}="
+            f"{spec['env_val'].format(port=port)} (custom endpoint not\n"
+            f"  supported, or auth that pins it to the vendor backend). "
+            f"Verify {spec['name']} honors that variable.{C.RESET}"
+        )
+
+
 def cmd_wrap(args):
     """entroly wrap <agent> — integrate Entroly with an AI coding tool.
 
@@ -1788,6 +1953,23 @@ def cmd_wrap(args):
     env = os.environ.copy()
     env[spec["env_key"]] = spec["env_val"].format(port=port)
     print(f"  {C.GRAY}Set {spec['env_key']}={spec['env_val'].format(port=port)}{C.RESET}")
+    print(
+        f"  {C.YELLOW}Use only if {spec['name']} supports custom endpoints and your account/provider terms permit proxying.{C.RESET}"
+    )
+
+    # Preflight (gh#44): advisory only — predict likely silent-bypass
+    # causes and print the fix. Never blocks: a wrong heuristic must not
+    # break an otherwise-working wrap. The watchdog below is the
+    # authority on whether traffic actually flowed.
+    preflight = _PREFLIGHT.get(agent)
+    if preflight:
+        try:
+            hints = preflight(port)
+        except Exception:
+            hints = []  # diagnostics must never disrupt a working setup
+        for h in hints:
+            print(f"\n  {C.YELLOW}! Heads-up: {h}{C.RESET}")
+
     print(f"  {C.GREEN}Launching {spec['name']}...{C.RESET}\n")
 
     # Auto-open dashboard
@@ -1796,6 +1978,9 @@ def cmd_wrap(args):
         webbrowser.open("http://localhost:9378")
     except Exception:
         pass
+
+    # Ground-truth baseline for the post-session watchdog.
+    req_before = _proxy_request_count(port)
 
     try:
         import shutil
@@ -1810,8 +1995,12 @@ def cmd_wrap(args):
     except FileNotFoundError:
         print(f"\n  {C.RED}{spec['name']} not found.{C.RESET}")
         print(f"  {C.GRAY}Install it first, then run: entroly wrap {agent}{C.RESET}\n")
+        return
     except KeyboardInterrupt:
         print(f"\n  {C.GRAY}{spec['name']} stopped.{C.RESET}")
+
+    # Empirical check: did the agent actually route through the proxy?
+    _wrap_watchdog_report(agent, spec, port, req_before)
 
 
 # ── Learn: Failure pattern analysis ──────────────────────────────────
@@ -2491,7 +2680,13 @@ def cmd_doctor(args):
         print(f"  {C.GREEN}+{C.RESET} Rust engine (entroly-core) loaded")
         checks_passed += 1
     except ImportError:
-        print(f"  {C.RED}x{C.RESET} Rust engine not installed (pip install entroly-core)")
+        print(f"  {C.RED}x{C.RESET} Rust engine (entroly-core) not loaded "
+              f"{C.GRAY}— optional; core features still work{C.RESET}")
+        print(f"    {C.GRAY}Install:  pip install \"entroly[full]\"{C.RESET}")
+        print(f"    {C.GRAY}If it fails to compile on a very new Python, use "
+              f"Python 3.10–3.13 or set{C.RESET}")
+        print(f"    {C.GRAY}PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 before "
+              f"installing.{C.RESET}")
 
     # 3. Check config validity
     checks_total += 1
