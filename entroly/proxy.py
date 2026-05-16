@@ -54,6 +54,8 @@ from .proxy_transform import (
     inject_context_anthropic,
     inject_context_gemini,
     inject_context_openai,
+    inject_context_responses,
+    strip_anthropic_unsupported_params,
 )
 from .value_tracker import get_tracker
 
@@ -888,6 +890,9 @@ class PromptCompilerProxy:
                 context_window=getattr(self.config, "context_window", 128_000),
             )
 
+        # Detect if this is a Responses API request (uses `input` instead of `messages`)
+        _is_responses_api = "input" in body and "messages" not in body
+
         # Gap #28: Bypass mode — forward unmodified, no optimization
         if self._bypass:
             with self._stats_lock:
@@ -969,6 +974,23 @@ class PromptCompilerProxy:
                             for p in item.get("parts", [])
                             if isinstance(p, dict) and "text" in p
                         ) * 4 // 3
+                    elif _is_responses_api:
+                        # Responses API: token count from `input` + `instructions`
+                        _inp = body.get("input", "")
+                        if isinstance(_inp, str):
+                            _inp_text = _inp
+                        elif isinstance(_inp, list):
+                            _inp_parts = []
+                            for _item in _inp:
+                                if isinstance(_item, dict):
+                                    _inp_parts.append(_item.get("text", _item.get("content", "")))
+                                elif isinstance(_item, str):
+                                    _inp_parts.append(_item)
+                            _inp_text = " ".join(str(p) for p in _inp_parts)
+                        else:
+                            _inp_text = str(_inp)
+                        _instr_text = body.get("instructions", "")
+                        original_tokens = (len(_inp_text.split()) + len(_instr_text.split())) * 4 // 3
                     else:
                         original_tokens = sum(
                             len(m.get("content", "").split())
@@ -1019,6 +1041,8 @@ class PromptCompilerProxy:
                         body = inject_context_gemini(body, context_text)
                     elif provider == "anthropic":
                         body = inject_context_anthropic(body, context_text)
+                    elif _is_responses_api:
+                        body = inject_context_responses(body, context_text)
                     else:
                         body = inject_context_openai(body, context_text)
 
@@ -1259,7 +1283,11 @@ class PromptCompilerProxy:
             except Exception as e:
                 logger.debug("RAVS router error (forwarding original): %s", e)
 
-        # Forward to real API (target_url already resolved above)
+        # Forward to real API (target_url already resolved above). Apply
+        # provider compatibility cleanup even when RAVS did not swap models.
+        if provider == "anthropic":
+            body = strip_anthropic_unsupported_params(body)
+
         forward_headers = self._build_headers(headers, provider)
         is_streaming = body.get("stream", False)
         # Gemini: streaming is determined by URL path, not a body field.
@@ -3012,6 +3040,8 @@ def create_proxy_app(
         routes=[
             Route("/v1/chat/completions", proxy.handle_proxy, methods=["POST"]),
             Route("/v1/messages", proxy.handle_proxy, methods=["POST"]),
+            # OpenAI Responses API (used by Codex CLI, newer OpenAI SDK)
+            Route("/v1/responses", proxy.handle_proxy, methods=["POST"]),
             # Gemini: model name is embedded in the URL path
             Route("/v1beta/models/{model_id:path}", proxy.handle_proxy, methods=["POST"]),
             Route("/health", _health),

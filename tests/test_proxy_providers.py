@@ -41,8 +41,55 @@ from entroly.proxy_transform import (  # noqa: E402
     inject_context_gemini,
     inject_context_openai,
     inject_context_anthropic,
+    is_legacy_claude_3_model,
+    strip_anthropic_unsupported_params,
 )
 from entroly.proxy_config import ProxyConfig, context_window_for_model  # noqa: E402
+
+
+class TestAnthropicCompatibilitySanitizer:
+    """Provider-level cleanup for native Anthropic request bodies."""
+
+    def test_legacy_claude_3_models_are_identified(self):
+        assert is_legacy_claude_3_model("claude-3-haiku-20240307")
+        assert is_legacy_claude_3_model("claude-3-5-sonnet-20241022")
+
+    def test_newer_and_unknown_models_are_preserved(self):
+        assert not is_legacy_claude_3_model("claude-sonnet-4-5-20250929")
+        assert not is_legacy_claude_3_model("some-future-model")
+
+    def test_strips_context_management_for_legacy_anthropic_target(self):
+        body = {
+            "model": "claude-3-5-haiku-20241022",
+            "messages": [{"role": "user", "content": "hi"}],
+            "context_management": {"strategy": "auto"},
+            "thinking": {"type": "enabled"},
+            "max_tokens": 1024,
+        }
+
+        cleaned = strip_anthropic_unsupported_params(body)
+
+        assert "context_management" not in cleaned
+        assert "thinking" not in cleaned
+        assert cleaned["max_tokens"] == 1024
+        assert body["context_management"] == {"strategy": "auto"}
+
+    def test_preserves_extended_params_for_newer_anthropic_target(self):
+        body = {
+            "model": "claude-sonnet-4-5-20250929",
+            "context_management": {"strategy": "auto"},
+            "thinking": {"type": "enabled"},
+        }
+
+        assert strip_anthropic_unsupported_params(body) is body
+
+    def test_preserves_unknown_model_defensively(self):
+        body = {
+            "model": "custom-anthropic-compatible-model",
+            "context_management": {"strategy": "auto"},
+        }
+
+        assert "context_management" in strip_anthropic_unsupported_params(body)
 
 
 # ═══════════════════════════════════════════════════════════════════════

@@ -68,6 +68,30 @@ def _record_section_error(snap: dict, section: str, exc: BaseException) -> None:
     })
 
 
+def _cogops_unavailable_snapshot(reason: str) -> dict:
+    """Dashboard-safe CogOps payload when the optional native module is absent."""
+    return _safe_json({
+        "total_beliefs": 0,
+        "verified": 0,
+        "stale": 0,
+        "doc_beliefs": 0,
+        "avg_confidence": 0.0,
+        "freshness_pct": 100.0,
+        "entity_count": 0,
+        "engine": "unavailable",
+        "status": "native_module_missing",
+        "hint": (
+            "CogOps is degraded: the native engine 'entroly_core' isn't "
+            "installed. Everything else works. To enable it, reinstall "
+            "with the native extra — pip: `pip install 'entroly[full]'`; "
+            "uv: `uv tool install 'entroly[full]'` (or `uv tool install "
+            "entroly --with entroly-core`). If no prebuilt wheel exists "
+            "for your platform, a Rust toolchain is required to build it."
+        ),
+        "reason": reason,
+    })
+
+
 def _get_full_snapshot() -> dict:
     """Pull ALL real data from the engine subsystems."""
     snap: dict[str, Any] = {
@@ -311,6 +335,18 @@ def _get_full_snapshot() -> dict:
             "entity_count": len(set(entities)),
             "engine": "rust",
         })
+    except ModuleNotFoundError as e:
+        if getattr(e, "name", "") == "entroly_core":
+            snap["cogops"] = _cogops_unavailable_snapshot(str(e))
+        else:
+            snap["cogops"] = None
+            _record_section_error(snap, "cogops", e)
+    except ImportError as e:
+        if "entroly_core" in str(e):
+            snap["cogops"] = _cogops_unavailable_snapshot(str(e))
+        else:
+            snap["cogops"] = None
+            _record_section_error(snap, "cogops", e)
     except Exception as e:
         snap["cogops"] = None
         _record_section_error(snap, "cogops", e)
