@@ -32,7 +32,7 @@ except ImportError:  # pragma: no cover - Python <3.8 compatibility
     PackageNotFoundError = Exception  # type: ignore[assignment]
     version = None  # type: ignore[assignment]
 
-_FALLBACK_VERSION = "0.19.2"
+_FALLBACK_VERSION = "0.19.4"
 
 
 def _read_source_version() -> str | None:
@@ -78,3 +78,8 @@ try:
     from .verifiers import trace_provenance, forge_loop  # noqa: F401
 except ImportError:
     pass  # Verifiers are available but don't block core functionality
+
+try:
+    from .witness import WitnessAnalyzer  # noqa: F401
+except ImportError:
+    pass

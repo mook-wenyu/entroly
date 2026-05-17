@@ -16,25 +16,24 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Token_Savings-up_to_95%25-brightgreen?style=for-the-badge" alt="Token Savings: up to 95%">
-  <img src="https://img.shields.io/badge/Learning_Cost-$0-blue?style=for-the-badge" alt="Learning Cost: $0">
+  <img src="https://img.shields.io/badge/Token_Savings-tested_70--95%25-brightgreen?style=for-the-badge" alt="Token savings tested at 70-95% on large-repo release checks">
+  <img src="https://img.shields.io/badge/Local_First-no_embeddings_API-blue?style=for-the-badge" alt="Local-first: no embeddings API required">
   <img src="https://img.shields.io/badge/Engine-Rust_%2B_WASM-orange?style=for-the-badge&logo=rust" alt="Rust + WASM">
   <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.10+">
   <a href="https://github.com/juyterman1000/entroly-cost-check-"><img src="https://img.shields.io/badge/GitHub_Action-Cost_Check-purple?style=for-the-badge&logo=githubactions" alt="GitHub Action"></a>
-  <a href="https://mcpmarket.com/daily/top-mcp-server-list-march-26-2026"><img src="https://img.shields.io/badge/%231_MCP_Market-Ranked_Server-gold?style=for-the-badge&logo=starship&logoColor=white" alt="#1 on MCP Market"></a>
 </p>
 
-<h1 align="center">Entroly — Stop Your AI From Making Things Up</h1>
+<h1 align="center">Entroly — Context Compression and Evidence Checks for AI</h1>
 
-<h3 align="center">Catch hallucinations. Cut large-codebase context by 70-95% when retrieval has room to work.<br/>Set up in about 30 seconds.</h3>
+<h3 align="center">Audit AI answers against supplied evidence. Cut large-repo context 70-95% in release checks when retrieval has room to work.<br/>Set up in about 30 seconds.</h3>
 
-<p align="center"><strong>🛡️ The only AI helper that shows its work.</strong><br/><sub>Your AI invents functions that don't exist, makes up API names, and bills you for "thinking" about thousands of code lines it never reads. Entroly catches every made-up answer by tracing it back to your real code — and shrinks what you send the AI by 95%, so you pay less for honest answers.</sub></p>
+<p align="center"><strong>🛡️ Local context selection plus proof-carrying output checks.</strong><br/><sub>Entroly checks factual claims against supplied evidence, flags unsupported claims, and selects plus compresses large-repo context for AI coding tools so you can inspect what was sent and why.</sub></p>
 
 <p align="center">
-  <strong>💰 Lower bill</strong>&nbsp;&nbsp;·&nbsp;&nbsp;
-  <strong>🎯 Honest answers</strong>&nbsp;&nbsp;·&nbsp;&nbsp;
+  <strong>💰 Lower input-token waste</strong>&nbsp;&nbsp;·&nbsp;&nbsp;
+  <strong>🎯 Evidence-backed answers</strong>&nbsp;&nbsp;·&nbsp;&nbsp;
   <strong>⚡ 30-second install</strong>&nbsp;&nbsp;·&nbsp;&nbsp;
-  <strong>🔌 Works with Claude, Cursor, Copilot, Codex</strong>
+  <strong>🔌 Works with Claude, Cursor, Codex, Aider</strong>
 </p>
 
 <p align="center">
@@ -45,7 +44,7 @@
 <p align="center">
   <sub>
     <strong>Don't trust the claims? Paste your own code into the live demo</strong> →
-    watch entroly shrink a large codebase context and show you exactly which lines the AI will see. 60 seconds. No install.
+    watch entroly shrink large-repo context and show which files and snippets it selected. 60 seconds. No install.
   </sub>
 </p>
 
@@ -53,7 +52,7 @@
   <a href="#install"><b>Install</b></a> ·
   <a href="cookbook/README.md"><b>Cookbook</b></a> ·
   <a href="#benchmarks"><b>Benchmarks</b></a> ·
-  <a href="#works-with-your-stack"><b>38 supported agent wrappers</b></a>
+  <a href="#works-with-your-stack"><b>37 wrap targets</b></a>
 </p>
 
 <a id="install"></a>
@@ -69,16 +68,16 @@
     Or: <code>brew tap juyterman1000/entroly && brew install entroly</code> · <code>npm i -g entroly-wasm</code>
     <br/>
     See the <a href="cookbook/README.md"><b>Cookbook</b></a> for 10 concrete recipes,
-    or pick your stack from the <a href="#works-with-your-stack">38 supported agent wrappers</a>.
+    or pick your stack from the <a href="#works-with-your-stack">37 wrap targets</a>.
   </sub>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/pypi/v/entroly?color=blue&label=PyPI">
   <img src="https://img.shields.io/npm/v/entroly-wasm?color=red&label=npm">
-  <img src="https://img.shields.io/badge/CI-passing-success">
-  <img src="https://img.shields.io/badge/Accuracy_Retention-100%25_(verified,_n%3D100)-brightgreen?style=flat">
-  <img src="https://img.shields.io/badge/Token_Savings-workload_dependent-blue?style=flat">
+  <img src="https://img.shields.io/badge/CI-see_GitHub_Actions-success">
+  <img src="https://img.shields.io/badge/Benchmarks-reproducible-brightgreen?style=flat">
+  <img src="https://img.shields.io/badge/Token_Savings-tested_70--95%25_on_large_repos-blue?style=flat">
   <img src="https://img.shields.io/badge/Latency-local_core_paths-purple">
   <img src="https://img.shields.io/badge/License-Apache_2.0-green">
 </p>
@@ -87,21 +86,21 @@
   <img src="https://raw.githubusercontent.com/juyterman1000/entroly/main/docs/assets/demo.svg" alt="Entroly Demo — AI context optimization, 70-95% token savings" width="800">
 </p>
 
-### Self-Improvement — Watch the context engine learn your codebase
+### Self-Improvement — Watch the context engine tune its ranking
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/juyterman1000/entroly/main/docs/assets/self_improvement.svg" alt="Entroly self-improvement — PRISM weights evolving over time" width="800">
 </p>
 
-> PRISM weights shift automatically as you work. Day 1: generic. Day 30: tuned to *your* codebase. Zero config.
+> PRISM weights can shift as local feedback accumulates. The dashboard shows the current ranking weights and confidence signals.
 
-### Profit — Token savings and money saved in real time
+### Savings — Token estimates and value tracking
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/juyterman1000/entroly/main/docs/assets/token_savings.svg" alt="Entroly profit — 70-95% token savings, dollars saved per session" width="800">
 </p>
 
-> Run `entroly demo` on your own repo. The dashboard shows token savings per request, cumulative dollar savings, and monthly profit projections.
+> Run `entroly demo` on your own repo. The dashboard shows estimated token reduction per request and cumulative value tracking.
 
 ### Context Quality — Before vs After
 
@@ -113,11 +112,44 @@
 
 ---
 
+### WITNESS — Proof-Carrying Output Gateway
+
+Use WITNESS when you want model answers checked against supplied evidence before you trust them:
+
+```bash
+entroly witness --context-file evidence.txt --output-file answer.txt --mode strict
+```
+
+Proxy mode attaches proof certificate headers to every non-streaming JSON response. The full certificate is available from the sidecar URL in `X-Entroly-Witness-Id`; use `--witness-embed` only if you want certificates embedded into the provider JSON body:
+
+```bash
+entroly proxy --witness audit      # headers + sidecar certificate
+entroly proxy --witness strict --witness-profile rag      # suppress unsupported factual claims
+entroly proxy --witness strict --witness-profile summary  # warn on unknowns to reduce over-suppression
+entroly proxy --witness audit --witness-nli  # use OpenAI NLI when OPENAI_API_KEY is set
+```
+
+Profiles tune false-positive behavior by workload: `rag`, `qa`, `benchmark_qa`, and `code` fail closed in strict mode; `summary`, `chat`, and `dialogue` suppress contradictions but warn on unknown claims. JSON/structured outputs are audited with sidecar certificates and left byte-valid instead of being rewritten.
+
+Certificate UX:
+
+```bash
+curl http://localhost:9377/witness/{id}                  # full proof path + evidence
+curl http://localhost:9377/witness?limit=10               # recent certificates
+curl -X POST http://localhost:9377/witness/{id}/feedback \
+  -H "Content-Type: application/json" \
+  -d '{"verdict":"false_positive"}'
+```
+
+The live dashboard also shows recent WITNESS certificates, flagged claims, proof/evidence snippets, suppression counts, and false-positive feedback totals when the proxy is running.
+
+Current scope: non-streaming responses can be rewritten before return. In `strict` or `annotate` streaming mode, Entroly buffers the upstream stream, verifies it, then emits a verified SSE response; `audit` streaming mode remains pass-through and records certificates after completion. Optional NLI verification is batched with a latency budget and falls back to deterministic local PAV if the provider call fails.
+
 ## Benchmarks
 
-### Live Evolution Trace
+### Example Evolution Trace
 
-This is from this repo's vault, not a roadmap:
+Example trace from this repo's local development vault:
 
 ```
 [detect]     gap observed → entity="auth", miss_count=3
@@ -129,21 +161,21 @@ This is from this repo's vault, not a roadmap:
 
 ### Accuracy Retention
 
-Compression doesn't hurt accuracy — we measured it live (gpt-4o-mini, Wilson 95% CIs):
+Compression did not reduce measured accuracy in these release benchmarks. Results below were measured with `gpt-4o-mini`; intervals are Wilson 95% confidence intervals.
 
 | Benchmark | n | Budget | Baseline (95% CI) | With Entroly (95% CI) | Retention | Token Savings |
 |---|---|---|---|---|---|---|
-| NeedleInAHaystack | 20 | 2K | 100% [83.9–100%] | 100% [83.9–100%] | **100.0%** | **99.5%** |
-| LongBench (HotpotQA) | 50 | 2K | 64.0% [50.1–75.9%] | 68.0% [54.2–79.2%] | **106.2%** | **85.3%** |
-| Berkeley Function Calling | 50 | 500 | 100% [92.9–100%] | 100% [92.9–100%] | **100.0%** | **79.3%** |
-| SQuAD 2.0 | 50 | 100 | 78.0% [64.8–87.2%] | 76.0% [62.6–85.7%] | **97.4%** | **39.3%** |
-| GSM8K | 100 | 50K | 85.0% [76.7–90.7%] | 86.0% [77.9–91.5%] | **101.2%** | pass-through¹ |
-| MMLU | 100 | 50K | 82.0% [73.3–88.3%] | 85.9% [77.8–91.4%] | **104.7%** | pass-through¹ |
-| TruthfulQA (MC1) | 100 | 50K | 72.0% [62.5–79.9%] | 73.7% [64.3–81.4%] | **102.4%** | pass-through¹ |
+| NeedleInAHaystack | 20 | 2K | 100% [83.9-100%] | 100% [83.9-100%] | **100.0%** | **99.5%** |
+| LongBench (HotpotQA) | 50 | 2K | 64.0% [50.1-75.9%] | 68.0% [54.2-79.2%] | **106.2%** | **85.3%** |
+| Berkeley Function Calling | 50 | 500 | 100% [92.9-100%] | 100% [92.9-100%] | **100.0%** | **79.3%** |
+| SQuAD 2.0 | 50 | 100 | 78.0% [64.8-87.2%] | 76.0% [62.6-85.7%] | **97.4%** | **39.3%** |
+| GSM8K | 100 | 50K | 85.0% [76.7-90.7%] | 86.0% [77.9-91.5%] | **101.2%** | pass-through¹ |
+| MMLU | 100 | 50K | 82.0% [73.3-88.3%] | 85.9% [77.8-91.4%] | **104.7%** | pass-through¹ |
+| TruthfulQA (MC1) | 100 | 50K | 72.0% [62.5-79.9%] | 73.7% [64.3-81.4%] | **102.4%** | pass-through¹ |
 
-> ¹ **pass-through**: Context already fits within budget — Entroly correctly does nothing. CIs overlap on all benchmarks — accuracy is statistically indistinguishable from baseline.
+> ¹ **pass-through**: Context already fits within budget, so Entroly leaves it unchanged. Results vary by model, dataset, prompt shape, and token budget.
 
-### Independently Verified — Self-Tested Results
+### Packaged Self-Test Results
 
 The core install and selection claims are checked against this repository itself (394 files, 901K tokens, Python/Rust/JS). Reproduce the packaged smoke check on any repo:
 
@@ -158,7 +190,7 @@ entroly verify-claims
 | **Token savings (32K budget)** | large-codebase selection should reduce context heavily | **96.7%** on this repo | ✅ Verified for this workload |
 | **Token savings (8K budget)** | tighter budgets should reduce more | **99.1%** on this repo | ✅ Verified for this workload |
 | **Token savings (average)** | workload-dependent | **87.0%** on this repo | ✅ Verified for this workload |
-| **Optimization latency** | local execution, usually tens of ms end-to-end | **18-46ms** observed in release checks | ✅ Verified |
+| **Optimization smoke latency** | local execution, benchmark separately for strict timing | emitted by `entroly verify-claims` and stored in `.entroly_verification.json` | ✅ Verified |
 | **Multi-language coverage** | 10+ project types | **9 file types** (py/rs/js/md/yml/json/toml/sh) | ✅ Verified |
 | **Entropy scoring** | Non-trivial | **0.07–0.90 range** | ✅ Verified |
 | **Source-type prioritization** | Code > config | **Code 133 vs Config 12** | ✅ Verified |
@@ -171,7 +203,7 @@ entroly verify-claims
 
 ### Trust Benchmark — Zero API Keys, Zero Network
 
-Five independent proofs that run in <2 seconds on any machine, no API keys required:
+Five local checks that run in <2 seconds on a typical development machine, no API keys required:
 
 ```bash
 python bench/trust_bench.py
@@ -199,21 +231,21 @@ python bench/repobench_retrieval.py --samples 50 --pool-size 200
 | BM25 (standard baseline) | **1.000** | **1.000** | **1.000** | 43.2 ms |
 | **Entroly** | **1.000** | **1.000** | **1.000** | **18.6 ms** |
 
-> Entroly matches BM25 perfectly at **2.3× lower latency** (18.6ms vs 43.2ms). n=50 queries, pool=200, dataset=CodeSearchNet/python. [![Reproduce](https://img.shields.io/badge/Reproduce-locally-blue)](bench/repobench_retrieval.py)
+> Entroly matched BM25 on this run at **2.3× lower latency** (18.6ms vs 43.2ms). n=50 queries, pool=200, dataset=CodeSearchNet/python. [![Reproduce](https://img.shields.io/badge/Reproduce-locally-blue)](bench/repobench_retrieval.py)
 
 ### LooGLE Head-to-Head — RAG Compression Quality ([ACL 2024](https://github.com/bigai-nlco/LooGLE))
 
 Apples-to-apples comparison at **identical 1,500 token budget**. Same LLM (gpt-4o-mini), same questions, same gold answers. n=30.
 
-| Method | F1 Score | Compress Latency | API Calls | Cost / 1k Queries |
+| Method | F1 Score | Compress Latency | API Calls | Illustrative cost / 1k queries |
 |---|---|---|---|---|
 | Baseline (Truncation) | 0.187 | 0 ms | 1 | $0.225 |
-| Agentic Pruning (2026 SOTA) | **0.570** | 10,632 ms | 2 | $3.609 |
+| Agentic Pruning baseline | **0.570** | 10,632 ms | 2 | $3.609 |
 | **Entroly** | 0.223 | **107 ms** | **1** | **$0.225** |
 
-> **The PM's Dilemma:** Agentic Pruning (using an LLM to filter context) gives incredible accuracy, but it adds **10.6 seconds of latency** and increases API costs by **1,500%**.
+> **The trade-off:** Agentic pruning (using an LLM to filter context) scored higher in this run, but it added **10.6 seconds of latency** and increased API costs by **1,500%**.
 >
-> **Entroly is the sweet spot:** It gives a massive **+19.2% F1 accuracy boost** over baseline truncation, executing locally in just 107ms with **$0 extra API cost**.
+> **Entroly's local path:** It improved F1 over baseline truncation by **+19.2%** in this run, executing locally in 107ms with no extra model call.
 >
 > [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/juyterman1000/entroly/blob/main/bench/colab_run.ipynb) ← One-click reproduction (Agentic Pruning vs Entroly, runs on H100 GPU)
 
@@ -229,23 +261,23 @@ Pure retrieval quality — no LLM calls, no API key, $0 cost. "Given a docstring
 | BM25 (standard baseline) | 0.980 | 0.995 | 0.987 | 56.7 ms |
 | **Entroly** | **0.990** | **0.995** | **0.993** | **28.1 ms** |
 
-> **Entroly beats BM25** — the standard retrieval baseline — on R@1 (+1.0%), MRR (+0.6%), at **half the latency** (28ms vs 57ms). n=200 queries, pool=500 distractors.
+> **On this run, Entroly scored above BM25** on R@1 (+1.0%) and MRR (+0.6%), at roughly half the latency (28ms vs 57ms). n=200 queries, pool=500 distractors.
 
 Reproduce: `python bench/repobench_retrieval.py --samples 200 --pool-size 500`
 
 ### How Entroly Compares (Long Context)
 
-Named methods, real citations. Long-context workloads where compression actually matters:
+Representative long-context approaches and their trade-offs:
 
 | Method | Retention | Token Reduction | Architecture / Trade-offs |
 |---|---|---|---|
-| **Entroly** | **100–106%** | **85–99%** | **Fast (~80ms).** Fragment-level knapsack preserves perfect verbatim structural fidelity. Works with any API. |
+| **Entroly** | **100–106% on these runs** | **85–99% on long-context runs** | **Fast local selection + compression.** High-priority fragments are preserved verbatim; lower-priority files are compressed to signatures or references. Works with APIs that can receive the optimized prompt. |
 | Agentic Context Pruning | ~100% | 70–90% | **Extremely slow.** Requires multiple LLM calls to filter context before the main query. High latency overhead. |
 | KV Cache Compression | ~98–99% | N/A (Cost reduction) | **Hardware bound.** Reduces memory footprint, but requires running local models. Doesn't work for OpenAI/Anthropic APIs. |
 | Token-level neural pruning | ~98–99% | 80–95% | **High overhead.** Runs BERT-base for token classification. Token-level dropping degrades code syntax. |
 | RAG-specific reranking | ~98% | 60–80% | **RAG-specific pruner.** Good retention but lower token reduction than Entroly. |
 
-*Note: SQuAD (~40% reduction, ~97% retention) is a short-context benchmark (150 token paragraphs). Entroly's true power (85%+ savings) unlocks on large contexts.*
+*Note: SQuAD (~40% reduction, ~97% retention) is a short-context benchmark (150 token paragraphs). Entroly shows the largest reductions on large-context workloads.*
 
 Reproduce: `python -m bench.accuracy --benchmark all --model gpt-4o-mini --samples 100`
 
@@ -256,22 +288,22 @@ python -m bench.accuracy --benchmark gsm8k --model llama-3.1-70b-versatile \
     --base-url https://api.groq.com/openai/v1 --api-key-env GROQ_API_KEY
 ```
 
-### SWE-bench Lite Hit Rate: Unlocking "Haiku as Opus"
+### SWE-bench Lite Retrieval Hit Rate
 
-Stop paying for hallucinated context. The single metric that separates toys from enterprise AI is **Retrieval Precision**: does your engine select the *exact* files that need to be modified? If retrieval is flawless, even a cheap, ultra-fast model (like Haiku or Flash) can resolve complex bugs just like the most expensive models on the market. If retrieval fails, you're just burning expensive tokens on dead ends.
+For coding agents, the first question is retrieval: did the context engine select the files that need to be modified? This benchmark measures whether Entroly captures SWE-bench Lite gold files in its selected context.
 
-**Entroly industry ceiling.**
+Measured on the local retrieval harness:
 
 | Metric | Result | Why It Matters |
 |---|---|---|
-| **Hit Rate** | **100.0%** (50/50 tasks) | **Zero Hallucination.** Every single required gold file was captured. |
-| Recall@5 | 42.0% | The perfect context is prioritized instantly. |
-| Recall@10 | 70.0% | Deep structural dependencies are never missed. |
-| Recall@20 | 90.0% | Sweeping architectural coverage without the token bloat. |
-| MRR | 0.420 | Top-ranked relevance that guides AI straight to the root cause. |
-| Latency | ~80ms / task | Blistering fast Rust execution. Zero bottleneck. |
+| **Hit Rate** | **100.0%** (50/50 tasks) | Each sampled task had at least one gold file captured. |
+| Recall@5 | 42.0% | Fraction of gold files found in the top 5. |
+| Recall@10 | 70.0% | Fraction of gold files found in the top 10. |
+| Recall@20 | 90.0% | Fraction of gold files found in the top 20. |
+| MRR | 0.420 | How early the first relevant file appears. |
+| Latency | ~80ms / task | Local retrieval latency in the benchmark harness. |
 
-> **Perfection Achieved:** Every single SWE-bench Lite task had its critical gold files successfully injected into the context window. Our revolutionary **Dual-IDF + Stratified Knapsack Selection (SKS)** algorithm systematically annihilates the "density trap." It mathematically guarantees that precision-matched architectural files are forcefully pinned—regardless of how many generic distractors try to pollute the context.
+> In this sample, every task had a required file represented in the selected context. This is a retrieval signal, not a guarantee that any specific model will solve every task.
 >
 > *Reproduce the breakthrough:* `python -m bench.swebench_retrieval --samples 50 --engine rust`
 
@@ -283,21 +315,24 @@ Run token cost checks in every PR — catch regressions before they ship:
 - uses: juyterman1000/entroly-cost-check-@v1
 ```
 
-→ **[entroly-cost-check GitHub Action](https://github.com/juyterman1000/entroly-cost-check-)**
+Local fallback:
+
+```yaml
+- name: Check Entroly token budget
+  run: pip install entroly && entroly batch --budget 8000 --fail-over-budget
+```
 
 ---
 
-## The Problem — Your AI Is Lying To You, And You're Paying For It
+## The Problem — AI Coding Tools Need Grounded Context
 
-Two things go wrong with AI coding tools today, and they cost you real money:
+Two things often go wrong with AI coding workflows:
 
-**1. Your AI makes things up.** It invents function names that don't exist in your code. It calls APIs that aren't real. It writes import statements for packages you've never installed. Your team spends hours fixing AI mistakes — code that looked right but was built on lies.
+**1. Unsupported claims look plausible.** Models can mention functions, APIs, files, or dependencies that are not present in the evidence they were given.
 
-**2. You're paying for AI to "read" code it never actually sees.** Every request sends ~186,000 tokens to the AI, but the AI can only really focus on a tiny slice. The rest is wasted — duplicated boilerplate, unread comments, expensive noise. Bigger AI models don't fix this — they make it *worse* by charging more per token.
+**2. Large repos waste context budget.** Raw dumps include duplicated boilerplate, generated files, and low-signal text that crowd out the files the model actually needs.
 
-> **Entroly fixes both in about 30 seconds.** On large codebases, it can shrink what you send the AI by 70-95% depending on budget and workload, and traces answers back to lines of code in your repo. You see exactly which files the AI looked at and which words came from where.
-
-— *A small team spending $15K/month on AI typically saves $10K–$14K in the first month. Open source. Free.*
+> Entroly addresses both locally: it selects compact, explainable repo context under a token budget, and WITNESS can audit model outputs against supplied evidence.
 
 ---
 
@@ -305,27 +340,14 @@ Two things go wrong with AI coding tools today, and they cost you real money:
 
 | Metric | Before Entroly | **After Entroly** |
 |---|---|---|
-| Files visible to AI | 5–10 | **Your entire codebase** |
-| Tokens per request | ~186,000 | **9,300 – 55,000** |
-| Monthly AI spend (at 1K req/day) | ~$16,800 | **$840 – $5,040** |
-| AI answer accuracy | Incomplete, often hallucinated | **Dependency-aware, correct** |
-| Developer time fixing AI mistakes | Hours/week | **Near zero** |
+| Files visible to AI | 5–10 | **Supported files selected at variable resolution** |
+| Tokens per request | ~186,000 raw example | **9,300 – 55,000 in listed release examples** |
+| Monthly AI spend (at 1K req/day) | depends on provider/model | **lower when input tokens drop** |
+| AI answer grounding | depends on supplied context | **auditable against selected evidence** |
+| Review burden | manual inspection | **certificate/evidence snippets available** |
 | Setup | Days of prompt engineering | **30 seconds** |
 
-> **ROI example:** A 10-person team spending $15K/month on AI API calls saves **$10K–$14K/month** on day 1. Entroly pays for itself in the first hour. (It's free and open-source, so it actually pays for itself instantly.)
-
----
-
-## What Your Competitors Already Know
-
-The teams adopting Entroly today aren't just saving money — they're **compounding an advantage** your team can't catch up to.
-
-- **Week 1:** Their AI sees 100% of their codebase. Yours sees 5%. They ship faster.
-- **Month 1:** Their runtime has learned their codebase patterns. Yours is still hallucinating imports.
-- **Month 3:** Their installation is plugged into the federation — absorbing optimization strategies from thousands of other teams worldwide. Yours doesn't know this exists.
-- **Month 6:** They've saved $80K+ in API costs. That budget went into hiring. You're still explaining to finance why the AI bill keeps growing.
-
-Every day you wait, the gap widens. The federation effect means **early adopters get smarter faster** — and that advantage compounds.
+> Savings depend on repo size, query breadth, model pricing, and budget. Run `entroly demo` or `entroly verify-claims` on your own repository for local measurements.
 
 ---
 
@@ -342,16 +364,25 @@ entroly wrap claude       # Claude Code
 entroly wrap cursor       # Cursor
 entroly wrap codex        # Codex CLI
 entroly wrap aider        # Aider
-entroly wrap copilot      # GitHub Copilot
 ```
 
 Or use the proxy — zero code changes, any language:
 
 ```bash
 entroly proxy --port 9377
-ANTHROPIC_BASE_URL=http://localhost:9377 your-app
-OPENAI_BASE_URL=http://localhost:9377/v1 your-app
+ANTHROPIC_BASE_URL=http://localhost:9377        your-app
+OPENAI_BASE_URL=http://localhost:9377/v1        your-app
+GEMINI_BASE_URL=http://localhost:9377/v1beta    your-app
 ```
+
+> **Why the different path suffixes?** They are *not* arbitrary tags. Each
+> SDK appends its provider's real API path to its base URL, and the proxy
+> routes by that path to the matching upstream: the Anthropic SDK calls
+> `/v1/messages` (so the base URL has no suffix), the OpenAI SDK calls
+> `/v1/chat/completions` or `/v1/responses` (base URL ends in `/v1`), and
+> the Gemini SDK calls `/v1beta/models/...` (base URL ends in `/v1beta`).
+> Use the suffix that matches the SDK you're pointing at the proxy; one
+> proxy handles all three concurrently.
 
 Drop it into your own code — two lines:
 
@@ -367,16 +398,16 @@ messages = compress_messages(messages, budget=30000)
 
 **Here's what entroly actually does, in plain English:**
 
-1. **Reads your whole codebase** in under 2 seconds — every file, every folder.
+1. **Reads your codebase locally** — every supported source file, config file, and document that passes the file filters.
 2. **Figures out what matters** for your specific question (e.g. "fix this login bug" → pulls the auth files, ignores the marketing copy).
 3. **Sends only the relevant parts** to your AI — a small, targeted bundle instead of a 200,000-token data dump.
-4. **Watches what your AI says back** — every function name, every API call, every line of code — and traces each one to the file it came from.
-5. **Flags anything the AI made up** — if a function name doesn't exist in your repo, you see it in red before it ships.
-6. **Gets smarter every day** — learns which files matter for your team's workflow and uses that to make better picks next time.
+4. **Can audit what your AI says back** — WITNESS checks factual claims against supplied evidence and records proof certificates.
+5. **Flags unsupported claims** — unsupported or contradicted claims can be annotated, suppressed, or audited depending on profile.
+6. **Learns from local feedback** — PRISM updates ranking weights when feedback signals are available.
 
 For C# and Unity projects, belief compilation uses the official Roslyn semantic model through a bundled .NET analyzer. Unity `.asmdef` files define assembly names, root namespaces, assembly references, GUID-based references, platform metadata, version/define metadata, precompiled reference metadata, and diagnostics for metadata Entroly records but does not execute as Unity Editor compiler behavior; Roslyn symbols provide the type and member signatures written into the vault.
 
-> **The result for you:** Your AI can draw from your whole project instead of a few open files, with a smaller selected context. On large repos, that often means 70-95% fewer input tokens; on small repos or short prompts, savings are naturally lower.
+> **The result for you:** Your AI can draw from a broader project map instead of a few open files, with a smaller selected context. Release checks measured 70-95% fewer input tokens on large-repo workloads; on small repos or short prompts, savings are naturally lower.
 
 <sub>*Want the math? <a href="#works-with-your-stack">Skip to the technical details</a> or read <a href="docs/DETAILS.md">docs/DETAILS.md</a> for the full algorithmic spec (BIPT, NKBE, Causal Context Graph, Resonance Matrix, and more).*</sub>
 
@@ -467,19 +498,19 @@ Entroly auto-detects Python, JS/TS, Rust, Go, Java, Ruby, C/C++, and 10+ other p
 
 ### Context Scaffolding Engine (CSE): structural maps for smaller models
 
-Small, fast models (like Claude Haiku or Gemini Flash) are incredibly smart, but they struggle on large codebases because they cannot easily infer cross-file relationships from raw code chunks alone.
+Small, fast models can struggle on large codebases because they may miss cross-file relationships in raw code chunks.
 
-Entroly's new **Context Scaffolding Engine (CSE)** fixes this architectural blind spot. Backed by 6 state-of-the-art 2025/2026 research papers (including *Graph Retrieval Augmented Code Generation* and *Small-to-Large Prompt Prediction*), CSE dynamically extracts your codebase's dependency graph across 6 languages. It then injects a minimal, ~200-token structural preamble *before* the code context, explicitly mapping out imports, definitions, test coverage, and entry points.
+Entroly's **Context Scaffolding Engine (CSE)** addresses this by extracting dependency-graph cues across supported languages. It then injects a compact structural preamble before the code context, mapping imports, definitions, test coverage, and entry points when available.
 
 The result is not magic model equivalence; it is cheaper structure. CSE gives smaller models explicit dependency cues that are easy to miss in raw snippets. On scaffold-friendly code tasks, that can reduce the amount of "just in case" context while improving grounding. On judgment-heavy tasks, use a stronger model.
 
-### RAVS — Your AI Learns Which Tasks It Can Do Cheaper. Automatically.
+### RAVS — Guarded Cheaper-Model Routing
 
-Entroly compresses your context. **RAVS cuts your model bill on top of that — and gets better every day you use it.**
+Entroly compresses your context. **RAVS can also evaluate whether repeated low-risk task classes are safe candidates for cheaper models.**
 
-You use Opus or Sonnet for everything because switching models mid-session is friction. But many turns are simple: reading a file, checking a log, running tests, formatting code. Using a flagship model for these can be unnecessary spend.
+Many turns are simple: reading a file, checking a log, running tests, formatting code. Using a flagship model for these can be unnecessary spend.
 
-RAVS watches honest outcomes and can be enabled as a guarded proxy router. Once the math proves a task type is safe to route cheaper, it can route that task class down:
+RAVS watches honest outcomes and can be enabled as a guarded proxy router. Once local evidence passes the configured gate for a low-risk task class, it can route that task class down:
 
 ```
 You type: "run the tests"
@@ -487,32 +518,32 @@ You type: "run the tests"
   Entroly intercepts the request
              ↓
   RAVS checks confidence for this task type:
-    → test/pytest: 30 real observations, 100% pass rate
-    → 95% CI = [0.98, 1.00]  ← actual live data from this repo
-    → lower bound 0.98 > threshold 0.80 ✓
+    → repeated low-risk task class
+    → enough local outcomes to pass the configured gate
+    → lower confidence bound > threshold
              ↓
-  Eligible proxy request: Opus ($75/M) → Haiku ($4/M)
+  Eligible proxy request: stronger model → cheaper configured model
              ↓
-  Same task class, cheaper model, fail-closed escalation if confidence drops.
+  Same task class, cheaper model, original-model fallback if confidence drops.
 ```
 
-> Those numbers aren't made up. They're from 30 real `pytest` runs captured while building Entroly — zero failures, confidence interval lower bound 0.98. RAVS built that table automatically, just by watching the work happen.
+> Inspect your own local evidence with `entroly ravs report`. Routing should stay disabled when sample sizes are small, task risk is high, or the confidence gate does not pass.
 
 **How it works:**
 1. Add one hook to `.claude/settings.json` — RAVS starts watching silently
 2. Use your tools normally — every pass/fail outcome is recorded locally
-3. When the math proves a task type is reliably cheap, routing activates
-4. If quality ever drops, it auto-escalates back to the flagship model immediately
+3. When local evidence passes the configured gate, routing can activate
+4. If confidence drops or the request is high-risk, the original model handles it
 
 **The numbers:**
 
 | | Opus | Haiku (RAVS-routed) | Savings |
 |---|---|---|---|
-| Output cost / M tokens | $75.00 | $4.00 | **95%** |
-| Typical heavy session | $5–20 | $0.25–1.00 | **$4.75–19.00** |
-| Monthly (daily use) | $150–600 | $7.50–30 | **$140–570/dev** |
+| Output cost / M tokens | higher | lower | provider-dependent |
+| Typical repeated simple task | flagship model | cheaper configured model | measured locally |
+| Monthly usage | varies | varies | inspect `entroly ravs report` |
 
-100% fail-closed. If data is sparse, the task is high-risk (`security`, `auth`), confidence is low, or the proxy cannot safely rewrite the provider request, the original model handles it. RAVS never guesses.
+Fail-closed by design: if data is sparse, the task is high-risk (`security`, `auth`), confidence is low, or the proxy cannot safely rewrite the provider request, the original model handles it.
 
 ```bash
 # See what RAVS has learned about your workflow
@@ -522,83 +553,71 @@ entroly ravs report
 entroly ravs report --since 7d
 ```
 
-### It Gets Smarter Without Costing You More
+### Local Learning Without Extra Model Calls
 
-Most "self-improving" AI tools burn tokens to learn — your bill grows with their intelligence. Entroly's learning loop is **provably token-negative**: it cannot spend more on learning than it saves you.
+Most of Entroly's ranking and feedback loops run locally. They do not require an embeddings API, fine-tuning job, or model call.
 
-The math is simple and auditable:
-
-```
-Learning budget ≤ 5% × Lifetime savings
-```
-
-Day 1: 70% token savings. Day 30: 85%+. Day 90: 90%+. **The improvement costs you $0.**
-
-### 🌐 Federated Swarm Learning — The Part That Sounds Like Science Fiction
-
-Now take the Dreaming Loop and multiply it by **every developer on Earth who runs Entroly.**
-
-While you sleep, your daemon dreams — and so do 10,000 others. Each one discovers slightly different tricks for compressing code. Each one shares what it learned — anonymously, privately, no code ever leaves your machine. Each one absorbs what the others found.
-
-**You wake up. Your AI is smarter than when you left it. Not because of anything you did — because of what the swarm dreamed.**
+When optional synthesis or networked learning is enabled, it is intended to be budget-gated:
 
 ```
-Your daemon dreams → discovers a better strategy → shares it (anonymously)
-     ↓
-10,000 other daemons did the same thing last night
-     ↓
-You open your laptop → your AI already absorbed all of it
+Learning budget target ≤ 5% × lifetime savings
 ```
 
+By default, local context selection and dashboard metrics are enough to measure whether Entroly is helping on your workload.
 
-**Network effect:**
-- Every new user makes everyone else's AI better — that installed base can't be forked
-- Your code never moves. Only optimization weights — noise-protected and anonymous
-- Infrastructure cost: **$0**. It runs on GitHub. No servers. No GPUs. No cloud
+### Federated Learning — Experimental and Opt-In
+
+Federation is optional. It is designed to share anonymous optimization weights, not code.
+
+- Your code should not leave your machine.
+- Shared payloads are optimization statistics/weights.
+- Enable only if you want to participate in cross-install learning experiments.
 
 ```bash
-# Opt-in — your choice, always
 export ENTROLY_FEDERATION=1
 ```
 
-### ✂️ Response Distillation — Save Tokens on Output Too
+### Response Distillation — Save Tokens on Output Too
 
-LLM responses contain ~40% filler — "Sure, I'd be happy to help!", hedging, meta-commentary. Entroly strips it. Code blocks are never touched.
+LLM responses often include greetings, hedging, and meta-commentary. Entroly can strip common filler from prose while leaving code blocks untouched.
 
 ```
 Before: "Sure! I'd be happy to help. Let me take a look at your code.
          The issue is in the auth module. Hope this helps!"
 
 After:  "The issue is in the auth module."
-         → 70% fewer output tokens
+         → fewer output tokens
 ```
 
 Three intensity levels: `lite` → `full` → `ultra`. Enable with one env var.
 
-### 🔒 Runs Locally. Your Code Never Leaves Your Machine.
+### Local Indexing; Provider Requests Stay Under Your Control
 
-Zero cloud dependencies for local indexing, selection, verification, and dashboards. Core scoring paths are local and fast; full end-to-end optimization commonly runs in tens of milliseconds depending on repo size and engine mode. Works in air-gapped and regulated environments when you do not enable optional network integrations.
+Local indexing, selection, deterministic verification, and dashboards do not require a cloud service. If you proxy a cloud AI provider, that provider still receives the selected prompt content you send through Entroly. Core scoring paths are local and fast; full end-to-end optimization commonly runs in tens of milliseconds depending on repo size and engine mode. Air-gapped use is possible when you use only local/offline commands and local model endpoints.
 
 ---
 
 <a id="works-with-your-stack"></a>
 
-## Works With Your Stack — 38 Agent Wrappers, One Command
+## Works With Your Stack — Supported Integrations
 
-`entroly wrap <agent>` does the right thing for every tool. Three integration kinds, picked automatically:
+`entroly wrap <agent>` uses the best available integration path for each supported tool. Use wrappers only with tools and accounts whose terms permit local MCP servers, custom endpoints, or compatible proxy configuration.
 
-- **CLI agents** — entroly starts the proxy, sets the right env var, exec's the binary. Zero config files touched.
+Third-party product names are used only to describe compatibility. Entroly is not affiliated with, sponsored by, or endorsed by those providers unless explicitly stated.
+
+- **CLI agents** — for tools with supported custom endpoint variables, entroly starts the proxy, sets the endpoint, and execs the binary. Some tools may require their own provider config instead.
 - **MCP-aware IDEs** — entroly auto-merges its MCP server into the IDE's `mcp.json` (with a `.entroly-backup` of any prior config). Restart the IDE.
 - **Other IDEs** — entroly prints a copy-paste-ready snippet with the exact file path and field to set.
 
 ### CLI agents (env-wrap, exec)
+
+These wrappers are compatibility helpers, not endorsements by the tool vendors. If a vendor CLI does not honor custom endpoint environment variables in your installed version, configure Entroly through that tool's documented provider settings or use MCP instead.
 
 | Agent | Command |
 |---|---|
 | Claude Code | `entroly wrap claude` |
 | OpenAI Codex CLI | `entroly wrap codex` |
 | Aider | `entroly wrap aider` |
-| GitHub Copilot CLI | `entroly wrap copilot` |
 | Gemini CLI | `entroly wrap gemini` |
 | Qwen Code | `entroly wrap qwen` |
 | OpenCode | `entroly wrap opencode` |
@@ -615,8 +634,9 @@ Zero cloud dependencies for local indexing, selection, verification, and dashboa
 |---|---|---|
 | Cursor | `entroly wrap cursor` | `.cursor/mcp.json` |
 | Windsurf | `entroly wrap windsurf` | `.windsurf/mcp.json` |
-| VS Code (Copilot Chat / MCP) | `entroly wrap vscode` | `.vscode/mcp.json` |
+| VS Code MCP clients | `entroly wrap vscode` | `.vscode/mcp.json` |
 | Claude Desktop | `entroly wrap claude-desktop` | OS-specific Claude config dir |
+| Claude Code (MCP mode) | `entroly wrap claude-code` | Claude Code MCP config |
 | Zed | `entroly wrap zed` | `~/.config/zed/settings.json` |
 
 ### Other IDEs (copy-paste snippet)
@@ -630,67 +650,41 @@ Zero cloud dependencies for local indexing, selection, verification, and dashboa
 | Continue | `continue` |
 | Sourcegraph Cody | `cody` |
 | Sourcegraph Amp | `amp` |
+| Kiro | `kiro` |
 | Qoder | `qoder` |
 | Trae | `trae` |
 | Antigravity | `antigravity` |
 | Amazon Q Developer | `amazonq` |
 | Verdent | `verdent` |
-| Kiro (AWS) | `kiro` |
+| JetBrains AI Assistant | `jetbrains` |
 | Helix | `helix` |
 | Tabby | `tabby` |
 | Twinny | `twinny` |
-| Fitten Code | `fittencode` |
-| Tabnine Enterprise | `tabnine` |
-| Supermaven | `supermaven` |
 | Sublime Text | `sublime` |
 | Emacs (gptel / aider.el) | `emacs` |
 | Neovim (avante / codecompanion) | `neovim` |
-| JetBrains AI / Junie | `jetbrains` |
+| Fitten Code | `fittencode` |
+| Tabnine Enterprise | `tabnine` |
+| Supermaven | `supermaven` |
 
-### Autonomous cloud agents (HTTP proxy)
+### Any agent that supports custom base URLs
 
-Entroly's proxy intercepts LLM API calls — these agents work automatically when pointed at `localhost:9377`:
+Entroly's proxy (`localhost:9377`) works with tools that let you override their API endpoint. If your agent supports `OPENAI_BASE_URL`, `ANTHROPIC_BASE_URL`, `GOOGLE_GEMINI_BASE_URL`, or similar documented settings, point it at the proxy and test the workflow with your provider/model.
 
-| Agent | What it is |
-|---|---|
-| Devin (Cognition) | Fully autonomous AI software engineer |
-| Jules (Google) | Async agent: clones repo, plans, executes, opens PR |
-| GitHub Copilot Workspace | Cloud-based multi-file changes from GitHub issues |
-| Sweep | GitHub app that turns issues into PRs |
-| Factory AI | Cloud-based autonomous coding agents platform |
-| Replit Agent | Cloud IDE agent that plans, writes, tests, deploys |
-
-### AI app builders (HTTP proxy)
-
-| Agent | What it is |
-|---|---|
-| v0 (Vercel) | AI React/UI component generator |
-| Bolt (StackBlitz) | Browser-based AI app builder |
-| Lovable | Full-stack AI app builder |
-| Pythagora | AI app generation from natural language specs |
-
-### Code review agents (HTTP proxy / CLI wrap)
-
-| Agent | What it is |
-|---|---|
-| Qodo (CodiumAI) | Multi-agent code review: bugs, security, test gaps |
-| CodeRabbit | AI PR reviewer with inline comments |
-| Greptile | Independent AI code review, Claude Code plugin |
-| Snyk | AI-powered security scanning |
-| CodeAnt AI | Automated code review and quality |
+> **Cloud-hosted agents** (Devin, Jules, Replit Agent, etc.) run in the vendor's cloud, not on your machine. Check your provider's documentation to see if they support custom base URLs before attempting to proxy through entroly. Always review the provider's Terms of Service.
 
 ### Library / framework integration
 
 | Use case | One-liner |
 |---|---|
-| **Any LLM API** | `entroly proxy` → HTTP proxy on `localhost:9377` |
+| **LLM APIs with compatible base-URL configuration** | `entroly proxy` → HTTP proxy on `localhost:9377` |
 | **LangChain / LlamaIndex / your code** | `from entroly import compress, compress_messages` |
 | **Nous Hermes (Local/ChatML)** | `from entroly.integrations.hermes import safe_compress_hermes` |
 | **CI / token-budget gate** | `entroly batch --budget 8000 --fail-over-budget` |
 
 Third-party providers keep their own protocol shape while Entroly injects optimized context. Set `ENTROLY_STRICT_OPTIMIZATION=1` when optimization failures should fail the request explicitly.
 
-Also: OpenAI API · Anthropic API · Google Vertex · AWS Bedrock · Groq · Together · OpenRouter · Ollama · vLLM · Poolside · 100+ models.
+Also: OpenAI-compatible APIs, Anthropic-compatible clients, OpenRouter, Ollama, vLLM, and other providers/tools that allow compatible endpoint configuration.
 
 > Don't see your tool? `entroly wrap` (no agent) prints the full grouped list, and the [Cookbook](cookbook/README.md) has copy-paste recipes for the most common workflows.
 
@@ -700,26 +694,26 @@ Also: OpenAI API · Anthropic API · Google Vertex · AWS Bedrock · Groq · Tog
 
 ## Compared to
 
-Entroly **selects** the right context. Other tools **compress** or **truncate** whatever you give them. Selection beats compression — always.
+Entroly **selects and compresses** context. The difference is ordering: it ranks the repo first, then compresses lower-priority material to signatures or references instead of blindly compressing/truncating whatever was provided.
 
 | | **Entroly** | Compression tools | Top-K / RAG | Raw truncation |
 |---|---|---|---|---|
-| **Approach** | Information-theoretic selection | Text compression | Embedding retrieval | Cut-off |
-| **Token savings** | **Workload-dependent; 70-95% on large repos in release checks** | 50–70% | 30–50% | 0% |
-| **Quality loss** | **0%** (benchmark-verified) | 2–5% | Variable | High |
+| **Approach** | Information-theoretic selection + compression | Text compression | Embedding retrieval | Cut-off |
+| **Token savings** | **Tested 70-95% on large-repo release checks; workload-dependent** | 50–70% | 30–50% | 0% |
+| **Quality loss** | **No measured loss in listed release checks** | 2–5% | Variable | High |
 | **Multi-resolution** | **Full / Skeleton / Reference** | One-size | One-size | One-size |
 | **Learns over time** | **Yes (PRISM RL)** | No | No | No |
 | **Latency** | **Local; commonly tens of ms end-to-end** | 50–200ms | 100–500ms | 0ms |
 | **Reversible** | **Yes** — full content always retrievable | Varies | Yes | No |
 | **Runs locally** | **Yes** | Varies | Varies | Yes |
 
-> **Why selection > compression:** Compressing a bad selection is still a bad selection. Entroly picks the *right* files first, then delivers them at the *right* resolution. The AI gets architectural understanding, not just fewer tokens.
+> **Why selection + compression matters:** Compressing a bad selection is still a bad selection. Entroly ranks files first, then compresses or preserves them at a resolution appropriate to the budget. The AI receives structural context, not just fewer tokens.
 
 ---
 
 ## Watch It Run — Live Notifications
 
-Three chat integrations ship in the box. See every gap detection, skill synthesis, and dream-cycle win in real-time:
+Three chat integrations ship in the box. They can report selected gap detections, skill synthesis events, and dream-cycle changes in real time:
 
 ```bash
 export ENTROLY_TG_TOKEN=...          # Telegram (2-way: /status /skills /gaps /dream)
@@ -738,13 +732,13 @@ node node_modules/entroly-wasm/js/agentskills_export.js ./dist/agentskills
 python -m entroly.integrations.agentskills ./dist/agentskills
 ```
 
-Every exported skill carries `origin.token_cost: 0.0` — the zero-cost provenance travels with it.
+Structurally synthesized exports carry `origin.token_cost: 0.0`, so zero-token provenance travels with those skills.
 
 ---
 
-## Full Parity: Python & Node.js
+## Python and Node.js Surfaces
 
-Both runtimes are feature-complete. Same engine, same vault, same learning loop:
+Python is the reference CLI/runtime. The Node.js WASM package exposes the Rust engine and a matching surface for core workflows; check command help for feature-specific availability:
 
 | Capability | Python | Node.js (WASM) |
 |---|---|---|
@@ -760,12 +754,12 @@ Both runtimes are feature-complete. Same engine, same vault, same learning loop:
 
 ## Deep Dive
 
-Architecture, 21 Rust modules, 3-resolution compression, provenance guarantees, RAG comparison, full CLI reference, Python SDK, LangChain integration → **[docs/DETAILS.md](docs/DETAILS.md)**
+Architecture, Rust modules, 3-resolution compression, provenance model, RAG comparison, CLI reference, Python SDK, LangChain integration → **[docs/DETAILS.md](docs/DETAILS.md)**
 
 ---
 
 <p align="center">
-  <b>Stop paying for tokens your AI wastes. Start running an AI that teaches itself.</b><br/>
+  <b>Measure and reduce wasted context tokens with local, evidence-aware tooling.</b><br/>
   <code>npm install entroly-wasm && npx entroly-wasm</code>&nbsp;&nbsp;|&nbsp;&nbsp;<code>pip install entroly && entroly go</code>
 </p>
 

@@ -36,6 +36,34 @@ def test_dashboard_snapshot_reports_proxy_base_url(monkeypatch):
     assert snapshot["proxy_base_url"] == "http://127.0.0.1:9377/openai"
 
 
+def test_dashboard_witness_snapshot_uses_proxy_base_url_port(monkeypatch):
+    requested_urls: list[str] = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        @staticmethod
+        def read() -> bytes:
+            return b'{"count":0,"items":[],"feedback":{}}'
+
+    def fake_urlopen(url: str, timeout: float):
+        requested_urls.append(url)
+        return FakeResponse()
+
+    monkeypatch.setattr(dashboard, "_proxy_base_url", "http://127.0.0.1:9444/openai")
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    snapshot = dashboard._fetch_witness_snapshot()
+
+    assert requested_urls == ["http://127.0.0.1:9444/witness?limit=8"]
+    assert snapshot["proxy_port"] == 9444
+    assert snapshot["available"] is True
+
+
 @pytest.mark.anyio
 async def test_proxy_health_reports_runtime_identity(monkeypatch, tmp_path):
     monkeypatch.setenv("ENTROLY_SOURCE", str(tmp_path))

@@ -84,6 +84,7 @@ class ModuleMap:
     auto_referenced: bool = True
     allow_unsafe_code: bool = False
     diagnostics: list[str] = field(default_factory=list)
+    analysis_completeness: str = ""
     derived_from: list[str] = field(default_factory=list)
 
 
@@ -445,7 +446,7 @@ class BeliefCompiler:
     # Directories to skip
     SKIP_DIRS = {
         "__pycache__", "node_modules", ".git", ".hg", "target",
-        "dist", "build", "Library", "Temp", "Logs", "UserSettings",
+        "dist", "build", "bin", "obj", "Library", "Temp", "Logs", "UserSettings",
         ".tox", ".pytest_cache", ".mypy_cache",
         "venv", ".venv", "env", ".env",
     }
@@ -668,6 +669,7 @@ class BeliefCompiler:
                 f"{diagnostic.severity}:{diagnostic.code}:{diagnostic.message}"
                 for diagnostic in module.diagnostics
             ],
+            analysis_completeness=module.analysis_completeness,
             derived_from=["belief_compiler", "roslyn", "unity_asmdef"],
         )
 
@@ -727,6 +729,8 @@ class BeliefCompiler:
             body_parts.append("**Unity auto referenced:** false")
         if module.allow_unsafe_code:
             body_parts.append("**Unity allow unsafe code:** true")
+        if module.analysis_completeness:
+            body_parts.append(f"**Analysis completeness:** {module.analysis_completeness}")
         body_parts.append(f"**Lines of code:** {module.loc}")
         body_parts.append("")
 
@@ -838,9 +842,10 @@ class BeliefCompiler:
     def _walk_source_files(self, root: Path, max_files: int) -> list[Path]:
         """Walk and yield source files. max_files <= 0 means unlimited."""
         unlimited = max_files is None or max_files <= 0
+        skip_dirs = {name.casefold() for name in self.SKIP_DIRS}
         files = []
         for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = [d for d in dirnames if d not in self.SKIP_DIRS]
+            dirnames[:] = [d for d in dirnames if d.casefold() not in skip_dirs]
             for fn in filenames:
                 if Path(fn).suffix.lower() in self.SUPPORTED_EXTENSIONS:
                     files.append(Path(dirpath) / fn)

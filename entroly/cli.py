@@ -24,6 +24,7 @@ Commands:
     entroly role        Role-based weight presets (frontend/backend/sre/data)
     entroly completions Generate shell completion scripts
     entroly ravs        RAVS offline evaluation (report)
+    entroly witness     Verify or suppress hallucinated factual claims
 """
 
 from __future__ import annotations
@@ -41,7 +42,7 @@ from pathlib import Path
 try:
     from entroly import __version__
 except ImportError:
-    __version__ = "0.19.2"
+    __version__ = "0.19.4"
 
 from .codex_integration import prepare_codex_wrap, resolve_openai_proxy_route
 from .launching import resolve_launch_cmd, resolve_python_cmd
@@ -288,15 +289,35 @@ def _check_for_update() -> None:
     cache_file = _ENTROLY_DIR / ".update_check"
     now = __import__("time").time()
 
+    def _newer_version(candidate: object) -> str | None:
+        latest = str(candidate or "").strip()
+        if not latest or latest == __version__:
+            return None
+        def _parts(value: str) -> tuple[int, ...]:
+            head = value.split("-", 1)[0].split("+", 1)[0]
+            parts: list[int] = []
+            for item in head.split("."):
+                if not item.isdigit():
+                    break
+                parts.append(int(item))
+            return tuple(parts)
+
+        latest_parts = _parts(latest)
+        current_parts = _parts(__version__)
+        if latest_parts and current_parts:
+            return latest if latest_parts > current_parts else None
+        return latest if latest > __version__ else None
+
     # Only check once per 24 hours
     try:
         if cache_file.exists():
             data = json.loads(cache_file.read_text())
             if now - data.get("ts", 0) < 86400:
-                if data.get("newer"):
+                newer = _newer_version(data.get("newer"))
+                if newer:
                     print(
                         f"  {C.YELLOW}Update available:{C.RESET} "
-                        f"{__version__} -> {data['newer']}  "
+                        f"{__version__} -> {newer}  "
                         f"{C.GRAY}(pip install --upgrade entroly){C.RESET}",
                         file=sys.stderr,
                     )
@@ -316,17 +337,7 @@ def _check_for_update() -> None:
             pypi = json.loads(resp.read())
             latest = pypi.get("info", {}).get("version", __version__)
 
-            # Simple version comparison (works for semver)
-            newer = None
-            if latest != __version__:
-                from packaging.version import Version
-                try:
-                    if Version(latest) > Version(__version__):
-                        newer = latest
-                except Exception:
-                    # packaging not installed — fall back to string compare
-                    if latest > __version__:
-                        newer = latest
+            newer = _newer_version(latest)
 
             _ENTROLY_DIR.mkdir(parents=True, exist_ok=True)
             cache_file.write_text(json.dumps({"ts": now, "newer": newer}))
@@ -428,7 +439,7 @@ def _detect_ai_tool() -> dict:
             "config_key": "mcpServers",
         })
 
-    # VS Code (Copilot, Cline, etc.)
+    # VS Code MCP-compatible assistants (Cline, Roo, Continue, etc.)
     if os.path.exists(os.path.join(cwd, ".vscode")):
         tools.append({
             "name": "VS Code",
@@ -835,6 +846,14 @@ def cmd_proxy(args):
         config.quality = quality_val
         config._apply_quality_dial(quality_val)
         config._apply_explicit_env_overrides()
+    if getattr(args, "witness", None) is not None:
+        config.witness_mode = args.witness
+    if getattr(args, "witness_nli", False):
+        config.witness_use_nli = True
+    if getattr(args, "witness_embed", False):
+        config.witness_embed = True
+    if getattr(args, "witness_profile", None):
+        config.witness_profile = args.witness_profile
 
     # Initialize engine + auto-index codebase (non-blocking for large repos)
     engine = EntrolyEngine()
@@ -1539,7 +1558,7 @@ _WRAP_AGENTS = {
     "gemini": {
         "kind": "cli", "name": "Gemini CLI",
         "cmd": ["gemini"],
-        "env_key": "GEMINI_BASE_URL",
+        "env_key": "GOOGLE_GEMINI_BASE_URL",
         "env_val": "http://localhost:{port}/v1beta",
     },
     "qwen": {
@@ -1593,9 +1612,9 @@ _WRAP_AGENTS = {
         "post_hint": "Restart Windsurf. Cascade will auto-discover the entroly tools.",
     },
     "vscode": {
-        "kind": "mcp", "name": "VS Code (MCP / Copilot Chat)",
+        "kind": "mcp", "name": "VS Code MCP clients",
         "config_path": "{cwd}/.vscode/mcp.json",
-        "post_hint": "Reload VS Code window. Copilot Chat 1.95+ and the MCP extension will pick this up.",
+        "post_hint": "Reload VS Code. MCP-compatible clients will pick this up.",
     },
     "claude-desktop": {
         "kind": "mcp", "name": "Claude Desktop",
@@ -1872,6 +1891,177 @@ def _start_proxy_daemon(port: int, env: dict[str, str]) -> bool:
     return False
 
 
+# ── Preflight + watchdog for CLI wraps (gh#44) ───────────────────────
+#
+# Some CLIs silently ignore the OPENAI_BASE_URL override we set, so the
+# proxy never sees their traffic and the dashboard stays empty — the
+# user just sees "nothing is tracked" with no explanation.
+#
+# Defense in depth, fail-open:
+#   • Preflight  — predictive. Inspects the tool's own auth/config and
+#                  prints likely causes + exact fixes BEFORE launch.
+#                  Never blocks: a wrong heuristic must not break a
+#                  working `wrap`. Read-only; never raises.
+#   • Watchdog   — empirical ground truth. Snapshots the proxy's request
+#                  counter around the session; if the agent exits having
+#                  sent the proxy zero requests, prints the remediation.
+#                  Catches every cause, including ones not enumerated.
+#
+# Codex schema verified against openai/codex source (auth.rs AuthDotJson,
+# config-reference): auth.json keys are `auth_mode` (canonical),
+# `OPENAI_API_KEY`, `tokens`; the config key is `forced_login_method`
+# (values chatgpt|api), and `model_provider` defaults to "openai".
+
+
+def _read_codex_config(codex_home: Path) -> dict:
+    """Best-effort parse of ~/.codex/config.toml. Never raises."""
+    cfg_path = codex_home / "config.toml"
+    if not cfg_path.exists():
+        return {}
+    try:
+        raw = cfg_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {}
+    # Prefer a real TOML parser (py3.11+ stdlib `tomllib`, or `tomli`).
+    for mod_name in ("tomllib", "tomli"):
+        try:
+            import importlib
+            return importlib.import_module(mod_name).loads(raw)
+        except ModuleNotFoundError:
+            continue
+        except Exception:
+            return {}  # malformed TOML — treat as unknown, don't crash
+    # py3.10 without tomli: scrape only the two top-level scalars we need.
+    import re
+    out: dict = {}
+    for key in ("model_provider", "forced_login_method"):
+        m = re.search(rf'^\s*{key}\s*=\s*"([^"]+)"', raw, re.MULTILINE)
+        if m:
+            out[key] = m.group(1)
+    return out
+
+
+def _codex_preflight(port: int) -> list[str]:
+    """Predict why `entroly wrap codex` might not reach the proxy.
+
+    Returns a list of human-readable warning blocks (may be empty).
+    Advisory only — the watchdog is the authority on whether traffic
+    actually flowed.
+
+    Dominant cause (gh#44): Codex signed in with a ChatGPT account talks
+    to chatgpt.com directly and *ignores OPENAI_BASE_URL entirely*, so
+    the proxy never sees a request. Secondary cause: a custom
+    `model_provider` in config.toml shadowing the built-in `openai`
+    provider that the env var targets.
+    """
+    out: list[str] = []
+    codex_home = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
+
+    api_key_set = bool(os.environ.get("OPENAI_API_KEY"))
+    chatgpt_mode = False
+    auth_path = codex_home / "auth.json"
+    if auth_path.exists():
+        try:
+            auth = json.loads(auth_path.read_text(encoding="utf-8", errors="replace"))
+            if auth.get("OPENAI_API_KEY"):
+                api_key_set = True
+            # `auth_mode` is the canonical signal codex itself routes on;
+            # fall back to token presence for older codex builds that
+            # predate the field.
+            mode = str(auth.get("auth_mode") or "").lower()
+            if "chatgpt" in mode:
+                chatgpt_mode = True
+            elif not mode and auth.get("tokens") and not auth.get("OPENAI_API_KEY"):
+                chatgpt_mode = True
+        except (OSError, ValueError):
+            pass
+
+    cfg = _read_codex_config(codex_home)
+    if cfg.get("forced_login_method") == "chatgpt":
+        chatgpt_mode = True
+
+    if chatgpt_mode and not api_key_set:
+        out.append(
+            "Codex appears to be signed in with a ChatGPT account. In that\n"
+            "    mode Codex talks to chatgpt.com directly and IGNORES\n"
+            "    OPENAI_BASE_URL, so the proxy / dashboard will see nothing.\n"
+            "    Fix — switch Codex to API-key auth:\n"
+            "      1) codex logout\n"
+            "      2) set OPENAI_API_KEY=sk-...   (your OpenAI API key)\n"
+            "      3) re-run: entroly wrap codex"
+        )
+
+    provider = cfg.get("model_provider")
+    if provider and provider != "openai":
+        out.append(
+            f'Codex config.toml sets model_provider = "{provider}".\n'
+            '    OPENAI_BASE_URL only redirects the built-in "openai"\n'
+            "    provider, so this one bypasses the proxy. Fix one of:\n"
+            f"      • point [model_providers.{provider}].base_url at\n"
+            f"        http://localhost:{port}/v1 in ~/.codex/config.toml, or\n"
+            '      • run: codex --config model_provider="openai"'
+        )
+
+    return out
+
+
+_PREFLIGHT = {"codex": _codex_preflight}
+
+
+def _proxy_request_count(port: int) -> int | None:
+    """Total requests the proxy has handled, or None if unreachable.
+
+    Used as empirical ground truth by the post-launch watchdog: a zero
+    delta across a wrapped session means the agent never routed through
+    us, regardless of *why*.
+    """
+    import urllib.request
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/stats", timeout=2
+        ) as r:
+            return int(json.loads(r.read()).get("requests_total", 0))
+    except Exception:
+        return None
+
+
+def _wrap_watchdog_report(agent: str, spec: dict, port: int,
+                          before: int | None) -> None:
+    """After a wrapped agent exits, tell the user if we saw zero traffic.
+
+    `before` is the request count captured just before launch. If we
+    can't measure (proxy stats unreachable), stay silent rather than
+    cry wolf.
+    """
+    after = _proxy_request_count(port)
+    if before is None or after is None or after > before:
+        return  # traffic flowed (or we can't tell) — nothing to warn about
+
+    print(
+        f"\n  {C.RED}⚠ {spec['name']} sent the proxy 0 requests this "
+        f"session.{C.RESET}\n"
+        f"  {C.GRAY}That means nothing was tracked and the dashboard "
+        f"will be empty.{C.RESET}"
+    )
+    # Re-show the targeted preflight guidance even if it didn't fire
+    # pre-launch (state may have differed, or the cause is unenumerated).
+    # The agent already ran — a diagnostic must never crash the exit path.
+    try:
+        hints = _PREFLIGHT.get(agent, lambda _p: [])(port)
+    except Exception:
+        hints = []
+    if hints:
+        for h in hints:
+            print(f"  {C.YELLOW}→ {h}{C.RESET}")
+    else:
+        print(
+            f"  {C.GRAY}Likely the tool ignored {spec['env_key']}="
+            f"{spec['env_val'].format(port=port)} (custom endpoint not\n"
+            f"  supported, or auth that pins it to the vendor backend). "
+            f"Verify {spec['name']} honors that variable.{C.RESET}"
+        )
+
+
 def cmd_wrap(args):
     """entroly wrap <agent> — integrate Entroly with an AI coding tool.
 
@@ -1997,6 +2187,22 @@ def cmd_wrap(args):
     if not _start_proxy_daemon(port, env):
         return
 
+    print(
+        f"  {C.YELLOW}Use only if {spec['name']} supports custom endpoints and your account/provider terms permit proxying.{C.RESET}"
+    )
+
+    # Preflight (gh#44): advisory only — predict likely silent-bypass
+    # causes and print the fix. Never blocks: a wrong heuristic must not
+    # break an otherwise-working wrap. The watchdog below is the
+    # authority on whether traffic actually flowed.
+    preflight = _PREFLIGHT.get(agent)
+    if preflight:
+        try:
+            hints = preflight(port)
+        except Exception:
+            hints = []  # diagnostics must never disrupt a working setup
+        for h in hints:
+            print(f"\n  {C.YELLOW}! Heads-up: {h}{C.RESET}")
     print(f"  {C.GREEN}Launching {spec['name']}...{C.RESET}\n")
 
     # Auto-open dashboard
@@ -2006,14 +2212,21 @@ def cmd_wrap(args):
     except Exception:
         pass
 
+    # Ground-truth baseline for the post-session watchdog.
+    req_before = _proxy_request_count(port)
+
     try:
         agent_cmd = resolve_launch_cmd(spec["cmd"]) + extra_args + args.agent_args
         subprocess.run(agent_cmd, env=env)
     except FileNotFoundError:
         print(f"\n  {C.RED}{spec['name']} not found.{C.RESET}")
         print(f"  {C.GRAY}Install it first, then run: entroly wrap {agent}{C.RESET}\n")
+        return
     except KeyboardInterrupt:
         print(f"\n  {C.GRAY}{spec['name']} stopped.{C.RESET}")
+
+    # Empirical check: did the agent actually route through the proxy?
+    _wrap_watchdog_report(agent, spec, port, req_before)
 
 
 # ── Learn: Failure pattern analysis ──────────────────────────────────
@@ -2710,7 +2923,19 @@ def cmd_doctor(args):
         print(f"  {C.GREEN}+{C.RESET} Rust engine (entroly-core) loaded")
         checks_passed += 1
     except ImportError:
-        print(f"  {C.RED}x{C.RESET} Rust engine not installed (pip install entroly-core)")
+        print(f"  {C.RED}x{C.RESET} Rust engine (entroly-core) not loaded "
+              f"{C.GRAY}— optional; core features still work{C.RESET}")
+        # Prebuilt abi3 wheels (py>=3.10, incl. 3.14) ship for
+        # mac/linux/windows. The usual failure is pip reusing a stale
+        # cache or being too old to match the wheel, then falling back
+        # to compiling an ancient sdist. Bust the cache + upgrade pip
+        # first — that fixes it without any compile.
+        print(f"    {C.GRAY}Fix:  pip install --no-cache-dir -U pip && "
+              f"pip install --no-cache-dir -U entroly-core{C.RESET}")
+        print(f"    {C.GRAY}(If pip still compiles from source and fails on "
+              f"a new Python, your pip is too old to{C.RESET}")
+        print(f"    {C.GRAY} match the abi3 wheel — upgrading pip is the "
+              f"fix, not a different Python.){C.RESET}")
 
     # 2b. Check optional learning components
     checks_total += 1
@@ -3071,7 +3296,7 @@ def cmd_completions(args):
         "batch", "wrap", "learn", "share", "demo",
         "doctor", "digest", "migrate", "role", "completions",
         "optimize", "feedback", "compile", "verify", "sync",
-        "search", "docs", "finetune",
+        "search", "docs", "finetune", "witness",
     ]
     cmd_list = " ".join(commands)
 
@@ -3688,6 +3913,48 @@ def cmd_finetune(args):
     print(f"  {C.GRAY}Use with: openai api fine_tuning.jobs.create -t {output}{C.RESET}\n")
 
 
+def _read_witness_text(value: str | None, file_path: str | None, *, stdin_fallback: bool = False) -> str:
+    if file_path:
+        return Path(file_path).read_text(encoding="utf-8")
+    if value:
+        return value
+    if stdin_fallback and not sys.stdin.isatty():
+        return sys.stdin.read()
+    return ""
+
+
+def cmd_witness(args):
+    """entroly witness — verify and optionally suppress factual claims."""
+    from entroly.witness import WitnessAnalyzer, format_witness_report
+
+    context = _read_witness_text(args.context, args.context_file)
+    output = _read_witness_text(args.output, args.output_file, stdin_fallback=True)
+    if not output.strip():
+        print(
+            f"{C.RED}Error:{C.RESET} provide model output via --output, --output-file, or stdin",
+            file=sys.stderr,
+        )
+        return
+
+    analyzer = WitnessAnalyzer(use_nli=args.nli, profile=args.profile)
+    result, rewrite = analyzer.analyze_and_rewrite(context, output, mode=args.mode)
+
+    if args.json_output:
+        print(json.dumps({
+            "witness": result.as_dict(),
+            "policy": rewrite.as_dict(),
+            "output": rewrite.output,
+        }, indent=2))
+        return
+
+    if args.mode in {"annotate", "strict"} and rewrite.changed:
+        print(rewrite.output)
+        print()
+        print(f"{C.GRAY}{format_witness_report(result)}{C.RESET}", file=sys.stderr)
+    else:
+        print(format_witness_report(result))
+
+
 def cmd_ravs(args):
     """entroly ravs — RAVS offline evaluation + passive capture tools.
 
@@ -3939,6 +4206,24 @@ def main():
     proxy_parser.add_argument(
         "--bypass", action="store_true",
         help="Start in bypass mode (forward requests unmodified, no optimization)",
+    )
+    proxy_parser.add_argument(
+        "--witness", choices=["off", "audit", "annotate", "strict"], default=None,
+        help="Verify model outputs before returning them: off, audit, annotate, or strict",
+    )
+    proxy_parser.add_argument(
+        "--witness-nli", action="store_true",
+        help="Use OpenAI NLI inside WITNESS when OPENAI_API_KEY is available",
+    )
+    proxy_parser.add_argument(
+        "--witness-embed", action="store_true",
+        help="Embed WITNESS certificates in provider JSON instead of sidecar headers only",
+    )
+    proxy_parser.add_argument(
+        "--witness-profile",
+        choices=["auto", "code", "rag", "qa", "benchmark_qa", "summary", "chat", "dialogue"],
+        default=None,
+        help="WITNESS suppression profile (default: auto)",
     )
 
     # entroly optimize
@@ -4320,6 +4605,46 @@ def main():
         help="Output file path (default: training_data.jsonl)",
     )
 
+    # entroly witness
+    witness_parser = subparsers.add_parser(
+        "witness",
+        help="Verify and suppress unsupported factual claims",
+    )
+    witness_parser.add_argument(
+        "--context", default=None,
+        help="Evidence/context text used to verify the model output",
+    )
+    witness_parser.add_argument(
+        "--context-file", default=None,
+        help="Path to evidence/context text",
+    )
+    witness_parser.add_argument(
+        "--output", default=None,
+        help="Model output text to verify (default: stdin)",
+    )
+    witness_parser.add_argument(
+        "--output-file", default=None,
+        help="Path to model output text",
+    )
+    witness_parser.add_argument(
+        "--mode", choices=["audit", "annotate", "strict"], default="audit",
+        help="Policy to apply after verification (default: audit)",
+    )
+    witness_parser.add_argument(
+        "--profile",
+        choices=["auto", "code", "rag", "qa", "benchmark_qa", "summary", "chat", "dialogue"],
+        default="auto",
+        help="Workload-specific suppression profile (default: auto)",
+    )
+    witness_parser.add_argument(
+        "--nli", action="store_true",
+        help="Use OpenAI NLI when OPENAI_API_KEY is available",
+    )
+    witness_parser.add_argument(
+        "--json", dest="json_output", action="store_true",
+        help="Emit machine-readable JSON",
+    )
+
     # entroly ravs
     ravs_parser = subparsers.add_parser(
         "ravs",
@@ -4449,6 +4774,7 @@ def main():
         "search": cmd_search,
         "docs": cmd_docs,
         "finetune": cmd_finetune,
+        "witness": cmd_witness,
         "wrap": cmd_wrap,
         "learn": cmd_learn,
         "share": cmd_share,

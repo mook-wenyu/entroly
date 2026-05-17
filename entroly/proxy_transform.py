@@ -43,7 +43,8 @@ def detect_provider(
         return "anthropic"
     if "generateContent" in path or "streamGenerateContent" in path:
         return "gemini"
-    if path.endswith("/responses") or "/responses?" in path:
+    # OpenAI Responses API — same provider, different body format
+    if path.endswith("/responses") or "/responses?" in path or "/v1/responses" in path:
         return "openai"
 
     # Header-based
@@ -118,7 +119,45 @@ def _extract_last_user_text_from_responses_input(items: Any) -> str:
 
 
 def extract_user_message(body: dict[str, Any], provider: str) -> str:
-    """Extract the latest user message text from the request body."""
+    """Extract the latest user message text from the request body.
+
+    Supports three body formats:
+      - OpenAI Chat Completions: messages[].content
+      - OpenAI Responses API: input (string or array of items)
+      - Gemini: contents[].parts[].text
+      - Anthropic: messages[].content
+    """
+    # ── OpenAI Responses API: "input" field ──
+    # The Responses API uses `input` (string or array) instead of `messages`.
+    # Detect by presence of "input" with absence of "messages".
+    if "input" in body and "messages" not in body:
+        inp = body["input"]
+        if isinstance(inp, str):
+            return inp
+        if isinstance(inp, list):
+            # Array of input items — extract text from user-role items
+            # Format: [{"type": "message", "role": "user", "content": "..."}]
+            # or simple [{"type": "input_text", "text": "..."}]
+            texts: list[str] = []
+            for item in reversed(inp):
+                if not isinstance(item, dict):
+                    continue
+                # Simple input_text items
+                if item.get("type") == "input_text" and "text" in item:
+                    texts.append(item["text"])
+                # Message-type items
+                elif item.get("role") == "user":
+                    content = item.get("content", "")
+                    if isinstance(content, str):
+                        texts.append(content)
+                    elif isinstance(content, list):
+                        for block in content:
+                            if isinstance(block, dict) and block.get("type") == "input_text":
+                                texts.append(block.get("text", ""))
+                if texts:
+                    return " ".join(texts)
+        return ""
+
     # Gemini uses "contents" with "parts" instead of "messages"
     if provider == "gemini":
         contents = body.get("contents", [])
@@ -178,6 +217,49 @@ def extract_model(body: dict[str, Any], path: str = "") -> str:
         if m:
             return m.group(1)
     return ""
+
+
+# Anthropic accepts some request fields only on newer Claude generations.
+# If a client sends them while targeting Claude 3.x, the native Anthropic API
+# rejects the request with "Extra inputs are not permitted". Keep this as a
+# pure transform so the proxy can apply it whether or not RAVS changes models.
+ANTHROPIC_LEGACY_REJECTED_PARAMS: frozenset[str] = frozenset({
+    "context_management",
+    "thinking",
+})
+
+
+def is_legacy_claude_3_model(model: str) -> bool:
+    """Return True for Claude 3.x model IDs that reject newer request fields."""
+    m = (model or "").lower()
+    legacy_prefixes = (
+        "claude-3-haiku",
+        "claude-3-5-haiku",
+        "claude-3-opus",
+        "claude-3-sonnet",
+        "claude-3-5-sonnet",
+    )
+    return any(m.startswith(prefix) for prefix in legacy_prefixes)
+
+
+def strip_anthropic_unsupported_params(
+    body: dict[str, Any],
+    target_model: str | None = None,
+) -> dict[str, Any]:
+    """Strip Anthropic fields rejected by the request's target model.
+
+    The function is intentionally conservative: unknown/future model names keep
+    the original fields. Only confidently identified Claude 3.x targets lose
+    Claude-4-only parameters.
+    """
+    model = target_model if target_model is not None else str(body.get("model", ""))
+    if not is_legacy_claude_3_model(model):
+        return body
+
+    cleaned = dict(body)
+    for param in ANTHROPIC_LEGACY_REJECTED_PARAMS:
+        cleaned.pop(param, None)
+    return cleaned
 
 
 def compute_token_budget(model: str, config: ProxyConfig) -> int:
@@ -761,7 +843,7 @@ def inject_context_openai(
     body = copy.deepcopy(body)
     input_key = _responses_input_key(body)
     if input_key:
-        return _inject_context_openai_responses(body, context_text)
+        return inject_context_responses(body, context_text)
 
     messages = body.get("messages", [])
 
@@ -785,7 +867,7 @@ def inject_context_openai(
     return body
 
 
-def _inject_context_openai_responses(
+def inject_context_responses(
     body: dict[str, Any], context_text: str
 ) -> dict[str, Any]:
     """Inject context into Responses API requests via top-level instructions.

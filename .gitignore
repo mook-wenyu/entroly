@@ -41,6 +41,7 @@ bench/results.tsv
 bench/.cache/
 bench/results_*.json
 bench/quality_eval_results.json
+benchmarks/results/
 bench_section.md
 bench_output.txt
 test_output.txt

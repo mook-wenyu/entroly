@@ -61,6 +61,8 @@ from .proxy_transform import (
     inject_context_anthropic,
     inject_context_gemini,
     inject_context_openai,
+    inject_context_responses,
+    strip_anthropic_unsupported_params,
 )
 from .value_tracker import get_tracker
 
@@ -626,9 +628,27 @@ def _extract_text_from_sse(raw_bytes: bytes) -> str:
                 for part in candidate.get("content", {}).get("parts", []):
                     if "text" in part:
                         text_parts.append(part["text"])
+            # OpenAI Responses API: deltas are the incremental text stream.
+            if data.get("type") == "response.output_text.delta" and isinstance(data.get("delta"), str):
+                text_parts.append(data["delta"])
     except Exception:
         pass
     return "".join(text_parts)
+
+
+def _looks_like_structured_text(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped or stripped[0] not in "{[":
+        return False
+    try:
+        json.loads(stripped)
+        return True
+    except Exception:
+        return False
+
+
+async def _bytes_iter(data: bytes):
+    yield data
 
 
 # ── Proxy ────────────────────────────────────────────────────────────────
@@ -764,12 +784,50 @@ class PromptCompilerProxy:
             logger.debug("RAVS router init skipped: %s", e)
             self._ravs_router = None
 
+        # WITNESS: proof-carrying factuality gateway. Disabled by default
+        # unless ENTROLY_WITNESS_MODE or CLI --witness is set.
+        self._witness_mode = (getattr(self.config, "witness_mode", "off") or "off").lower()
+        if os.environ.get("ENTROLY_WITNESS", "0") == "1" and self._witness_mode == "off":
+            self._witness_mode = "audit"
+        self._witness_enabled = self._witness_mode != "off"
+        self._witness_use_nli = bool(getattr(self.config, "witness_use_nli", False))
+        self._witness_profile = (getattr(self.config, "witness_profile", "auto") or "auto").lower()
+        self._witness_analyzer: Any = None
+        if self._witness_enabled:
+            try:
+                from .witness import WitnessAnalyzer
+                self._witness_analyzer = WitnessAnalyzer(
+                    use_nli=self._witness_use_nli,
+                    profile=self._witness_profile,
+                )
+                logger.info(
+                    "WITNESS enabled (mode=%s, profile=%s, nli=%s)",
+                    self._witness_mode,
+                    self._witness_profile,
+                    self._witness_use_nli,
+                )
+            except Exception as e:
+                logger.warning("WITNESS init skipped: %s", e)
+                self._witness_enabled = False
+        self._witness_total = 0
+        self._witness_flagged = 0
+        self._witness_rewritten = 0
+        self._witness_last: dict[str, Any] | None = None
+        self._witness_embed = bool(getattr(self.config, "witness_embed", False))
+        self._witness_certificates: collections.OrderedDict[str, dict[str, Any]] = collections.OrderedDict()
+        self._witness_store_max = int(os.environ.get("ENTROLY_WITNESS_STORE_MAX", "500"))
+        self._witness_feedback: dict[str, int] = collections.Counter()
+
     def _new_http_client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(
             timeout=httpx.Timeout(connect=10.0, read=120.0, write=10.0, pool=10.0),
             follow_redirects=True,
             trust_env=self.config.trust_env_proxy,
         )
+
+    async def startup(self) -> None:
+        self._client = self._new_http_client()
+        logger.info("Prompt compiler proxy ready")
 
     @staticmethod
     def _request_body_kwargs(body: dict[str, Any] | bytes) -> dict[str, Any]:
@@ -805,10 +863,6 @@ class PromptCompilerProxy:
                 "X-Entroly-Optimized": "false",
             },
         )
-
-    async def startup(self) -> None:
-        self._client = self._new_http_client()
-        logger.info("Prompt compiler proxy ready")
 
     async def _ensure_client(self) -> httpx.AsyncClient:
         """Gap #47: Auto-reconnect if client connection dropped (long sessions).
@@ -931,6 +985,9 @@ class PromptCompilerProxy:
                 context_window=getattr(self.config, "context_window", 128_000),
             )
 
+        # Responses API uses `input` instead of chat `messages`.
+        _is_responses_api = "input" in body and "messages" not in body
+
         # ── Pipelined: warmup connection while Rust pipeline runs ──
         # Start HTTP connection pool warmup concurrently with the
         # Rust optimization. For persistent connections this is nearly
@@ -950,10 +1007,13 @@ class PromptCompilerProxy:
 
         # Track selected fragment IDs for passive feedback attribution
         _selected_frag_ids: list = []
+        user_message = ""
+        witness_context = ""
 
         # Run the optimization pipeline (synchronous Rust, off the event loop)
         try:
             user_message = extract_user_message(body, provider)
+            witness_context = user_message
             if user_message:
                 request_observation["query"] = _sanitize_query(user_message)
                 runtime_services = getattr(self, "_runtime_learning_services", None)
@@ -978,6 +1038,7 @@ class PromptCompilerProxy:
                 ]
 
                 if context_text:
+                    witness_context = f"{user_message}\n\n{context_text}" if user_message else context_text
                     # Gap #36: Confidence threshold — skip injection if
                     # entropy scores are too low (context quality is poor)
                     avg_entropy = 0.0
@@ -992,6 +1053,7 @@ class PromptCompilerProxy:
                             f"passing through unmodified"
                         )
                         context_text = ""  # skip injection
+                        witness_context = user_message
 
                 if context_text:
                     # Gap #27 & #29: Track original vs optimized tokens
@@ -1049,6 +1111,8 @@ class PromptCompilerProxy:
                         body = inject_context_gemini(body, context_text)
                     elif provider == "anthropic":
                         body = inject_context_anthropic(body, context_text)
+                    elif _is_responses_api:
+                        body = inject_context_responses(body, context_text)
                     else:
                         body = inject_context_openai(body, context_text)
                     optimized_applied = True
@@ -1324,6 +1388,9 @@ class PromptCompilerProxy:
                 logger.debug("RAVS router error (forwarding original): %s", e)
 
         # Forward to real API (target_url already resolved above)
+        if provider == "anthropic":
+            body = strip_anthropic_unsupported_params(body)
+
         forward_headers = self._build_headers(headers)
         is_streaming = self._is_streaming_request(body, path)
 
@@ -1333,6 +1400,8 @@ class PromptCompilerProxy:
                 forward_headers,
                 body,
                 _selected_frag_ids,
+                witness_context=witness_context,
+                provider=provider,
                 request_observation=request_observation,
                 optimized_applied=optimized_applied,
             )
@@ -1342,6 +1411,7 @@ class PromptCompilerProxy:
                 forward_headers,
                 body,
                 _selected_frag_ids,
+                witness_context=witness_context,
                 request_observation=request_observation,
                 optimized_applied=optimized_applied,
             )
@@ -1634,9 +1704,219 @@ class PromptCompilerProxy:
             "selected_fragments": selected,
         }
 
+    async def _buffered_witness_stream_response(
+        self,
+        url: str,
+        headers: dict[str, str],
+        body: dict[str, Any],
+        *,
+        selected_frag_ids: list | None = None,
+        witness_context: str = "",
+        provider: str = "openai",
+    ) -> StreamingResponse | JSONResponse:
+        """Buffer a streaming upstream response so WITNESS can enforce before display."""
+        if not self._breaker.allow_request():
+            return JSONResponse(
+                {"error": "circuit_breaker_open", "message": "Upstream API experiencing failures, retrying after cooldown"},
+                status_code=503,
+                headers={"Retry-After": str(int(self._breaker.cooldown_s))},
+            )
+
+        max_bytes = int(os.environ.get("ENTROLY_WITNESS_STREAM_MAX_BYTES", str(2 * 1024 * 1024)))
+        try:
+            client = await self._ensure_client()
+            chunks: list[bytes] = []
+            total = 0
+            status_code = 200
+            content_type = "text/event-stream"
+            async with client.stream("POST", url, json=body, headers=headers) as response:
+                status_code = response.status_code
+                content_type = response.headers.get("content-type", content_type)
+                async for chunk in response.aiter_bytes():
+                    total += len(chunk)
+                    if total > max_bytes:
+                        self._breaker.record_failure()
+                        return JSONResponse(
+                            {"error": "witness_stream_too_large", "limit_bytes": max_bytes},
+                            status_code=413,
+                        )
+                    chunks.append(chunk)
+            self._breaker.record_success()
+        except httpx.TimeoutException:
+            self._breaker.record_failure()
+            return JSONResponse({"error": "upstream_timeout"}, status_code=502)
+        except httpx.ConnectError as e:
+            self._breaker.record_failure()
+            return JSONResponse({"error": "upstream_unavailable", "detail": str(e)}, status_code=502)
+        except Exception as e:
+            self._breaker.record_failure()
+            return JSONResponse({"error": "stream_error", "detail": str(e)[:200]}, status_code=502)
+
+        raw = b"".join(chunks)
+        if status_code >= 400:
+            return StreamingResponse(
+                _bytes_iter(raw),
+                status_code=status_code,
+                media_type=content_type,
+                headers={"X-Entroly-Witness": "skipped-upstream-error"},
+            )
+
+        response_text = _extract_text_from_sse(raw)
+        if not response_text or not self._witness_analyzer:
+            return StreamingResponse(
+                _bytes_iter(raw),
+                status_code=status_code,
+                media_type=content_type,
+                headers={"X-Entroly-Witness": "no-text"},
+            )
+
+        result, rewrite = self._witness_analyzer.analyze_and_rewrite(
+            witness_context,
+            response_text,
+            mode=self._witness_mode,
+        )
+        structured_output = _looks_like_structured_text(response_text)
+        self._record_witness_result(result, changed=rewrite.changed and not structured_output)
+        witness_id = self._store_witness_certificate(result, rewrite)
+
+        if self._enable_passive_feedback and selected_frag_ids:
+            try:
+                reward = self._feedback_tracker.assess_response(rewrite.output)
+                self._feedback_tracker.record_assessment(reward)
+                if abs(reward) > 0.01:
+                    self.engine.record_reward(selected_frag_ids, reward)
+            except Exception:
+                pass
+
+        resp_headers = {
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Entroly-Optimized": "true",
+            "X-Entroly-Witness": "flagged" if result.flagged() else "pass",
+            "X-Entroly-Witness-Buffered": "true",
+            "X-Entroly-Witness-Id": witness_id,
+            "X-Entroly-Witness-Mode": self._witness_mode,
+            "X-Entroly-Witness-Score": f"{result.summary_score:.4f}",
+            "X-Entroly-Witness-Flagged": str(len(result.flagged())),
+            "X-Entroly-Witness-Suppressed": str(getattr(rewrite, "suppressed_count", 0)),
+            "X-Entroly-Witness-Warned": str(getattr(rewrite, "warned_count", 0)),
+        }
+        if structured_output:
+            resp_headers["X-Entroly-Witness-Rewrite-Skipped"] = "structured-output"
+            return StreamingResponse(
+                _bytes_iter(raw),
+                media_type="text/event-stream",
+                headers=resp_headers,
+            )
+
+        sse = self._format_witness_sse(provider, body, rewrite.output)
+        if rewrite.changed:
+            resp_headers["X-Entroly-Witness-Rewritten"] = "true"
+
+        return StreamingResponse(
+            _bytes_iter(sse),
+            media_type="text/event-stream",
+            headers=resp_headers,
+        )
+
+    def _format_witness_sse(self, provider: str, body: dict[str, Any], text: str) -> bytes:
+        model = str(body.get("model") or "")
+        now = int(time.time())
+        if provider == "anthropic":
+            events = [
+                (
+                    "message_start",
+                    {
+                        "type": "message_start",
+                        "message": {
+                            "id": "msg_entroly_witness",
+                            "type": "message",
+                            "role": "assistant",
+                            "model": model,
+                            "content": [],
+                            "stop_reason": None,
+                            "stop_sequence": None,
+                            "usage": {"input_tokens": 0, "output_tokens": 0},
+                        },
+                    },
+                ),
+                ("content_block_start", {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}),
+                ("content_block_delta", {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": text}}),
+                ("content_block_stop", {"type": "content_block_stop", "index": 0}),
+                ("message_delta", {"type": "message_delta", "delta": {"stop_reason": "end_turn", "stop_sequence": None}, "usage": {"output_tokens": 0}}),
+                ("message_stop", {"type": "message_stop"}),
+            ]
+            return "".join(f"event: {event}\ndata: {json.dumps(data)}\n\n" for event, data in events).encode()
+
+        if provider == "gemini":
+            payload = {
+                "candidates": [
+                    {
+                        "content": {"role": "model", "parts": [{"text": text}]},
+                        "finishReason": "STOP",
+                        "index": 0,
+                    }
+                ]
+            }
+            return f"data: {json.dumps(payload)}\n\n".encode()
+
+        if "input" in body and "messages" not in body:
+            delta = {
+                "type": "response.output_text.delta",
+                "delta": text,
+                "output_index": 0,
+                "content_index": 0,
+            }
+            done = {
+                "type": "response.output_text.done",
+                "text": text,
+                "output_index": 0,
+                "content_index": 0,
+            }
+            completed = {
+                "type": "response.completed",
+                "response": {
+                    "id": "resp_entroly_witness",
+                    "object": "response",
+                    "created_at": now,
+                    "model": model,
+                    "output": [
+                        {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": text}],
+                        }
+                    ],
+                },
+            }
+            return (
+                f"data: {json.dumps(delta)}\n\n"
+                f"data: {json.dumps(done)}\n\n"
+                f"data: {json.dumps(completed)}\n\n"
+                "data: [DONE]\n\n"
+            ).encode()
+
+        chunk = {
+            "id": "chatcmpl-entroly-witness",
+            "object": "chat.completion.chunk",
+            "created": now,
+            "model": model,
+            "choices": [{"index": 0, "delta": {"role": "assistant", "content": text}, "finish_reason": None}],
+        }
+        final = {
+            "id": "chatcmpl-entroly-witness",
+            "object": "chat.completion.chunk",
+            "created": now,
+            "model": model,
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+        }
+        return f"data: {json.dumps(chunk)}\n\ndata: {json.dumps(final)}\n\ndata: [DONE]\n\n".encode()
+
     async def _stream_response(
         self, url: str, headers: dict[str, str], body: dict[str, Any] | bytes,
         selected_frag_ids: list | None = None,
+        witness_context: str = "",
+        provider: str = "openai",
         request_observation: dict[str, Any] | None = None,
         optimized_applied: bool = False,
     ) -> StreamingResponse | JSONResponse | Response:
@@ -1646,6 +1926,16 @@ class PromptCompilerProxy:
         (capped at 50KB) and fires implicit feedback analysis after the
         stream completes. Zero latency impact — analysis runs in background.
         """
+        if self._witness_enabled and self._witness_mode in {"annotate", "strict"}:
+            return await self._buffered_witness_stream_response(
+                url,
+                headers,
+                body,
+                selected_frag_ids=selected_frag_ids,
+                witness_context=witness_context,
+                provider=provider,
+            )
+
         # Check circuit breaker
         if not self._breaker.allow_request():
             self._record_request_observation(
@@ -1661,6 +1951,7 @@ class PromptCompilerProxy:
         _tracker = self._feedback_tracker
         _engine = self.engine
         _feedback_enabled = self._enable_passive_feedback and bool(selected_frag_ids)
+        _witness_enabled = self._witness_enabled and bool(self._witness_analyzer)
         _frag_ids = selected_frag_ids or []
         _buffer_cap = ImplicitFeedbackTracker._MAX_BUFFER_BYTES
         # Capture selected fragments for per-variant utilization tracking (Change 4)
@@ -1723,7 +2014,7 @@ class PromptCompilerProxy:
             )
 
         async def event_generator():
-            buffer = [] if _feedback_enabled else None
+            buffer = [] if (_feedback_enabled or _witness_enabled) else None
             buffer_size = 0
             try:
                 async for chunk in upstream.aiter_bytes():
@@ -1819,6 +2110,16 @@ class PromptCompilerProxy:
                 except Exception:
                     pass  # Never fail on feedback
 
+            if buffer and _witness_enabled:
+                try:
+                    full_bytes = b"".join(buffer)
+                    response_text = _extract_text_from_sse(full_bytes)
+                    if response_text:
+                        result = self._witness_analyzer.analyze(witness_context, response_text)
+                        self._record_witness_result(result, changed=False)
+                except Exception:
+                    logger.debug("WITNESS stream audit failed", exc_info=True)
+
         resp_headers = {
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
@@ -1827,6 +2128,9 @@ class PromptCompilerProxy:
         with self._stats_lock:
             if self._last_temperature is not None:
                 resp_headers["X-Entroly-Temperature"] = f"{self._last_temperature:.4f}"
+            if self._witness_enabled:
+                resp_headers["X-Entroly-Witness"] = "streaming-audit"
+                resp_headers["X-Entroly-Witness-Mode"] = self._witness_mode
             # Gap #27: Value signal headers
             if self._total_original_tokens > 0:
                 saved_pct = max(0, (self._total_original_tokens - self._total_optimized_tokens)) * 100 // self._total_original_tokens
@@ -1875,9 +2179,144 @@ class PromptCompilerProxy:
             headers=resp_headers,
         )
 
+    def _extract_response_text(self, content: dict[str, Any]) -> str:
+        """Extract assistant text from OpenAI, Anthropic, Gemini, or Responses JSON."""
+        parts: list[str] = []
+        for choice in content.get("choices", []):
+            msg = choice.get("message", {})
+            text = msg.get("content")
+            if isinstance(text, str):
+                parts.append(text)
+        output_text = content.get("output_text")
+        if isinstance(output_text, str):
+            parts.append(output_text)
+        else:
+            for output in content.get("output", []):
+                if not isinstance(output, dict):
+                    continue
+                for block in output.get("content", []):
+                    if isinstance(block, dict) and isinstance(block.get("text"), str):
+                        parts.append(block["text"])
+        for block in content.get("content", []):
+            if isinstance(block, dict) and isinstance(block.get("text"), str):
+                parts.append(block["text"])
+        for cand in content.get("candidates", []):
+            for part in cand.get("content", {}).get("parts", []):
+                if isinstance(part.get("text"), str):
+                    parts.append(part["text"])
+        return "\n".join(parts)
+
+    def _replace_response_text(self, content: dict[str, Any], new_text: str) -> bool:
+        """Replace the first assistant text slot while preserving provider shape."""
+        for choice in content.get("choices", []):
+            msg = choice.get("message", {})
+            if isinstance(msg.get("content"), str):
+                msg["content"] = new_text
+                return True
+        replaced_response_text = False
+        if isinstance(content.get("output_text"), str):
+            content["output_text"] = new_text
+            replaced_response_text = True
+        for output in content.get("output", []):
+            if not isinstance(output, dict):
+                continue
+            for block in output.get("content", []):
+                if isinstance(block, dict) and isinstance(block.get("text"), str):
+                    block["text"] = new_text
+                    replaced_response_text = True
+        if replaced_response_text:
+            return True
+        for block in content.get("content", []):
+            if isinstance(block, dict) and isinstance(block.get("text"), str):
+                block["text"] = new_text
+                return True
+        for cand in content.get("candidates", []):
+            for part in cand.get("content", {}).get("parts", []):
+                if isinstance(part.get("text"), str):
+                    part["text"] = new_text
+                    return True
+        return False
+
+    def _apply_witness_gateway(
+        self,
+        content: dict[str, Any],
+        witness_context: str,
+    ) -> tuple[dict[str, Any], dict[str, str]]:
+        headers: dict[str, str] = {}
+        if not self._witness_enabled or not self._witness_analyzer:
+            return content, headers
+        response_text = self._extract_response_text(content)
+        if not response_text:
+            return content, {"X-Entroly-Witness": "no-text"}
+        try:
+            result, rewrite = self._witness_analyzer.analyze_and_rewrite(
+                witness_context,
+                response_text,
+                mode=self._witness_mode,
+            )
+            structured_output = _looks_like_structured_text(response_text)
+            changed = False
+            if rewrite.changed and not structured_output:
+                changed = self._replace_response_text(content, rewrite.output)
+            self._record_witness_result(result, changed=changed)
+            witness_id = self._store_witness_certificate(result, rewrite)
+            if self._witness_embed:
+                content["entroly_witness"] = result.as_dict()
+                content["entroly_witness"]["policy"] = rewrite.as_dict()
+                content["entroly_witness"]["id"] = witness_id
+            headers.update({
+                "X-Entroly-Witness": "flagged" if result.flagged() else "pass",
+                "X-Entroly-Witness-Id": witness_id,
+                "X-Entroly-Witness-Mode": self._witness_mode,
+                "X-Entroly-Witness-Score": f"{result.summary_score:.4f}",
+                "X-Entroly-Witness-Flagged": str(len(result.flagged())),
+                "X-Entroly-Witness-Suppressed": str(getattr(rewrite, "suppressed_count", 0)),
+                "X-Entroly-Witness-Warned": str(getattr(rewrite, "warned_count", 0)),
+            })
+            if changed:
+                headers["X-Entroly-Witness-Rewritten"] = "true"
+            elif structured_output and rewrite.changed:
+                headers["X-Entroly-Witness-Rewrite-Skipped"] = "structured-output"
+            return content, headers
+        except Exception as e:
+            logger.debug("WITNESS gateway failed: %s", e, exc_info=True)
+            return content, {"X-Entroly-Witness": "error"}
+
+    def _store_witness_certificate(self, result: Any, rewrite: Any) -> str:
+        raw = f"{time.time_ns()}:{result.summary_score}:{len(result.certificates)}:{rewrite.mode}"
+        witness_id = hashlib.sha256(raw.encode()).hexdigest()[:16]
+        payload = result.as_dict()
+        payload["policy"] = rewrite.as_dict()
+        payload["id"] = witness_id
+        with self._stats_lock:
+            self._witness_certificates[witness_id] = payload
+            self._witness_certificates.move_to_end(witness_id)
+            while len(self._witness_certificates) > self._witness_store_max:
+                self._witness_certificates.popitem(last=False)
+        return witness_id
+
+    def _record_witness_result(self, result: Any, *, changed: bool) -> None:
+        flagged = len(result.flagged())
+        with self._stats_lock:
+            self._witness_total += 1
+            self._witness_flagged += flagged
+            if changed:
+                self._witness_rewritten += 1
+            self._witness_last = {
+                "score": round(result.summary_score, 4),
+                "claims": len(result.certificates),
+                "flagged": flagged,
+                "grounded": result.n_grounded,
+                "unsupported": result.n_unsupported,
+                "contradicted": result.n_contradicted,
+                "unknown": result.n_unknown,
+                "latency_ms": round(result.latency_ms, 1),
+            }
+
     async def _forward_response(
         self, url: str, headers: dict[str, str], body: dict[str, Any] | bytes,
         selected_frag_ids: list | None = None,
+        witness_context: str = "",
         request_observation: dict[str, Any] | None = None,
         optimized_applied: bool = False,
     ) -> JSONResponse:
@@ -2131,6 +2570,12 @@ class PromptCompilerProxy:
                     )
             except Exception:
                 pass  # Never block response for output compression
+
+        # WITNESS output gateway: attach proof certificates and optionally
+        # annotate/suppress unsupported factual claims before returning JSON.
+        if isinstance(content, dict):
+            content, witness_headers = self._apply_witness_gateway(content, witness_context)
+            resp_headers.update(witness_headers)
 
         # Add context waste % header
         with self._stats_lock:
@@ -2725,7 +3170,7 @@ async def _catch_all(request: Request) -> StreamingResponse | JSONResponse:
         if not is_streaming and "streamGenerateContent" in request.url.path:
             is_streaming = True
         if is_streaming:
-            return await proxy._stream_response(target_url, forward_headers, body)
+            return await proxy._stream_response(target_url, forward_headers, body, provider=provider)
         response = await client.request(
             request.method, target_url, json=body, headers=forward_headers
         )
@@ -2777,6 +3222,22 @@ async def _proxy_stats(request: Request) -> JSONResponse:
                     proxy._outcome_failure / max(proxy._outcome_success + proxy._outcome_failure, 1), 4
                 ),
             },
+            "witness": {
+                "enabled": proxy._witness_enabled,
+                "mode": proxy._witness_mode,
+                "profile": proxy._witness_profile,
+                "nli": proxy._witness_use_nli,
+                "checked": proxy._witness_total,
+                "flagged_claims": proxy._witness_flagged,
+                "rewritten_responses": proxy._witness_rewritten,
+                "feedback": dict(proxy._witness_feedback),
+                "nli_usage": (
+                    proxy._witness_analyzer.nli_usage()
+                    if proxy._witness_analyzer and hasattr(proxy._witness_analyzer, "nli_usage")
+                    else {}
+                ),
+                "last": proxy._witness_last,
+            },
         }
         if proxy._temperature_count > 0:
             stats["egtc"] = {
@@ -2788,6 +3249,143 @@ async def _proxy_stats(request: Request) -> JSONResponse:
         # Passive RL feedback stats
         stats["implicit_feedback"] = proxy._feedback_tracker.stats()
     return JSONResponse(stats)
+
+
+async def _witness_certificate(request: Request) -> JSONResponse:
+    proxy = request.app.state.proxy
+    witness_id = request.path_params.get("witness_id", "")
+    with proxy._stats_lock:
+        payload = proxy._witness_certificates.get(witness_id)
+    if payload is None:
+        return JSONResponse({"error": "witness_certificate_not_found"}, status_code=404)
+    return JSONResponse(payload)
+
+
+async def _witness_list(request: Request) -> JSONResponse:
+    proxy = request.app.state.proxy
+    limit = int(request.query_params.get("limit", "25"))
+    limit = max(1, min(limit, 100))
+    with proxy._stats_lock:
+        items = list(proxy._witness_certificates.values())[-limit:]
+    compact = [
+        {
+            "id": item.get("id"),
+            "summary_score": item.get("summary_score"),
+            "n_claims": item.get("n_claims"),
+            "n_contradicted": item.get("n_contradicted"),
+            "n_unsupported": item.get("n_unsupported"),
+            "n_unknown": item.get("n_unknown"),
+            "policy": item.get("policy"),
+            "flagged_claims": [
+                {
+                    "label": cert.get("label"),
+                    "claim_text": cert.get("claim_text"),
+                    "risk": cert.get("risk"),
+                    "proof_path": cert.get("proof_path", [])[:3],
+                }
+                for cert in item.get("certificates", [])
+                if isinstance(cert, dict) and cert.get("label") != "grounded"
+            ][:5],
+        }
+        for item in reversed(items)
+    ]
+    return JSONResponse({
+        "count": len(compact),
+        "items": compact,
+        "feedback": dict(proxy._witness_feedback),
+    })
+
+
+async def _witness_feedback_route(request: Request) -> JSONResponse:
+    proxy = request.app.state.proxy
+    witness_id = request.path_params.get("witness_id", "")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    verdict = str(body.get("verdict", "")).strip().lower()
+    note = str(body.get("note", "")).strip()[:1000]
+    if verdict not in {"false_positive", "correct", "false_negative", "ignored"}:
+        return JSONResponse(
+            {"error": "invalid_verdict", "allowed": ["false_positive", "correct", "false_negative", "ignored"]},
+            status_code=400,
+        )
+    with proxy._stats_lock:
+        payload = proxy._witness_certificates.get(witness_id)
+        if payload is None:
+            return JSONResponse({"error": "witness_certificate_not_found"}, status_code=404)
+        feedback = payload.setdefault("feedback", [])
+        if isinstance(feedback, list):
+            feedback.append({"verdict": verdict, "note": note, "ts": time.time()})
+        proxy._witness_feedback[verdict] += 1
+    if body.get("train") and body.get("context") and body.get("output"):
+        try:
+            from .witness_training import WitnessTrainingStore
+
+            store = getattr(proxy, "_witness_training_store", None)
+            if store is None:
+                store = WitnessTrainingStore()
+                setattr(proxy, "_witness_training_store", store)
+            train_label = {
+                "false_positive": "false_positive",
+                "false_negative": "false_negative",
+                "correct": "witness_correct",
+                "ignored": "",
+            }.get(verdict, "")
+            if train_label:
+                store.record(
+                    context=str(body.get("context")),
+                    output=str(body.get("output")),
+                    label=train_label,
+                    profile=str(body.get("profile") or proxy._witness_profile),
+                    source="witness_feedback",
+                )
+        except Exception as e:
+            logger.debug("witness feedback training skipped: %s", e)
+    return JSONResponse({"ok": True, "id": witness_id, "verdict": verdict})
+
+
+async def _witness_train_route(request: Request) -> JSONResponse:
+    proxy = request.app.state.proxy
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    try:
+        from .witness_training import WitnessTrainingStore
+
+        store = getattr(proxy, "_witness_training_store", None)
+        if store is None:
+            store = WitnessTrainingStore()
+            setattr(proxy, "_witness_training_store", store)
+
+        ravs_event = body.get("ravs_event")
+        if isinstance(ravs_event, dict):
+            record = store.record_ravs_outcome(ravs_event)
+            if record is None:
+                return JSONResponse({"ok": False, "reason": "no_trainable_ravs_signal"}, status_code=422)
+        else:
+            context = str(body.get("context") or "")
+            output = str(body.get("output") or "")
+            label = str(body.get("label") or "")
+            if not context or not output or not label:
+                return JSONResponse(
+                    {"error": "context_output_label_required"},
+                    status_code=400,
+                )
+            record = store.record(
+                context=context,
+                output=output,
+                label=label,
+                profile=str(body.get("profile") or proxy._witness_profile),
+                source=str(body.get("source") or "proxy_api"),
+            )
+        return JSONResponse({"ok": True, "training": record.as_dict()})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        logger.debug("witness training route failed: %s", e, exc_info=True)
+        return JSONResponse({"error": "witness_training_failed"}, status_code=500)
 
 
 # Need os for ENTROLY_RATE_LIMIT env var
@@ -2855,6 +3453,8 @@ def create_proxy_app(
             Route("/{prefix:path}/messages", proxy.handle_proxy, methods=["POST"]),
             Route("/v1/chat/completions", proxy.handle_proxy, methods=["POST"]),
             Route("/v1/messages", proxy.handle_proxy, methods=["POST"]),
+            # OpenAI Responses API (used by Codex CLI, newer OpenAI SDK)
+            Route("/v1/responses", proxy.handle_proxy, methods=["POST"]),
             # Gemini: model name is embedded in the URL path
             Route("/v1beta/models/{model_id:path}", proxy.handle_proxy, methods=["POST"]),
             Route("/health", _health),
@@ -2868,6 +3468,10 @@ def create_proxy_app(
             Route("/confidence", _confidence),                         # IDE widget API
             Route("/trends", _value_trends),                           # Dashboard trends
             Route("/retrieve", _context_retrieve),                     # CCR: lossless retrieval
+            Route("/witness", _witness_list),                           # WITNESS certificate index
+            Route("/witness/train", _witness_train_route, methods=["POST"]),
+            Route("/witness/{witness_id}/feedback", _witness_feedback_route, methods=["POST"]),
+            Route("/witness/{witness_id}", _witness_certificate),       # WITNESS sidecar certificates
             # Catch-all: forward any unmatched path to upstream API
             # Must be LAST — Starlette matches routes in declaration order
             Route("/{path:path}", _catch_all, methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]),

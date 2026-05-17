@@ -16,6 +16,7 @@ This is the change-driven glue between Truth, Belief, and Verification.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import threading
@@ -30,7 +31,7 @@ from .verification_engine import VerificationEngine
 
 logger = logging.getLogger(__name__)
 
-_SUPPORTED_EXTS = {".py", ".rs", ".js", ".jsx", ".ts", ".tsx", ".cs"}
+_SUPPORTED_EXTS = {".py", ".rs", ".js", ".jsx", ".ts", ".tsx", ".cs", ".asmdef", ".asmref"}
 _SKIP_DIRS = {
     ".git", ".venv", "__pycache__", ".pytest_cache", ".ruff_cache",
     "node_modules", "target", "dist", "build", "Library", "Temp", "Logs", "UserSettings", ".tmp",
@@ -93,9 +94,9 @@ class WorkspaceChangeListener:
         previous = {} if force else self._load_state()
 
         changed = []
-        for rel_path, mtime in current.items():
+        for rel_path, fingerprint in current.items():
             prev = previous.get(rel_path)
-            if force or prev is None or mtime > prev:
+            if force or prev != fingerprint:
                 changed.append(rel_path)
 
         deleted = [rel_path for rel_path in previous.keys() if rel_path not in current]
@@ -116,6 +117,9 @@ class WorkspaceChangeListener:
         refresh_targets = result.changed_files + result.deleted_files
         if refresh_targets:
             result.refresh_result = self._change_pipe.refresh_docs(refresh_targets)
+
+        expanded_changed = self._expand_changed_files(result.changed_files)
+        result.changed_files = expanded_changed[:max_files]
 
         csharp_paths = [rel_path for rel_path in result.changed_files if rel_path.lower().endswith(".cs")]
         direct_paths = [rel_path for rel_path in result.changed_files if not rel_path.lower().endswith(".cs")]
@@ -195,15 +199,39 @@ class WorkspaceChangeListener:
         self._stop.set()
         return {"status": "stopped", "project_dir": str(self._project_dir)}
 
-    def _snapshot(self) -> dict[str, float]:
-        snapshot: dict[str, float] = {}
+    def _snapshot(self) -> dict[str, dict[str, Any]]:
+        snapshot: dict[str, dict[str, Any]] = {}
         for path in self._discover_source_files():
             try:
                 rel = path.relative_to(self._project_dir).as_posix()
-                snapshot[rel] = path.stat().st_mtime
+                snapshot[rel] = self._fingerprint_file(path)
             except OSError:
                 continue
         return snapshot
+
+    def _fingerprint_file(self, path: Path) -> dict[str, Any]:
+        stat = path.stat()
+        fingerprint: dict[str, Any] = {
+            "mtime": stat.st_mtime,
+            "size": stat.st_size,
+        }
+        if self._requires_content_hash(path):
+            fingerprint["sha256"] = self._sha256(path)
+        return fingerprint
+
+    @staticmethod
+    def _requires_content_hash(path: Path) -> bool:
+        suffix = path.suffix.lower()
+        name = path.name
+        return suffix in {".cs", ".asmdef", ".asmref"} or name == "ProjectVersion.txt" or name == "packages-lock.json"
+
+    @staticmethod
+    def _sha256(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(65536), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
 
     def _discover_source_files(self) -> list[Path]:
         files: list[Path] = []
@@ -219,16 +247,82 @@ class WorkspaceChangeListener:
         files.sort()
         return files
 
-    def _load_state(self) -> dict[str, float]:
+    def _load_state(self) -> dict[str, dict[str, Any]]:
         if not self._state_path.exists():
             return {}
         try:
-            return json.loads(self._state_path.read_text(encoding="utf-8"))
+            data = json.loads(self._state_path.read_text(encoding="utf-8"))
+            if isinstance(next(iter(data.values()), None), (int, float)):
+                return {str(key): {"mtime": float(value)} for key, value in data.items()}
+            return data
         except Exception:
             return {}
 
-    def _save_state(self, state: dict[str, float]) -> None:
+    def _save_state(self, state: dict[str, dict[str, Any]]) -> None:
         self._state_path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
+
+    def _expand_changed_files(self, changed_files: list[str]) -> list[str]:
+        changed_set = set(changed_files)
+        structural = {
+            path for path in changed_set
+            if path.lower().endswith((".asmdef", ".asmref"))
+            or path.endswith("ProjectSettings/ProjectVersion.txt")
+            or path.endswith("Packages/packages-lock.json")
+        }
+        if not structural:
+            return sorted(changed_set)
+
+        csharp_files = [path for path in self._discover_source_files() if path.suffix.lower() == ".cs"]
+        asmdef_dirs = [path.parent.resolve() for path in self._project_dir.rglob("*.asmdef") if path.is_file()]
+        asmref_targets = self._asmref_target_directories()
+        affected_dirs = {self._project_dir / Path(item).parent for item in structural if item.lower().endswith((".asmdef", ".asmref"))}
+        affected_dirs.update(asmref_targets)
+        affected_dirs.update(asmdef_dirs)
+
+        for csharp in csharp_files:
+            if any(self._is_same_or_child(csharp.parent.resolve(), root.resolve()) for root in affected_dirs):
+                changed_set.add(csharp.relative_to(self._project_dir).as_posix())
+        return sorted(changed_set)
+
+    def _asmref_target_directories(self) -> set[Path]:
+        asmdef_guid_to_dir: dict[str, Path] = {}
+        asmdef_name_to_dir: dict[str, Path] = {}
+        for asmdef in self._project_dir.rglob("*.asmdef"):
+            if not asmdef.is_file():
+                continue
+            asmdef_dir = asmdef.parent.resolve()
+            asmdef_name_to_dir[asmdef.stem] = asmdef_dir
+            meta = asmdef.with_suffix(asmdef.suffix + ".meta")
+            if meta.is_file():
+                for line in meta.read_text(encoding="utf-8", errors="replace").splitlines():
+                    if line.startswith("guid:"):
+                        asmdef_guid_to_dir[line.split(":", 1)[1].strip()] = asmdef_dir
+                        break
+
+        targets: set[Path] = set()
+        for asmref in self._project_dir.rglob("*.asmref"):
+            if not asmref.is_file():
+                continue
+            try:
+                payload = json.loads(asmref.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                continue
+            reference = str(payload.get("reference", "")).strip()
+            if reference.startswith("GUID:"):
+                target = asmdef_guid_to_dir.get(reference.split(":", 1)[1].strip())
+            else:
+                target = asmdef_name_to_dir.get(reference)
+            if target is not None:
+                targets.add(target)
+        return targets
+
+    @staticmethod
+    def _is_same_or_child(directory: Path, parent: Path) -> bool:
+        try:
+            directory.relative_to(parent)
+            return True
+        except ValueError:
+            return directory == parent
 
     def _render_summary(self, result: WorkspaceSyncResult) -> str:
         changed = ", ".join(result.changed_files[:20]) or "None"
