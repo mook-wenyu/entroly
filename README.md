@@ -50,6 +50,7 @@
 
 <p align="center">
   <a href="#install"><b>Install</b></a> ·
+  <a href="docs/build-guide.md"><b>Build Guide</b></a> ·
   <a href="cookbook/README.md"><b>Cookbook</b></a> ·
   <a href="#benchmarks"><b>Benchmarks</b></a> ·
   <a href="#works-with-your-stack"><b>37 wrap targets</b></a>
